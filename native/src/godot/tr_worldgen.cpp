@@ -12,9 +12,63 @@
 
 namespace godot {
 
+namespace {
+
+// float -> IEEE half, round to nearest even (what the GPU upload of a float texture does)
+uint16_t to_half(float f) {
+	uint32_t x;
+	std::memcpy(&x, &f, 4);
+	uint32_t sign = (x >> 16) & 0x8000u;
+	int32_t e = int32_t((x >> 23) & 0xFF) - 127 + 15;
+	uint32_t m = x & 0x7FFFFFu;
+	if (((x >> 23) & 0xFF) == 0xFF) return uint16_t(sign | 0x7C00u | (m ? 0x200u : 0));   // inf / nan
+	if (e >= 31) return uint16_t(sign | 0x7C00u);                                           // overflow -> inf
+	if (e <= 0) {                                                                            // subnormal half
+		if (e < -10) return uint16_t(sign);
+		m |= 0x800000u;
+		int shift = 14 - e;
+		uint32_t hm = m >> shift, rem = m & ((1u << shift) - 1), half = 1u << (shift - 1);
+		if (rem > half || (rem == half && (hm & 1))) hm++;
+		return uint16_t(sign | hm);
+	}
+	uint32_t hm = m >> 13, rem = m & 0x1FFFu;
+	uint32_t h = sign | (uint32_t(e) << 10) | hm;
+	if (rem > 0x1000u || (rem == 0x1000u && (hm & 1))) h++;
+	return uint16_t(h);
+}
+
+// mip chain of a float image (box average with clamped edges, like initGL), stored as halfs
+PackedByteArray half_mips(const std::vector<float> &src, int w, int h, int ch) {
+	std::vector<uint16_t> out;
+	std::vector<float> data = src;
+	for (;;) {
+		for (float v : data) out.push_back(to_half(v));
+		if (w <= 1 && h <= 1) break;
+		int nw = std::max(1, w >> 1), nh = std::max(1, h >> 1);
+		std::vector<float> nd(size_t(nw) * nh * ch);
+		for (int y = 0; y < nh; y++)
+			for (int x = 0; x < nw; x++) {
+				int x0 = std::min(w - 1, x * 2), x1 = std::min(w - 1, x * 2 + 1), y0 = std::min(h - 1, y * 2), y1 = std::min(h - 1, y * 2 + 1);
+				for (int c = 0; c < ch; c++)
+					nd[(size_t(y) * nw + x) * ch + c] = float((double(data[(size_t(y0) * w + x0) * ch + c]) + data[(size_t(y0) * w + x1) * ch + c] +
+																   data[(size_t(y1) * w + x0) * ch + c] + data[(size_t(y1) * w + x1) * ch + c]) * .25);
+			}
+		data.swap(nd);
+		w = nw;
+		h = nh;
+	}
+	PackedByteArray b;
+	b.resize(int64_t(out.size() * 2));
+	std::memcpy(b.ptrw(), out.data(), out.size() * 2);
+	return b;
+}
+
+} // namespace
+
 void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate", "seed", "states", "mw", "mh"), &TRWorldGen::generate, DEFVAL(26), DEFVAL(1800), DEFVAL(1200));
 	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board);
+	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
 
 Dictionary TRWorldGen::generate(int64_t seed, int64_t states, int64_t mw, int64_t mh) {
@@ -149,6 +203,26 @@ Dictionary TRWorldGen::generate_board(const PackedFloat64Array &state_pops) {
 	d["roads"] = roads;
 	d["railways"] = rails;
 	d["checkpoints"] = cps;
+	return d;
+}
+
+Dictionary TRWorldGen::build_textures() {
+	Dictionary d;
+	if (!world_) return d;
+	tr::World &w = *world_;
+	if (w.tf.empty()) tr::build_render_data(w);
+	const int MW = w.p.mw, MH = w.p.mh;
+	d["width"] = MW;
+	d["height"] = MH;
+	d["terrain"] = half_mips(w.tf, MW, MH, 4);
+	d["border"] = half_mips(w.hb, MW * 2, MH * 2, 1);
+	PackedByteArray st;
+	st.resize(int64_t(w.hid.size()));
+	std::memcpy(st.ptrw(), w.hid.data(), w.hid.size());
+	d["states"] = st;
+	// the arrays are uploaded now; free the CPU copies
+	std::vector<float>().swap(w.tf);
+	std::vector<float>().swap(w.hb);
 	return d;
 }
 

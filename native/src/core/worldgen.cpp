@@ -105,6 +105,7 @@ void sq_build(World &w, const std::vector<int8_t> &src) {
 World generate_world(uint32_t seed, const WorldParams &p) {
 	World w;
 	w.p = p;
+	w.seed = seed;
 	const int MW = p.mw, MH = p.mh;
 	Mulberry rng(seed);
 	Perlin noise(rng);
@@ -687,6 +688,166 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 		}
 	}
 	return w;
+}
+
+namespace {
+
+// exact Euclidean distance transform (Felzenszwalb), EDT in 04-map.js; F is a Float32Array there
+void edt(std::vector<float> &F, int W, int Hh) {
+	int N = std::max(W, Hh);
+	std::vector<double> f(N), d(N), z(N + 1);
+	std::vector<int> v(N);
+	auto run = [&](int len) {
+		int k = 0;
+		v[0] = 0;
+		z[0] = -INFINITY;
+		z[1] = INFINITY;
+		for (int q = 1; q < len; q++) {
+			double sx = ((f[q] + double(q) * q) - (f[v[k]] + double(v[k]) * v[k])) / (2.0 * q - 2.0 * v[k]);
+			while (sx <= z[k]) {
+				k--;
+				sx = ((f[q] + double(q) * q) - (f[v[k]] + double(v[k]) * v[k])) / (2.0 * q - 2.0 * v[k]);
+			}
+			k++;
+			v[k] = q;
+			z[k] = sx;
+			z[k + 1] = INFINITY;
+		}
+		k = 0;
+		for (int q = 0; q < len; q++) {
+			while (z[k + 1] < q) k++;
+			d[q] = double(q - v[k]) * (q - v[k]) + f[v[k]];
+		}
+	};
+	for (int x = 0; x < W; x++) {
+		for (int y = 0; y < Hh; y++) f[y] = F[size_t(y) * W + x];
+		run(Hh);
+		for (int y = 0; y < Hh; y++) F[size_t(y) * W + x] = float(d[y]);
+	}
+	for (int y = 0; y < Hh; y++) {
+		for (int x = 0; x < W; x++) f[x] = F[size_t(y) * W + x];
+		run(W);
+		for (int x = 0; x < W; x++) F[size_t(y) * W + x] = float(d[x]);
+	}
+}
+
+// box blur from genWorld (r, passes), Float32Array in and out
+void blur(std::vector<float> &A, int r, int passes, int W, int Hh) {
+	std::vector<float> tmp(A.size());
+	const double div = 2 * r + 1;
+	for (int p = 0; p < passes; p++) {
+		for (int y = 0; y < Hh; y++) {
+			double acc = 0;
+			size_t row = size_t(y) * W;
+			for (int x = -r; x <= r; x++) acc += A[row + clampi(x, 0, W - 1)];
+			for (int x = 0; x < W; x++) {
+				tmp[row + x] = float(acc / div);
+				acc += double(A[row + std::min(W - 1, x + r + 1)]) - double(A[row + std::max(0, x - r)]);
+			}
+		}
+		for (int x = 0; x < W; x++) {
+			double acc = 0;
+			for (int y = -r; y <= r; y++) acc += tmp[size_t(clampi(y, 0, Hh - 1)) * W + x];
+			for (int y = 0; y < Hh; y++) {
+				A[size_t(y) * W + x] = float(acc / div);
+				acc += double(tmp[size_t(std::min(Hh - 1, y + r + 1)) * W + x]) - double(tmp[size_t(std::max(0, y - r)) * W + x]);
+			}
+		}
+	}
+}
+
+inline double lerpd(double a, double b, double t) { return a + (b - a) * t; }
+
+} // namespace
+
+void build_render_data(World &w) {
+	const int MW = w.p.mw, MH = w.p.mh, S = w.p.tri_s;
+	const size_t NPX = size_t(MW) * MH;
+	const float INF = float(1e10);
+	Mulberry rng(w.seed);
+	Perlin noise(rng);
+	const auto &own = w.own;
+	// 2x state map on the board lattice (triLab)
+	const int HW = MW * 2, HH = MH * 2;
+	w.hid.assign(size_t(HW) * HH, 0);
+	for (int Y = 0; Y < HH; Y++)
+		for (int X = 0; X < HW; X++) {
+			double x = (X + .5) / 2, y = (Y + .5) / 2;
+			int i = int(std::floor(x / S)), j = int(std::floor(y / S));
+			double fx = x / S - i, fy = y / S - j;
+			int d = (i >= 0 && j >= 0 && i < w.sqw && j < w.sqh) ? w.sqd[size_t(j) * w.sqw + i] : 0;
+			int h = d ? (fx > fy ? 0 : 1) : (fx + fy < 1 ? 0 : 1);
+			double c0 = d ? (h ? 1.0 / 3 : 2.0 / 3) : (h ? 2.0 / 3 : 1.0 / 3), c1 = d ? (h ? 2.0 / 3 : 1.0 / 3) : (h ? 2.0 / 3 : 1.0 / 3);
+			int cx = int(std::floor((i + c0) * S)), cy = int(std::floor((j + c1) * S));
+			int o = (cx < 0 || cy < 0 || cx >= MW || cy >= MH) ? -1 : own[size_t(cy) * MW + cx];
+			w.hid[size_t(Y) * HW + X] = uint8_t(o < 0 ? 0 : o + 1);
+		}
+	// border distance on the 2x grid
+	auto &hid = w.hid;
+	w.hb.assign(size_t(HW) * HH, 0);
+	auto &hb = w.hb;
+	for (int Y = 0; Y < HH; Y++)
+		for (int X = 0; X < HW; X++) {
+			size_t i = size_t(Y) * HW + X;
+			int o = hid[i];
+			hb[i] = INF;
+			if (!o) continue;
+			if ((X > 0 && hid[i - 1] && hid[i - 1] != o) || (X < HW - 1 && hid[i + 1] && hid[i + 1] != o) || (Y > 0 && hid[i - HW] && hid[i - HW] != o) ||
+					(Y < HH - 1 && hid[i + HW] && hid[i + HW] != o))
+				hb[i] = 0;
+		}
+	edt(hb, HW, HH);
+	for (auto &v : hb) v = float(std::min(std::sqrt(double(v)) + .5, 24.0));
+	blur(hb, 1, 1, HW, HH);
+	// the state map grows into the sea so lookups near the coast never hit 0
+	for (int it = 0; it < 8; it++) {
+		std::vector<uint8_t> src = hid;
+		for (int Y = 1; Y < HH - 1; Y++)
+			for (int X = 1; X < HW - 1; X++) {
+				size_t i = size_t(Y) * HW + X;
+				if (src[i]) continue;
+				uint8_t q = src[i - 1] ? src[i - 1] : src[i + 1] ? src[i + 1] : src[i - HW] ? src[i - HW] : src[i + HW];
+				if (q) hid[i] = q;
+			}
+	}
+	// smoothed height for the lighting, signed distance to the coast, relief height
+	const double T = w.T, top = w.top, bot = w.bot;
+	std::vector<float> Hs(NPX), sdl(NPX), sdw(NPX), cs(NPX), EV(NPX);
+	for (size_t i = 0; i < NPX; i++) {
+		double d = (double(w.H[i]) - T) / top;
+		Hs[i] = float(std::max(0.0, d) * .25 + double(w.Mf[i]) * .9 * sstep(0, .05, d));
+	}
+	blur(Hs, 1, 2, MW, MH);
+	for (size_t i = 0; i < NPX; i++) {
+		bool L = own[i] >= 0;
+		sdl[i] = L ? INF : 0;
+		sdw[i] = L ? 0 : INF;
+	}
+	edt(sdl, MW, MH);
+	edt(sdw, MW, MH);
+	for (size_t i = 0; i < NPX; i++) cs[i] = float(own[i] >= 0 ? std::sqrt(double(sdl[i])) - .5 : -(std::sqrt(double(sdw[i])) - .5));
+	for (size_t i = 0; i < NPX; i++) {
+		double d = (double(w.H[i]) - T) / top;
+		EV[i] = float(std::max(.002, std::max(0.0, d) * .12 + double(w.Mf[i]) * .85 * sstep(0, .05, d)));
+	}
+	blur(EV, 2, 3, MW, MH);
+	w.tf.assign(NPX * 4, 0);
+	const double Lx = -.55, Ly = -.65, Lz = .52;
+	for (int y = 0; y < MH; y++)
+		for (int x = 0; x < MW; x++) {
+			size_t i = size_t(y) * MW + x;
+			double h = w.H[i];
+			double gx = (double(Hs[size_t(y) * MW + std::min(MW - 1, x + 1)]) - double(Hs[size_t(y) * MW + std::max(0, x - 1)])) * 32;
+			double gy = (double(Hs[size_t(std::min(MH - 1, y + 1)) * MW + x]) - double(Hs[size_t(std::max(0, y - 1)) * MW + x])) * 32;
+			double nl = js_hypot3(gx, gy, 1);
+			double lit = (-gx * Lx - gy * Ly + Lz) / nl / Lz;
+			double lit2 = (gx * .4 - gy * .3 + .85) / nl / .85;
+			double ev = EV[i], wv = std::min((h - T) / bot, -.001), c_ = cs[i];
+			w.tf[i * 4] = float(c_ > 0 ? lerpd(c_ * .004, std::max(ev, std::min(c_ * .004, .02)), sstep(2, 8, c_)) : lerpd(c_ * .004, std::min(wv, c_ * .004), sstep(10, 40, -c_)));
+			w.tf[i * 4 + 1] = float(w.sqd[size_t(y / S) * w.sqw + size_t(x / S)]);
+			w.tf[i * 4 + 2] = float(clampd(.5 + (lit * .75 + lit2 * .25 - 1) * .85, 0, 1));
+			w.tf[i * 4 + 3] = float(noise(x * .006 + 20, y * .006 + 11) * .5 + noise(x * .018, y * .018 + 60) * .25 + .5);
+		}
 }
 
 } // namespace tr

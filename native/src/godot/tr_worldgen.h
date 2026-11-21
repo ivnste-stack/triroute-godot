@@ -34,6 +34,13 @@ public:
 	//   checkpoints (Array of {x, z, a, b, rail}).
 	Dictionary generate_board(const PackedFloat64Array &state_pops);
 
+	// Map shader textures for the last generated world, ready for Image.create_from_data():
+	//   terrain: RGBAH with mipmaps (MW x MH) — coast/height, lattice diagonal, lighting, noise
+	//   border:  RH with mipmaps (2MW x 2MH) — distance to a state border
+	//   states:  R8 (2MW x 2MH) — state id + 1 (121 neutral), grown into the sea
+	// Mipmaps are 2x2 box averages like the HTML version builds them.
+	Dictionary build_textures();
+
 private:
 	std::shared_ptr<tr::World> world_;
 	int64_t seed_ = 0;

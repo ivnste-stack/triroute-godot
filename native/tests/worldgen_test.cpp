@@ -55,6 +55,14 @@ int main(int argc, char **argv) {
 	ok &= cmp("sqd", w.sqd, load<uint8_t>(dir + "/sqd.u8"), w.sqw);
 	ok &= cmp("sql", w.sql, load<int16_t>(dir + "/sql.i16"), w.sqw * 2);
 	ok &= cmp("own", w.own, load<int8_t>(dir + "/own.i8"), p.mw);
+	{
+		auto t1 = std::chrono::steady_clock::now();
+		tr::build_render_data(w);
+		std::printf("  render data in %.0f ms\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count());
+	}
+	ok &= cmp("tf", w.tf, load<float>(dir + "/tf.f32"), p.mw * 4);
+	ok &= cmp("hb", w.hb, load<float>(dir + "/hb.f32"), p.mw * 2);
+	ok &= cmp("hid", w.hid, load<uint8_t>(dir + "/hid.u8"), p.mw * 2);
 	// countries: label point, seed, neighbours (compared as text with the JSON from the reference)
 	std::ifstream mf(dir + "/meta.json");
 	std::string meta((std::istreambuf_iterator<char>(mf)), std::istreambuf_iterator<char>());

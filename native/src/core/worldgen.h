@@ -44,11 +44,19 @@ struct World {
 	std::vector<int16_t> sql;        // lattice: owner of each half
 	std::vector<SeedPt> seeds;
 	std::vector<Country> countries;
+	uint32_t seed = 0;
+	// render data (build_render_data): what the HTML version uploads to the map shader
+	std::vector<float> tf;           // MW*MH*4: coast/height, lattice diagonal, lighting, noise
+	std::vector<float> hb;           // (2MW)*(2MH): distance to a state border (pixels of the 2x grid)
+	std::vector<uint8_t> hid;        // (2MW)*(2MH): state id + 1 on the 2x grid (121 neutral, 0 sea), grown into the sea
 };
 
 static const int NEU = 120;
 
 // Generates the world. The HTML version takes the same steps in the same order, so the RNG stays in step.
 World generate_world(uint32_t seed, const WorldParams &p);
+
+// Fills tf / hb / hid exactly like the end of genWorld() (tri lattice branch).
+void build_render_data(World &w);
 
 } // namespace tr

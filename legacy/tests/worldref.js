@@ -23,7 +23,7 @@ const r=await p.evaluate(async(seed)=>{
   for(const k of ["low","H","Mf","land","ownGrow"])if(!__D[k])throw new Error("missing "+k);if(!SQD)throw new Error("no SQD");
   const b64=a=>{const u=new Uint8Array(a.buffer,a.byteOffset,a.byteLength);let s="";for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
   return{MW,MH,WX,WZ,TRI_S,N:G.genN,T:__D.T,landCount:__D.landCount,seeds:__D.seeds,countries:w.countries,
-    low:b64(__D.low),H:b64(__D.H),Mf:b64(__D.Mf),land:b64(__D.land),ownGrow:b64(__D.ownGrow),own:b64(w.own),sqd:b64(SQD),sql:b64(SQL)}},seed);
-for(const [k,ext] of [["low","f32"],["H","f32"],["Mf","f32"],["land","u8"],["ownGrow","i8"],["own","i8"],["sqd","u8"],["sql","i16"]]){fs.writeFileSync(path.join(out,k+"."+ext),Buffer.from(r[k],'base64'));delete r[k]}
+    low:b64(__D.low),tf:b64(w.tf),hb:b64(w.hb),hid:b64(w.hid),H:b64(__D.H),Mf:b64(__D.Mf),land:b64(__D.land),ownGrow:b64(__D.ownGrow),own:b64(w.own),sqd:b64(SQD),sql:b64(SQL)}},seed);
+for(const [k,ext] of [["tf","f32"],["hb","f32"],["hid","u8"],["low","f32"],["H","f32"],["Mf","f32"],["land","u8"],["ownGrow","i8"],["own","i8"],["sqd","u8"],["sql","i16"]]){fs.writeFileSync(path.join(out,k+"."+ext),Buffer.from(r[k],'base64'));delete r[k]}
 fs.writeFileSync(path.join(out,'meta.json'),JSON.stringify(r));
 console.log(out,"MW",r.MW,"MH",r.MH,"N",r.N,"T",r.T,"land",r.landCount,"countries",r.countries.length,errs.join(" | "));await b.close()})();
