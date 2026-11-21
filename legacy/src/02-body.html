@@ -1,0 +1,60 @@
+<canvas id="gl"></canvas>
+<div id="overlay"><canvas id="bcv" style="position:absolute;inset:0;width:100%;height:100%"></canvas><svg id="ovsvg"></svg><div id="cities"></div><div id="ovl"></div></div>
+
+<div id="top"><div id="idbox" hidden>
+  <div class="glass year num" id="yearBox">2026</div>
+  <div class="glass who" id="whoBox" data-tip="<b>Ваша держава</b>Натисніть, щоб відкрити картку своєї країни."><img id="myFlag" alt=""><div><b id="myName">—</b><small id="myLeader">—</small></div></div>
+</div>
+<div id="kpis" class="glass" hidden></div></div>
+<nav id="rail" class="glass" hidden></nav>
+<aside id="insp" class="glass" hidden></aside>
+<section id="win" class="glass" hidden></section>
+
+<div id="bar" class="glass" hidden>
+  <div id="speed"></div>
+  <div class="cell" id="cDate" data-tip="<b>Дата</b>1 день = 1 крок симуляції. Економіка, бюджет і настрої рахуються на початку кожного місяця."><span class="lbl">Дата</span><span class="v" id="vDate">—</span></div>
+  <div class="cell" id="cTension" data-tip="<b>Світова напруга</b>Середній рівень конфліктності у світі: звинувачення, санкції, війська на кордонах. Висока напруга підвищує ціни на енергоносії та зброю."><span class="lbl">Світова напруга</span><span class="v" id="vTension">—</span></div>
+  <div class="cell opt" id="cMarket" data-tip="<b>Індекс сировини</b>Середня ціна ресурсів відносно базової (100). Вище 100 — сировина дорожчає: добре для експортерів, погано для імпортерів."><span class="lbl">Індекс сировини</span><span class="v" id="vMarket">—</span></div>
+  <div class="cell opt" id="cPop" data-tip="<b>Населення світу</b>Сума населення всіх держав на мапі."><span class="lbl">Населення світу</span><span class="v" id="vPop">—</span></div>
+  <div id="ticker"><div class="tr" id="tickTrack"></div></div>
+</div>
+
+<div id="ucard" class="glass" hidden></div>
+<div id="legend" class="glass" hidden></div>
+<div id="toasts"></div>
+<div id="tip" hidden></div>
+<div id="modal" hidden><div class="mbox glass" id="mbox"></div></div>
+
+<div id="loading" hidden><div class="lb"><span class="lbl" id="loadTxt">Генерація світу…</span><div class="meter"><i id="loadBar" style="width:5%"></i></div></div></div>
+
+<div id="start">
+  <div class="scol">
+    <div class="sbox glass sbx">
+    <div class="sbrand"><img class="logoimg" alt="TriRoute" width="1100" height="298"><h1 class="logo logo-txt">TRI<em>ROUTE</em></h1><span class="lbl">Глобальна логістична стратегія</span></div>
+    </div>
+    <div class="snavs">
+      <button class="snav pri" id="sNew" data-act="ngOpen">Створити гру</button>
+      <button class="snav" id="sLoad" data-act="menuLoad">Завантажити гру</button>
+      <button class="snav" id="sSet" data-act="menuSet">Налаштування</button>
+      <button class="snav dng" id="sExit" data-act="appExit">Вихід</button>
+    </div>
+  </div>
+  <div class="dlcs" style="position:absolute"><button class="dlcx" data-act="dlcClose" aria-label="Закрити"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="dlc glass"><div class="dlc-t"><div class="row" style="gap:8px"><span class="dlc-tag">DLC</span><b>Назва доповнення</b></div><div class="note">Тут буде опис для майбутніх DLC.</div></div><div class="dlc-img"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><circle cx="12" cy="13" r="3.6"/><path d="M2 2l20 20"/></svg></div></div>
+    <div class="dlc glass"><div class="dlc-t"><div class="row" style="gap:8px"><span class="dlc-tag">DLC</span><b>Назва доповнення</b></div><div class="note">Тут буде опис для майбутніх DLC.</div></div><div class="dlc-img"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><circle cx="12" cy="13" r="3.6"/><path d="M2 2l20 20"/></svg></div></div>
+    
+  </div>
+  <div id="ngModal" hidden><div class="mbox glass ngbox">
+    <div class="mhead"><div class="mic"><svg class="ic"><use href="#i-globe"/></svg></div><div class="grow"><span class="lbl">Нова гра</span><h3>Створити гру</h3></div><button class="xbtn" data-act="ngClose" aria-label="Закрити"><svg class="ic"><use href="#i-close"/></svg></button></div>
+    <div class="mb">
+    <div class="note" style="margin:-4px 0 6px">Ви — засновник логістичної компанії. Від однієї вантажної машини до потягів, кораблів і літаків на всіх континентах.</div>
+    <div class="sfield" id="sMapRow"><span class="lbl">Мапа</span><div class="seg" id="sMap"><button data-v="0" class="on">Випадковий світ</button><button data-v="1">Карта Землі</button><button data-v="2">Свій світ</button></div><span></span></div>
+    <div class="sfield" id="sSizeRow"><span class="lbl">Розмір мапи</span><div class="seg" id="sSize"><button data-v="s">Мала · 2×1</button><button data-v="m" class="on">Середня · 3×2</button><button data-v="l">Велика · 4×3</button></div><span class="note" style="grid-column:1/-1">Розмір у секторах. Сектор — 3×3 великі клітинки сітки.</span></div>
+    <div class="sfield" id="sEditRow"><span class="lbl">Редактор мапи</span><div class="seg" id="sEdit"><button data-v="0" class="on">Одразу грати</button><button data-v="1">Спершу відредагувати</button></div><span></span></div>
+    <div class="sfield"><span class="lbl">Складність</span><div class="seg" id="sDiff"><button data-v="0">Навчальна</button><button data-v="1" class="on">Звичайна</button><button data-v="2">Жорстка</button></div><span></span></div>
+    <div class="sfield"><span class="lbl">Зерно світу</span><span class="num mut" id="sSeed">—</span><button class="btn sm" id="sReroll"><svg class="ic"><use href="#i-dice"/></svg>Інше</button></div>
+      <button class="btn pri sbig" id="sGo"><svg class="ic"><use href="#i-globe"/></svg>Створити світ</button>
+    </div>
+  </div></div>
+</div>
+<svg width="0" height="0" style="position:absolute" id="iconDefs"></svg>

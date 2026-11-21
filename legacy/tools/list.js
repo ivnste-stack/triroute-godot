@@ -1,0 +1,3 @@
+const fs=require('fs'),acorn=require('acorn');const f=process.argv[2];const code=fs.readFileSync(f,'utf8');
+const ast=acorn.parse(code,{ecmaVersion:'latest',allowReturnOutsideFunction:true,allowAwaitOutsideFunction:true});
+for(const st of ast.body){let n=st.type==="FunctionDeclaration"?"fn "+st.id.name:st.type==="ExpressionStatement"&&st.expression.type==="AssignmentExpression"?"= "+code.slice(st.expression.left.start,st.expression.left.end):st.type==="VariableDeclaration"?"var "+st.declarations.map(d=>code.slice(d.id.start,d.id.end)).join(","):st.type+" "+code.slice(st.start,st.start+50).replace(/\n/g," ");console.log(String(st.end-st.start).padStart(6),n)}

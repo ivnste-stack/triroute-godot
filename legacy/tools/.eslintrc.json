@@ -1,0 +1,1 @@
+{"root":true,"env":{"browser":true,"es2022":true},"parserOptions":{"ecmaVersion":"latest","sourceType":"script"},"rules":{"no-undef":"error"}}

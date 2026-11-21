@@ -1,0 +1,12 @@
+const {chromium}=require('playwright');const D=__dirname;
+(async()=>{const b=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage({viewport:{width:1300,height:900}});p.setDefaultTimeout(600000);const errs=[];p.on('pageerror',e=>errs.push(e.message));
+await p.goto('file://'+D+'/t.html');await p.waitForTimeout(800);await p.evaluate(()=>{SET.res=600;SEED=777});
+await p.evaluate(()=>ACT.ngOpen());await p.click('#sGo');await p.waitForSelector('#mbox .choice');
+await p.evaluate(()=>document.querySelector('#mbox .choice').click());await p.waitForTimeout(300);await p.evaluate(()=>{const c=document.querySelector('#mbox .choice');if(c)c.click()});
+const STEP=`(n,dt)=>{for(let i=0;i<n;i++){G.day+=dt;CO.lastFr=0;coFrame();coReturns()}}`;
+const r=await p.evaluate((STEP)=>{const step=eval(STEP);closeWin();while(modalOpen)nextModal();setSpeed(0);const run=fast=>{SET.fastprog=fast;const b={xp:CO.xp||0,d:CO.deliv,c:CO.cdel,cash:CO.cash};const k=CO.board.find(k=>k.mode==="road"&&!k.legs&&coPlan(k).ok);const P=coPlan(k);coDispatch(k,P,true);const j=CO.jobs.find(x=>!x.ret&&x.k===k);for(let i=0;i<800&&CO.jobs.includes(j);i++)step(1,.01);
+    return{xp:Math.round((CO.xp||0)-b.xp),deliv:+(CO.deliv-b.d).toFixed(1),cdel:CO.cdel-b.c,pay:k.pay,cashGain:Math.round(CO.cash-b.cash)}};
+  const normal=run(false);step(120,.01);const fast=run(true);SET.fastprog=false;
+  return{normal,fast,settings:(()=>{ACT.menuOpen&&ACT.menuOpen();return /Пришвидшений прогрес/.test(document.body.innerHTML)})()}},STEP);
+console.log(JSON.stringify(r,null,1));console.log(errs.slice(0,5).join("\n"));await b.close()})();

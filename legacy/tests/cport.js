@@ -1,0 +1,20 @@
+const {chromium}=require('playwright');const D=__dirname;
+(async()=>{const b=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage({viewport:{width:1300,height:900}});p.setDefaultTimeout(600000);const errs=[];p.on('pageerror',e=>errs.push(e.message));
+await p.goto('file://'+D+'/t.html');await p.waitForTimeout(800);await p.evaluate(()=>{SET.res=1000;SEED=777});
+await p.evaluate(()=>ACT.ngOpen());await p.click('#sGo');await p.waitForSelector('#mbox .choice');
+await p.evaluate(()=>document.querySelector('#mbox .choice').click());await p.waitForTimeout(300);await p.evaluate(()=>{const c=document.querySelector('#mbox .choice');if(c)c.click()});
+const pos=await p.evaluate(()=>{closeWin();while(modalOpen)nextModal();setSpeed(0);$('#legend').hidden=true;
+  const port=PL.find(q=>q.port!=null&&q.air&&q.type!=="cap")||PL.find(q=>q.port!=null);
+  const _o=incPortCl;incPortCl=(q,m)=>q===port?"Страйк докерів":_o(q,m);
+  Cam.ttx=Cam.tx=port.x;Cam.ttz=Cam.tz=port.z;Cam.tdist=Cam.dist=3;REDRAW=true;window._port=port;return 1});
+await p.waitForTimeout(2500);
+const q=await p.evaluate(()=>{const q=project(_port.x,0,_port.z);return[q.x,q.y]});
+await p.screenshot({path:D+'/port.png',clip:{x:q[0]-110,y:q[1]-80,width:220,height:130}});
+await p.mouse.move(q[0],q[1]-17);await p.waitForTimeout(700);
+const tip=await p.evaluate(()=>{const e=document.getElementById("coTip");return e&&!e.hidden?e.innerText.slice(0,80):null});
+// finance split
+const fin=await p.evaluate(()=>{const H=CO.hq,dom=PL.find(q=>q.cid===PL[H].cid&&q.id!==H),intl=PL.find(q=>q.cid!==PL[H].cid);return{dom:revKey({from:H,to:dom.id}),intl:revKey({from:H,to:intl.id})}});
+await p.evaluate(()=>openWin("coFin"));await p.waitForTimeout(400);
+const finTxt=await p.evaluate(()=>{const t=document.getElementById("win").innerText;return{dom:/Доставки по країні/.test(t),intl:/Міжнародні перевезення/.test(t),old:/Міські доставки/.test(t)}});
+console.log(JSON.stringify({tip,fin,finTxt}));console.log(errs.slice(0,5).join("\n"));await b.close()})();

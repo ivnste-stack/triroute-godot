@@ -1,0 +1,18 @@
+const {chromium}=require('playwright');const D=__dirname;
+(async()=>{const b=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage({viewport:{width:1300,height:900}});p.setDefaultTimeout(600000);const errs=[];p.on('pageerror',e=>errs.push(e.message));
+await p.goto('file://'+D+'/t.html');await p.waitForTimeout(800);await p.evaluate(()=>{SET.res=900;SEED=777});
+await p.evaluate(()=>ACT.ngOpen());await p.click('#sGo');await p.waitForSelector('#mbox .choice');
+await p.evaluate(()=>document.querySelector('#mbox .choice').click());await p.waitForTimeout(300);await p.evaluate(()=>{const c=document.querySelector('#mbox .choice');if(c)c.click()});
+const r=await p.evaluate(()=>{closeWin();while(modalOpen)nextModal();setSpeed(0);CO.cash=1e7;CO.tier=3;CO.xp=5000;const home=PL[CO.hq].cid,o={};
+  const gen=()=>{const ks=[];for(let i=0;i<500&&ks.length<150;i++){const k=coGen();if(k)ks.push(k)}const fromC={};for(const k of ks){const c=PL[k.from].cid===home?"home":G.C[PL[k.from].cid].name;fromC[c]=(fromC[c]||0)+1}return{n:ks.length,fromC,intl:ks.filter(k=>PL[k.to].cid!==PL[k.from].cid).length}};
+  o.before=gen();
+  const fp=PL.find(q=>q.cid!==home&&q.type==="cap"&&q.land===PL[CO.hq].land&&coScope(q));const c0=CO.cash;o.openCost=hubOpenCost(fp);o.fullCost=hubCost(fp);ACT.coHub(fp.id);const h=hubAt(fp.id);o.rented=!!(h&&h.rent);o.paid=Math.round(c0-CO.cash);o.rentM=Math.round(hubRentM(h));o.ownRentM=Math.round(hubRentM({pid:fp.id,lvl:1}));
+  h.lvl=2;ACT.coHubUp(fp.id);o.lvlCapped=h.lvl===2;
+  o.after=gen();o.rentName=G.C[fp.cid].name;coChipFilter();const el=CITY_EL.find(c=>c.cap&&c.cid===fp.cid);o.rentcapClass=!!(el&&el.el.classList.contains("rentcap"));
+  const me=CITY_EL.find(c=>c.cap&&c.cid===home);o.homeHubcap=!!(me&&me.el.classList.contains("hubcap"));
+  window._fp=fp;return o});
+console.log(JSON.stringify(r,null,1));
+await p.evaluate(()=>{$("#legend").hidden=true;Cam.ttx=Cam.tx=_fp.x;Cam.ttz=Cam.tz=_fp.z;Cam.tdist=Cam.dist=5;REDRAW=true});await p.waitForTimeout(2000);
+await p.screenshot({path:D+'/rent.png',clip:{x:350,y:200,width:600,height:450}});
+console.log(errs.slice(0,5).join("\n"));await b.close()})();

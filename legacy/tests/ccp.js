@@ -1,0 +1,11 @@
+const {chromium}=require('playwright');const D=__dirname;
+(async()=>{const b=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage({viewport:{width:1300,height:900}});p.setDefaultTimeout(600000);const errs=[];p.on('pageerror',e=>errs.push(e.message));
+await p.goto('file://'+D+'/t.html');await p.waitForTimeout(800);await p.evaluate(()=>{SET.res=900;SEED=777});
+await p.evaluate(()=>ACT.ngOpen());await p.click('#sGo');await p.waitForSelector('#mbox .choice');
+await p.evaluate(()=>document.querySelector('#mbox .choice').click());await p.waitForTimeout(300);await p.evaluate(()=>{const c=document.querySelector('#mbox .choice');if(c)c.click()});
+await p.evaluate(()=>{closeWin();while(modalOpen)nextModal();setSpeed(0);$("#legend").hidden=true;const H=PL[CO.hq];const cps=BOARD.cps.slice().sort((a,b)=>Math.hypot(a.x-H.x,a.z-H.z)-Math.hypot(b.x-H.x,b.z-H.z));const c=cps[0];
+  CO.cls.push({id:CO.uid++,kind:"cp",a:c.a,b:c.b,x:c.x,z:c.z,why:"Страйк митників",until:coNow()+3});CO.clV++;incBlk();
+  Cam.ttx=Cam.tx=c.x;Cam.ttz=Cam.tz=c.z;Cam.tdist=Cam.dist=2.2;REDRAW=true});
+await p.waitForTimeout(2500);await p.screenshot({path:D+'/cp.png',clip:{x:450,y:250,width:400,height:400}});
+console.log(errs.slice(0,5).join("\n"));await b.close()})();

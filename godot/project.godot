@@ -1,0 +1,36 @@
+; Engine configuration file.
+; TriRoute — logistics company game, port from the HTML version (see ../legacy and ../docs).
+
+config_version=5
+
+[application]
+
+config/name="TriRoute"
+config/description="Логістична компанія: біржа вантажів, маршрути, хаби, ліцензії."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+EventBus="*res://scripts/core/event_bus.gd"
+Settings="*res://scripts/core/settings.gd"
+GameState="*res://scripts/core/game_state.gd"
+SaveSystem="*res://scripts/core/save_system.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/vsync/vsync_mode=1
+
+[internationalization]
+
+locale/fallback="uk"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+anti_aliasing/quality/msaa_3d=2
