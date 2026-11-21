@@ -1,8 +1,8 @@
 # TriRoute
 
-Гра про логістичну компанію: біржа вантажів, маршрути, хаби, ліцензії. Переноситься з HTML на **Godot 4.4** (GDScript).
+Гра про логістичну компанію: біржа вантажів, маршрути, хаби, ліцензії. Переноситься з HTML на **Godot 4.7** (GDScript + C++ модуль для генерації світу).
 
-- `godot/` — проєкт Godot. Відкрити: Godot 4.4 → Import → `godot/project.godot`.
+- `godot/` — проєкт Godot. Відкрити: Godot 4.7 → Import → `godot/project.godot`.
 - `legacy/` — поточна HTML-версія, еталон для переносу (`bash legacy/build.sh` → `legacy/dist/triroute.html`).
 - `docs/MODULES.md` — карта модулів, порядок переносу й критерії готовності.
 
