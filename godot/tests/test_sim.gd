@@ -126,15 +126,30 @@ func _record(sim: Sim, sent: int) -> Dictionary:
 	var jm := PackedStringArray()
 	for J in sim.jam:
 		jm.append("%d:%d@%s" % [J.id, J.n, _h(J.until)])
-	return {"cls": " ".join(cl), "wx": " ".join(wx), "band": " ".join(bn), "pir": " ".join(pr), "jam": " ".join(jm), "mcd": CO.get("mcd", 0),
+	var td := PackedStringArray()
+	for t in CO.tenders:
+		td.append("%s:%d:%d:%d" % [t.t, t.n, t.left, int(t.pay)])
+	var tf := PackedStringArray()
+	for o in CO.get("toff", []):
+		tf.append("%d:%s:%d:%d" % [o.id, o.t, o.n, int(o.pay)])
+	var mg := PackedStringArray()
+	for k in CO.mgr:
+		mg.append("%s:%d:%d:%s" % [k, CO.mgr[k].sal, CO.mgr[k].loyal, "true" if CO.mgr[k].honest else "false"])
+	var sf := PackedStringArray()
+	for k in CO.staff:
+		sf.append(str(int(CO.staff[k])))
+	return {"td": " ".join(td) + "|" + " ".join(tf), "mgr": " ".join(mg) + "|" + str(int(CO.strike)) + "|" + _h(CO.wageLv) + "|" + ",".join(sf),
+		"cls": " ".join(cl), "wx": " ".join(wx), "band": " ".join(bn), "pir": " ".join(pr), "jam": " ".join(jm), "mcd": CO.get("mcd", 0),
 		"day": sim.day, "sent": sent, "cash": _h(CO.cash), "rating": _h(CO.rating), "morale": _h(CO.morale), "fuel": _h(CO.fuel),
 		"parts": _h(CO.get("parts", 1.0)), "uid": CO.uid, "deliv": _h(CO.deliv), "cdel": CO.cdel, "xp": CO.get("xp", 0), "m": " ".join(m),
 		"board": " ".join(bd), "jobs": " ".join(jb), "veh": " ".join(vh), "hubs": " ".join(hb), "conf": " ".join(cf), "comp": " ".join(cp), "pool": " ".join(pl)}
 
 
 ## the dispatch policy of simref.js: the best-paying single-leg orders that can be done on time
-func _policy(sim: Sim) -> int:
+func _policy(sim: Sim, scenario: String = "") -> int:
 	var n := 0
+	if scenario == "fleet" and sim.CO.tenders.is_empty() and sim.CO.get("toff", []).size():
+		sim.co_tender_take(sim.CO.toff[0].id)
 	var L: Array = sim.CO.board.duplicate()
 	Sim._stable_sort(L, func(a, b): return b.pay - a.pay)
 	for k in L:
@@ -163,7 +178,8 @@ func test_simulation_days_match_html() -> String:
 		if sim.CO.name != run.name or sim.CO.hq != int(run.hq):
 			return "seed %s: company %s at %d, want %s at %d" % [run.seed, sim.CO.name, sim.CO.hq, run.name, run.hq]
 		var SC: Dictionary = {"fleet": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
-			"abroad": {"cash": 2e6, "tier": 4, "staff": {"driver": 12, "rail": 6}, "veh": ["truck", "truck", "truck", "rtrain", "reefer", "ltruck", "van", "train", "train"]}}.get(run.scenario, {})
+			"abroad": {"cash": 2e6, "tier": 4, "staff": {"driver": 12, "rail": 6}, "veh": ["truck", "truck", "truck", "rtrain", "reefer", "ltruck", "van", "train", "train"]},
+			"staff": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]}}.get(run.scenario, {})
 		if SC:
 			sim.CO.cash = SC.cash
 			sim.CO.tier = SC.tier
@@ -174,11 +190,21 @@ func test_simulation_days_match_html() -> String:
 			sim.CO.mgr.cto = sim.CO.cand.cto[0].duplicate()
 			sim.CO.cand.erase("cto")
 			sim.CO.auto = true
+		if run.scenario == "staff":
+			sim.auto_choice = 1
+			sim.CO.wageLv = .7
+			sim.CO.mgr.cfo = sim.CO.cand.cfo[0].duplicate()
+			sim.CO.mgr.cfo.honest = true
+			sim.CO.cand.erase("cfo")
+			sim.CO.mgr.coo = sim.CO.cand.coo[0].duplicate()
+			sim.CO.mgr.coo.honest = false
+			sim.CO.mgr.coo.sal = 500
+			sim.CO.cand.erase("coo")
 		var n := 0
 		for want in run.rec:
 			if sim.over:
 				return "seed %s %s: bankrupt before day %d" % [run.seed, run.scenario, want.day]
-			var sent := _policy(sim)
+			var sent := _policy(sim, run.scenario)
 			for f in 8:
 				sim.co_frame(f / 8.0)
 			sim.co_day()

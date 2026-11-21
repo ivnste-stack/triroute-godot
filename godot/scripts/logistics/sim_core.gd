@@ -9,8 +9,7 @@ extends RefCounted
 ## returns to the hub, the day (coLocal, the board, the dispatcher, prices, permits) and the month.
 ## Incidents (08f-incidents.js) are in sim.gd (class Sim, which extends this one) and plug in through
 ## _inc_frame() and _jobs_day().
-## Not ported yet: monthly events and tenders (coMonthEvents), chains and the route planner (lpRunLeg),
-## consolidated trips, the postal service.
+## Not ported yet: chains and the route planner (lpRunLeg), consolidated trips, the postal service.
 
 const D = preload("res://scripts/logistics/game_data.gd")
 
@@ -1931,7 +1930,8 @@ func co_month() -> void:
 		var k := rnd(1.15, 1.4)
 		CO.fuel = minf(2.2, CO.fuel * k)
 		co_news("bad", "barrel", "Пальне подорожчало на %d%%: світові ціни на нафту стрибнули" % int(JS.round_js((k - 1) * 100)))
-	# coMonthEvents (events, tenders): not ported yet
+	# events (one optional decision per month at most)
+	co_month_events()
 	# management candidates refresh
 	for sd in D.MG:
 		if not CO.mgr.has(sd.id) and (not CO.cand.has(sd.id) or chance(.25)):
@@ -1949,6 +1949,155 @@ func co_month() -> void:
 	if CO.neg >= 3:
 		over = true
 	biz_month()
+
+
+# ---------- monthly events: strike, embezzlement, pay rises, tenders, viral reviews, inspections (coMonthEvents) ----------
+func co_month_events() -> void:
+	var ok := co_modal_ok()
+	# strike
+	var staff_n := 0
+	for r in CO.staff:
+		staff_n += CO.staff[r]
+	if ok and CO.morale < 34 and staff_n >= 5 and chance(.4 - msk("hro") * .25):
+		var raise := func() -> void:
+			CO.wageLv = minf(1.8, CO.wageLv + .15)
+			CO.morale += 15
+		var talk := func() -> void:
+			if chance(.3 + msk("hro") * .6):
+				CO.morale += 10
+			else:
+				CO.strike = day + 6
+				co_news("bad", "fist", "Страйк у %s: техніка стоїть" % CO.name)
+		var fire := func() -> void:
+			for r in CO.staff:
+				CO.staff[r] = int(floor(CO.staff[r] * .9))
+			CO.rating = JS.clamp_js(CO.rating - .1, 1, 5)
+			CO.morale -= 10
+		co_modal({"kind": "strike", "title": "Працівники погрожують страйком",
+			"choices": [{"t": "Підняти зарплати на 15%", "f": raise}, {"t": "Переговори", "f": talk}, {"t": "Звільнити заводіїв", "f": fire}]})
+		return
+	# embezzlement caught
+	var thief: Variant = null
+	for id in CO.mgr:
+		if not CO.mgr[id].honest and id != "cfo":
+			thief = id
+			break
+	if ok and thief != null and CO.mgr.has("cfo") and CO.mgr.cfo.honest and chance(.15 + msk("cfo") * .5):
+		var id: String = thief
+		var g: Dictionary = CO.mgr[id]
+		g.honest = true
+		var loss := JS.round_js(maxf(3000, co_rev(CO.lm) * rnd(.03, .08)))
+		var sue := func() -> void:
+			CO.mgr.erase(id)
+			CO.cash += loss * .5
+			co_mgr_cand(id)
+		var warn := func() -> void:
+			g.honest = chance(.6)
+			g.loyal = mini(100, g.loyal + 20)
+		co_modal({"kind": "thief", "title": "%s краде" % _mg_name(id), "choices": [{"t": "Звільнити і подати до суду", "f": sue}, {"t": "Залишити з попередженням", "f": warn}]})
+		return
+	# a manager asks for a raise
+	for id in CO.mgr.keys():
+		var g: Dictionary = CO.mgr[id]
+		var want := co_mgr_sal(g.skill)
+		if ok and want > g.sal * 1.25 and chance(.3):
+			var ns := want
+			var agree := func() -> void:
+				g.sal = ns
+				g.loyal = mini(100, g.loyal + 20)
+			var half := func() -> void:
+				if chance(.5):
+					g.sal = int(JS.round_js((g.sal + ns) / 2.0))
+				else:
+					g.loyal -= 20
+			var refuse := func() -> void:
+				g.loyal -= 30
+				if g.loyal < 25:
+					CO.mgr.erase(id)
+					co_mgr_cand(id)
+					co_news("bad", "briefcase", "%s %s пішов до конкурентів" % [_mg_name(id), CO.name])
+			co_modal({"kind": "raise", "title": "%s просить підвищення" % _mg_name(id),
+				"choices": [{"t": "Погодитись", "f": agree}, {"t": "Компроміс", "f": half}, {"t": "Відмовити", "f": refuse}]})
+			return
+	# tenders
+	co_tender_offers()
+	if chance(.1):
+		var up := chance(.55)
+		CO.rating = JS.clamp_js(CO.rating + (.12 if up else -.12), 1, 5)
+		co_news("good" if up else "bad", "star" if up else "alert", ("Вірусний відгук: клієнт розхвалив швидкість %s" if up else "Вірусне відео: водій %s кидає посилки через паркан") % CO.name)
+	var avg_c := 100.0
+	if CO.veh.size():
+		avg_c = 0.0
+		for v in CO.veh:
+			avg_c += v.cond
+		avg_c /= CO.veh.size()
+	if avg_c < 50 and chance(.4):
+		var fine := JS.round_js(800 + CO.veh.size() * 300 * price_k(me))
+		CO.cash -= fine
+		CO.lm.other += fine
+		co_news("bad", "gavel", "Техогляд виявив зношену техніку %s: штраф %d" % [CO.name, int(fine)])
+
+
+func _mg_name(id: String) -> String:
+	for s in D.MG:
+		if s.id == id:
+			return s.n
+	return id
+
+
+# ---------- tenders: long contracts that keep vehicles busy for months (coTenderOffers, ACT.coTd) ----------
+const TD_NM := {"air": ["фармацевтичного концерну", "виробника електроніки", "авіабудівного заводу", "міжнародного Червоного Хреста"],
+	"sea": ["зернотрейдера", "металургійного комбінату", "автоконцерну", "нафтової компанії"],
+	"rail": ["вугільної шахти", "металургійного комбінату", "зернового елеватора", "цементного заводу"],
+	"road": ["мережі супермаркетів", "автозаводу", "фармацевтичної компанії", "інтернет-магазину", "будівельного холдингу", "виробника добрив"]}
+
+
+func co_tender_offers() -> void:
+	CO.toff = CO.get("toff", []).filter(func(o): return o.exp > day)
+	if CO.tier < 2:
+		return
+	var types := []
+	for t in D.VT:
+		var T: Dictionary = D.VT[t]
+		if T.tier >= 1 and T.tier <= CO.tier and T.mode != "local":
+			types.append(t)
+	var i := 0
+	while i < 3 and CO.toff.size() < 5:
+		i += 1
+		if not chance(.45 if i > 1 else .85):
+			continue
+		var t: String = pick(types)
+		var T: Dictionary = D.VT[t]
+		var n := 1 if T.cost > 1e7 else (rint(1, 2) if T.cost > 1e6 else rint(2, 5))
+		var months := rint(4, 9)
+		var pay := JS.round_js(T.cost * (.036 if T.cost > 1e7 else (.06 if T.cost > 1e6 else .11)) * price_k(me) * (1 + msk("cco") * .1))
+		var o := {"id": CO.uid, "t": t, "n": n, "months": months, "pay": pay}
+		CO.uid += 1
+		o.n_ = pick(TD_NM.get(T.mode, TD_NM.road))
+		o.exp = day + rint(20, 40)
+		CO.toff.append(o)
+
+
+## take a tender offer (ACT.coTd): "" when done, or why not
+func co_tender_take(id: int) -> String:
+	var o: Variant = null
+	for x in CO.get("toff", []):
+		if x.id == id:
+			o = x
+	if o == null:
+		return "Пропозицію не знайдено"
+	var idle: Array = CO.veh.filter(func(v): return v.t == o.t and v.st == "idle")
+	if idle.size() < o.n:
+		return "Бракує техніки: потрібно %d, вільних %d" % [o.n, idle.size()]
+	var T: Dictionary = D.VT[o.t]
+	if co_crew_free()[T.role] < T.get("crew", 1) * o.n:
+		return "Бракує екіпажів: " + D.ROLE[T.role].n
+	for v in idle.slice(0, o.n):
+		v.st = "tender"
+	CO.tenders.append({"t": o.t, "n": o.n, "left": o.months, "pay": o.pay, "n_": o.n_})
+	_drop(CO.toff, o)
+	co_news("good", "doc", "%s виграла тендер %s" % [CO.name, o.n_])
+	return ""
 
 
 ## pick() of an empty array: the HTML version still draws R() and gets undefined
