@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+# TriRoute native module (GDExtension). Build from this folder:
+#   scons platform=linux target=template_debug
+#   scons platform=windows use_mingw=yes target=template_debug
+# Output goes to ../godot/bin/ where triroute.gdextension points.
+env = SConscript("godot-cpp/SConstruct")
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/core/*.cpp") + Glob("src/godot/*.cpp")
+library = env.SharedLibrary(
+    "../godot/bin/libtriroute{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),
+    source=sources,
+)
+Default(library)

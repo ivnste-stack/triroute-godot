@@ -1,3 +1,4 @@
 dist/
 tests/t.html
 node_modules/
+ref/

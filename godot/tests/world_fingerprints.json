@@ -1,0 +1,52 @@
+{
+ "777": {
+  "own": "a36b4d3de959050326045ed55c21e5b1",
+  "height": "a9a753569630c3f19d3070e95fb8d617",
+  "sqd": "bd74f533ecfae219c10cb52ce9d42bd1",
+  "T": 0.5572265982627869,
+  "land": 645954,
+  "countries": 35,
+  "first_country": {
+   "lx": 1396,
+   "ly": 532,
+   "neighbors": [
+    10,
+    12,
+    3
+   ]
+  }
+ },
+ "303": {
+  "own": "4b81b1568ef0c86368b4f1c5519d6237",
+  "height": "2b1f4b0fc84b035a777fea337dec3c06",
+  "sqd": "8d005317e69ebb8a78a1250fbce99d43",
+  "T": 0.6493669152259827,
+  "land": 653981,
+  "countries": 31,
+  "first_country": {
+   "lx": 1116,
+   "ly": 615,
+   "neighbors": [
+    3,
+    7,
+    21
+   ]
+  }
+ },
+ "123456": {
+  "own": "34fd607e6a390d44ea9c8244913cedf1",
+  "height": "320ffa8382ad17ef1f7886b859d19d03",
+  "sqd": "7d3bf2d46f81e7fe72effd2a1c001c18",
+  "T": 0.6776928901672363,
+  "land": 642336,
+  "countries": 32,
+  "first_country": {
+   "lx": 1110,
+   "ly": 828,
+   "neighbors": [
+    3,
+    5
+   ]
+  }
+ }
+}
