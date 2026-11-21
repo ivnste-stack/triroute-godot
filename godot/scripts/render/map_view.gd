@@ -54,6 +54,8 @@ func generate(seed_value: int) -> void:
 
 func _generate_in_thread() -> void:
 	var w: Dictionary = _gen.generate(_seed)
+	w["states"] = _gen.generate_states()
+	w["board"] = _gen.generate_board()
 	w["textures"] = _gen.build_textures()
 	_result = w
 
@@ -83,7 +85,7 @@ func _show(w: Dictionary) -> void:
 	_mat.set_shader_parameter("WSZ", size)
 	_mat.set_shader_parameter("triS", float(w.tri_s))
 	_mat.set_shader_parameter("wfx", float(Settings.get_value("wfx")))
-	set_colors(default_colors(w.countries))
+	set_colors(w.states.map(func(st): return Color(st.color)))
 	camera.set_world(size)
 	_plane.visible = true
 	world_ready.emit(w)
@@ -99,7 +101,7 @@ func set_colors(cols: Array) -> void:
 	_mat.set_shader_parameter("col", arr)
 
 
-## Until the state data is ported: neighbours never share a colour, the least used colour first.
+## Fallback colouring (no state data): neighbours never share a colour, the least used colour first.
 static func default_colors(countries: Array) -> Array:
 	var used := {}
 	var out := []

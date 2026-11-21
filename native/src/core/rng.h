@@ -18,6 +18,8 @@ public:
 		return double(t ^ (t >> 14)) / 4294967296.0;
 	}
 
+	uint32_t state() const { return a_; }
+
 private:
 	uint32_t a_;
 };

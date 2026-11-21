@@ -58,10 +58,7 @@ func test_boards_match_html() -> String:
 		var gen: Object = ClassDB.instantiate("TRWorldGen")
 		gen.generate(int(seed_str))
 		var t := Time.get_ticks_msec()
-		var pops := PackedFloat64Array()
-		for p in want.pops:
-			pops.append(_f64(p))   # stored as raw IEEE-754 bytes: JSON and to_float() both round the last bit
-		var b: Dictionary = gen.generate_board(pops)
+		var b: Dictionary = gen.generate_board()   # uses the states' own populations (generate_states)
 		var ms := Time.get_ticks_msec() - t
 		var parts := PackedStringArray()
 		for tw in b.towns:
@@ -75,4 +72,24 @@ func test_boards_match_html() -> String:
 		if b.roads.size() != int(want.roads) or b.railways.size() != int(want.railways) or b.checkpoints.size() != int(want.checkpoints):
 			return "seed %s: %d roads / %d railways / %d checkpoints, want %s / %s / %s" % [seed_str, b.roads.size(), b.railways.size(), b.checkpoints.size(), want.roads, want.railways, want.checkpoints]
 		print("       seed %s: %d towns, %d roads, %d railways, %d checkpoints — identical to HTML, %d ms" % [seed_str, b.towns.size(), b.roads.size(), b.railways.size(), b.checkpoints.size(), ms])
+	return ""
+
+
+func test_states_match_html() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var fp := _fp()
+	for seed_str in fp.keys():
+		var want: Dictionary = fp[seed_str].states
+		var gen: Object = ClassDB.instantiate("TRWorldGen")
+		gen.generate(int(seed_str))
+		var st: Array = gen.generate_states()
+		var parts := PackedStringArray()
+		for c in st:
+			parts.append("%s:%s:%s:%s:%s:%d" % [c.name, c.color, c.ideol, c.trait, c.leader, c.leader_age])
+		if st.size() != int(want.n) or _md5("|".join(parts).to_utf8_buffer()) != want.md5:
+			return "seed %s: states differ (first: %s)" % [seed_str, st[0].name if st.size() else "-"]
+		if st[0].pop != _f64(want.pop0) or st[0].dev != _f64(want.dev0) or st[0].stability != _f64(want.stab0):
+			return "seed %s: first state numbers differ" % seed_str
+		print("       seed %s: %d states (%s, %s…) — identical to HTML" % [seed_str, st.size(), st[0].name, st[1].name])
 	return ""

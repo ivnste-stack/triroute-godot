@@ -32,7 +32,13 @@ public:
 	//   comp (PackedInt32Array: land component per node), comp_size (PackedInt32Array),
 	//   roads (Array of {lv, p: PackedFloat32Array x,z pairs}), railways (Array of PackedFloat32Array),
 	//   checkpoints (Array of {x, z, a, b, rail}).
-	Dictionary generate_board(const PackedFloat64Array &state_pops);
+	Dictionary generate_board(const PackedFloat64Array &state_pops = PackedFloat64Array());
+
+	// The states' starting characteristics for the last generated world, exactly like the HTML version
+	// (makeCountry + colours): Array of {id, name, full, gov, title, ideol, trait, leader, leader_age, pop, dev, gdp,
+	//   treasury, debt, stability, infl, unemp, tech, corr, mil, election_in, color, laws, deposit, flag {cols, type, emblem}}.
+	// generate_board() without arguments uses these populations.
+	Array generate_states();
 
 	// Map shader textures for the last generated world, ready for Image.create_from_data():
 	//   terrain: RGBAH with mipmaps (MW x MH) — coast/height, lattice diagonal, lighting, noise
@@ -43,6 +49,7 @@ public:
 
 private:
 	std::shared_ptr<tr::World> world_;
+	std::vector<double> state_pops_;
 	int64_t seed_ = 0;
 };
 

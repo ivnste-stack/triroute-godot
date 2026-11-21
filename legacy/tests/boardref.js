@@ -15,7 +15,7 @@ const r=await p.evaluate(()=>{
   const b64=a=>{const u=new Uint8Array(a.buffer,a.byteOffset,a.byteLength);let s="";for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
   const f6=v=>Math.round(v*1e6)/1e6;
   return{seed:SEED,mapSize:G.mapSize,nx:BL.nx,nz:BL.nz,
-    states:G.C.map(c=>({pop:c.pop,area:c.geo.area,capName:c.capName})),
+    states:G.C.map(c=>({pop:c.pop,area:c.geo.area,capName:c.capName,name:c.name,full:c.full,color:c.color,dev:c.dev,gdp:c.gdp,stability:c.stability,infl:c.infl,unemp:c.unemp,tech:c.tech,corr:c.corr,mil:c.mil,leader:c.leader.name,age:c.leader.age,ideol:c.ide.id,trait:c.trait.id,laws:[...c.laws],deposit:c.res.deposit,electionIn:c.electionIn,treasury:c.treasury,debt:c.debt})),
     towns:BOARD.towns.map(t=>({x:t.x,z:t.z,node:t.node,type:t.type,pop:t.pop,cid:t.cid,name:t.name,port:!!t.port,wc:t.wc||null,airOv:!!t.airOv,portOv:t.portOv??null,extra:!!t.extra})),
     hw:LOG.hw.map(h=>({lv:h.lv,p:Array.from(h.p)})),rail:LOG.rail.map(h=>Array.from(h.p)),
     cps:BOARD.cps.map(c=>({x:c.x,z:c.z,a:c.a,b:c.b,rail:c.rail})),

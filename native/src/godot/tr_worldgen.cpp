@@ -1,6 +1,8 @@
 #include "tr_worldgen.h"
 
 #include "core/board.h"
+#include "core/states.h"
+#include "core/statedata.h"
 #include "core/worldgen.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -67,7 +69,8 @@ PackedByteArray half_mips(const std::vector<float> &src, int w, int h, int ch) {
 
 void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate", "seed", "states", "mw", "mh"), &TRWorldGen::generate, DEFVAL(26), DEFVAL(1800), DEFVAL(1200));
-	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board);
+	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board, DEFVAL(PackedFloat64Array()));
+	ClassDB::bind_method(D_METHOD("generate_states"), &TRWorldGen::generate_states);
 	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
 
@@ -76,6 +79,7 @@ Dictionary TRWorldGen::generate(int64_t seed, int64_t states, int64_t mw, int64_
 	p.n = int(states);
 	p.mw = int(mw);
 	p.mh = int(mh);
+	state_pops_.clear();
 	world_ = std::make_shared<tr::World>(tr::generate_world(uint32_t(seed & 0xFFFFFFFF), p));
 	seed_ = seed;
 	const tr::World &w = *world_;
@@ -139,6 +143,10 @@ Dictionary TRWorldGen::generate_board(const PackedFloat64Array &state_pops) {
 	if (!world_) return d;
 	std::vector<double> pops(size_t(state_pops.size()));
 	for (int64_t i = 0; i < state_pops.size(); i++) pops[size_t(i)] = state_pops[i];
+	if (pops.empty()) {
+		if (state_pops_.empty()) generate_states();
+		pops = state_pops_;
+	}
 	pops.resize(world_->countries.size(), 1.0);
 	tr::Board B = tr::generate_board(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops);
 	d["nx"] = B.nx;
@@ -224,6 +232,55 @@ Dictionary TRWorldGen::build_textures() {
 	std::vector<float>().swap(w.tf);
 	std::vector<float>().swap(w.hb);
 	return d;
+}
+
+Array TRWorldGen::generate_states() {
+	Array out;
+	if (!world_) return out;
+	auto S = tr::generate_states(uint32_t(seed_ & 0xFFFFFFFF), *world_);
+	state_pops_.clear();
+	auto str = [](const std::string &s) { return String::utf8(s.c_str()); };
+	for (const auto &c : S) {
+		state_pops_.push_back(c.pop);
+		Dictionary d;
+		d["id"] = c.id;
+		d["name"] = str(c.name);
+		d["full"] = str(c.full);
+		d["gov"] = str(c.gov);
+		d["title"] = str(c.title);
+		d["ideol"] = str(c.ideol);
+		d["trait"] = str(c.trait);
+		d["leader"] = str(c.leader);
+		d["leader_age"] = c.leader_age;
+		d["pop"] = c.pop;
+		d["dev"] = c.dev;
+		d["gdp"] = c.gdp;
+		d["treasury"] = c.treasury;
+		d["debt"] = c.debt;
+		d["stability"] = c.stability;
+		d["infl"] = c.infl;
+		d["unemp"] = c.unemp;
+		d["tech"] = c.tech;
+		d["corr"] = c.corr;
+		d["mil"] = c.mil;
+		d["election_in"] = c.election_in;
+		d["color"] = str(c.color);
+		PackedStringArray laws;
+		for (auto &l : c.laws) laws.push_back(str(l));
+		d["laws"] = laws;
+		PackedFloat64Array dep;
+		for (double v : c.deposit) dep.push_back(v);
+		d["deposit"] = dep;
+		Dictionary f;
+		PackedStringArray fc;
+		for (int k : c.flag.cols) fc.push_back(str(tr::FLAGCOL[k]));
+		f["cols"] = fc;
+		f["type"] = c.flag.type;
+		f["emblem"] = c.flag.emblem;
+		d["flag"] = f;
+		out.push_back(d);
+	}
+	return out;
 }
 
 } // namespace godot
