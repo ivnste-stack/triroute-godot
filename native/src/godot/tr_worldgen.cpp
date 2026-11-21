@@ -1,6 +1,7 @@
 #include "tr_worldgen.h"
 
 #include "core/board.h"
+#include "core/nav.h"
 #include "core/states.h"
 #include "core/statedata.h"
 #include "core/worldgen.h"
@@ -71,6 +72,11 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate", "seed", "states", "mw", "mh"), &TRWorldGen::generate, DEFVAL(26), DEFVAL(1800), DEFVAL(1200));
 	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board, DEFVAL(PackedFloat64Array()));
 	ClassDB::bind_method(D_METHOD("generate_states"), &TRWorldGen::generate_states);
+	ClassDB::bind_method(D_METHOD("route", "mode", "a", "b"), &TRWorldGen::route);
+	ClassDB::bind_method(D_METHOD("node_path", "a", "b", "rail"), &TRWorldGen::node_path);
+	ClassDB::bind_method(D_METHOD("air_path", "x0", "z0", "x1", "z1"), &TRWorldGen::air_path);
+	ClassDB::bind_method(D_METHOD("set_blocks", "blocks"), &TRWorldGen::set_blocks);
+	ClassDB::bind_method(D_METHOD("state_at", "x", "z"), &TRWorldGen::state_at);
 	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
 
@@ -80,6 +86,8 @@ Dictionary TRWorldGen::generate(int64_t seed, int64_t states, int64_t mw, int64_
 	p.mw = int(mw);
 	p.mh = int(mh);
 	state_pops_.clear();
+	nav_.reset();
+	board_.reset();
 	world_ = std::make_shared<tr::World>(tr::generate_world(uint32_t(seed & 0xFFFFFFFF), p));
 	seed_ = seed;
 	const tr::World &w = *world_;
@@ -148,7 +156,10 @@ Dictionary TRWorldGen::generate_board(const PackedFloat64Array &state_pops) {
 		pops = state_pops_;
 	}
 	pops.resize(world_->countries.size(), 1.0);
-	tr::Board B = tr::generate_board(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops);
+	nav_.reset();
+	board_ = std::make_shared<tr::Board>(tr::generate_board(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops));
+	nav_ = std::make_shared<tr::Nav>(*world_, *board_);
+	const tr::Board &B = *board_;
 	d["nx"] = B.nx;
 	d["nz"] = B.nz;
 	d["st"] = B.st;
@@ -281,6 +292,68 @@ Array TRWorldGen::generate_states() {
 		out.push_back(d);
 	}
 	return out;
+}
+
+namespace {
+PackedFloat32Array to_packed(const std::vector<float> &v) {
+	PackedFloat32Array a;
+	a.resize(int64_t(v.size()));
+	if (!v.empty()) std::memcpy(a.ptrw(), v.data(), v.size() * sizeof(float));
+	return a;
+}
+} // namespace
+
+PackedFloat32Array TRWorldGen::route(const String &mode, int64_t a, int64_t b) const {
+	if (!nav_ || a < 0 || b < 0 || a >= int64_t(board_->towns.size()) || b >= int64_t(board_->towns.size())) return PackedFloat32Array();
+	const auto &A = board_->towns[size_t(a)], &B = board_->towns[size_t(b)];
+	if (mode == "road") return to_packed(nav_->path(A.node, B.node, false, blocks_.get()));
+	if (mode == "rail") return to_packed(nav_->path(A.node, B.node, true, blocks_.get()));
+	if (mode == "sea") return to_packed(nav_->sea(int(a), int(b)));
+	if (mode == "air") return to_packed(nav_->air(A.x, A.z, B.x, B.z, blocks_.get()));
+	return PackedFloat32Array();
+}
+
+PackedFloat32Array TRWorldGen::node_path(int64_t a, int64_t b, bool rail) const {
+	if (!nav_) return PackedFloat32Array();
+	return to_packed(nav_->path(int(a), int(b), rail, blocks_.get()));
+}
+
+PackedFloat32Array TRWorldGen::air_path(double x0, double z0, double x1, double z1) const {
+	if (!nav_) return PackedFloat32Array();
+	return to_packed(nav_->air(x0, z0, x1, z1, blocks_.get()));
+}
+
+void TRWorldGen::set_blocks(const Dictionary &d) {
+	auto b = std::make_shared<tr::Blocks>();
+	if (d.has("wx")) {
+		PackedByteArray wx = d["wx"];
+		b->wx.assign(wx.ptr(), wx.ptr() + wx.size());
+	}
+	if (d.has("closed_states")) {
+		PackedInt32Array a = d["closed_states"];
+		for (int64_t i = 0; i < a.size(); i++) b->closed_states.insert(a[i]);
+	}
+	if (d.has("closed_pairs")) {
+		PackedInt32Array a = d["closed_pairs"];
+		for (int64_t i = 0; i + 1 < a.size(); i += 2) {
+			b->closed_pairs.insert(int64_t(a[i]) * 1000 + a[i + 1]);
+			b->closed_pairs.insert(int64_t(a[i + 1]) * 1000 + a[i]);
+		}
+	}
+	if (d.has("closed_cps")) {
+		PackedFloat32Array a = d["closed_cps"];
+		for (int64_t i = 0; i + 1 < a.size(); i += 2) b->closed_cps.push_back({a[i], a[i + 1]});
+	}
+	if (d.has("sky")) {
+		PackedInt32Array a = d["sky"];
+		for (int64_t i = 0; i < a.size(); i++) b->sky.insert(a[i]);
+	}
+	b->ignore_wx = d.get("ignore_wx", false);
+	blocks_ = b;
+}
+
+int64_t TRWorldGen::state_at(double x, double z) const {
+	return nav_ ? nav_->own_at(x, z) : -1;
 }
 
 } // namespace godot

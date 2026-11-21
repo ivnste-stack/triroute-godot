@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace tr { struct World; }
+namespace tr { struct World; struct Board; class Nav; struct Blocks; }
 
 namespace godot {
 
@@ -40,6 +40,19 @@ public:
 	// generate_board() without arguments uses these populations.
 	Array generate_states();
 
+	// ---- route search on the board made by the last generate_board() (boardPath / boardSea / incAirPath) ----
+	// route(mode, a, b): path between towns a and b ("road" | "rail" | "sea" | "air") as x,z pairs; empty if none.
+	PackedFloat32Array route(const String &mode, int64_t a, int64_t b) const;
+	// path on the road or rail graph between two lattice nodes (empty if none)
+	PackedFloat32Array node_path(int64_t a, int64_t b, bool rail) const;
+	// flight path between two points, around a closed sky
+	PackedFloat32Array air_path(double x0, double z0, double x1, double z1) const;
+	// route blocking (incBlk): {wx: PackedByteArray per node (1 road, 2 rail), closed_states: PackedInt32Array,
+	//   closed_pairs: PackedInt32Array of a,b pairs, closed_cps: PackedFloat32Array of x,z, sky: PackedInt32Array, ignore_wx: bool}
+	void set_blocks(const Dictionary &blocks);
+	// state at a world point (bOwn), -1 water / neutral
+	int64_t state_at(double x, double z) const;
+
 	// Map shader textures for the last generated world, ready for Image.create_from_data():
 	//   terrain: RGBAH with mipmaps (MW x MH) — coast/height, lattice diagonal, lighting, noise
 	//   border:  RH with mipmaps (2MW x 2MH) — distance to a state border
@@ -50,6 +63,9 @@ public:
 private:
 	std::shared_ptr<tr::World> world_;
 	std::vector<double> state_pops_;
+	std::shared_ptr<tr::Board> board_;
+	std::shared_ptr<tr::Nav> nav_;
+	std::shared_ptr<tr::Blocks> blocks_;
 	int64_t seed_ = 0;
 };
 

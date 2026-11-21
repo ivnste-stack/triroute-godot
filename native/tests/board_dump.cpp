@@ -2,6 +2,7 @@
 // output by native/tests/board_compare.py).
 //   board_dump <seed> <pops.txt: one state population per line> <out.json>
 #include "core/board.h"
+#include "core/nav.h"
 #include "core/worldgen.h"
 
 #include <chrono>
@@ -52,6 +53,32 @@ int main(int argc, char **argv) {
 	std::fprintf(o, "],\"cps\":[");
 	for (size_t i = 0; i < B.cps.size(); i++)
 		std::fprintf(o, "%s{\"x\":%.17g,\"z\":%.17g,\"a\":%d,\"b\":%d,\"rail\":%s}", i ? "," : "", B.cps[i].x, B.cps[i].z, B.cps[i].a, B.cps[i].b, B.cps[i].rail ? "true" : "false");
+	std::fprintf(o, "],\"routes\":[");
+	{
+		tr::Nav nav(w, B);
+		auto pr = [&](const std::vector<float> &v) {
+			if (v.empty()) { std::fprintf(o, "null"); return; }
+			std::fprintf(o, "[");
+			for (size_t k = 0; k < v.size(); k++) std::fprintf(o, "%s%.9g", k ? "," : "", double(v[k]));
+			std::fprintf(o, "]");
+		};
+		int n = int(B.towns.size());
+		bool first = true;
+		for (int i = 0; i < n; i += 3) {
+			int j = (i * 13 + 5) % n;
+			if (i == j) continue;
+			std::fprintf(o, "%s{\"a\":%d,\"b\":%d,\"road\":", first ? "" : ",", i, j);
+			first = false;
+			pr(nav.path(B.towns[i].node, B.towns[j].node, false, nullptr));
+			std::fprintf(o, ",\"rail\":");
+			if (B.rbits[B.towns[i].node] && B.rbits[B.towns[j].node]) pr(nav.path(B.towns[i].node, B.towns[j].node, true, nullptr));
+			else std::fprintf(o, "null");
+			std::fprintf(o, ",\"sea\":");
+			if (B.towns[i].wc_i >= 0 && B.towns[j].wc_i >= 0) pr(nav.sea(i, j));
+			else std::fprintf(o, "null");
+			std::fprintf(o, "}");
+		}
+	}
 	std::fprintf(o, "]}");
 	std::fclose(o);
 	std::ofstream(std::string(argc > 3 ? argv[3] : "board_cpp.json") + ".bits", std::ios::binary).write((const char *)B.bits.data(), B.bits.size());

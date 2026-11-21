@@ -62,6 +62,19 @@ rc, cc = ref["cps"], cpp["cps"]
 bad = sum(1 for i in range(max(len(rc), len(cc))) if i >= len(rc) or i >= len(cc) or rc[i] != cc[i])
 report("checkpoints", bad, len(rc), (rc[0] if rc else None, cc[0] if cc else None) if bad else None)
 
+# route search: road, rail and sea paths between sample town pairs
+bad = tot = 0
+first = None
+for a, b in zip(ref.get("routes", []), cpp.get("routes", [])):
+    for k in ("road", "rail", "sea"):
+        tot += 1
+        x, y = a[k], b[k]
+        same = (x is None and y is None) or (x is not None and y is not None and len(x) == len(y) and all(f32(p) == f32(q) for p, q in zip(x, y)))
+        if not same:
+            bad += 1
+            first = first or (a["a"], a["b"], k, None if x is None else len(x), None if y is None else len(y))
+report("routes", bad, tot, first)
+
 # road / rail graphs and land components
 for name, ext, size in (("road graph", "bits", 1), ("rail graph", "rbits", 1), ("components", "comp", 4)):
     a = open(f"{ref_dir}/{ext}.{'u8' if size == 1 else 'i32'}", "rb").read()

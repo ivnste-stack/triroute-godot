@@ -93,3 +93,39 @@ func test_states_match_html() -> String:
 			return "seed %s: first state numbers differ" % seed_str
 		print("       seed %s: %d states (%s, %s…) — identical to HTML" % [seed_str, st.size(), st[0].name, st[1].name])
 	return ""
+
+
+## Route search (boardPath / boardSea): road, rail and sea paths between sample town pairs, like the HTML version
+func test_routes_match_html() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var fp := _fp()
+	var checked := 0
+	for seed_str in fp.keys():
+		if not fp[seed_str].has("routes"):
+			continue
+		var want: Dictionary = fp[seed_str].routes
+		var gen: Object = ClassDB.instantiate("TRWorldGen")
+		gen.generate(int(seed_str))
+		var b: Dictionary = gen.generate_board()
+		var n: int = b.towns.size()
+		var h := HashingContext.new()
+		h.start(HashingContext.HASH_MD5)
+		var cnt := 0
+		var t := Time.get_ticks_usec()
+		for i in range(0, n, 3):
+			var j := (i * 13 + 5) % n
+			if i == j:
+				continue
+			cnt += 1
+			var rail_ok: bool = b.rbits[b.towns[i].node] != 0 and b.rbits[b.towns[j].node] != 0
+			var sea_ok: bool = b.towns[i].wc_i >= 0 and b.towns[j].wc_i >= 0
+			for r in [gen.route("road", i, j), gen.route("rail", i, j) if rail_ok else PackedFloat32Array(), gen.route("sea", i, j) if sea_ok else PackedFloat32Array()]:
+				h.update("-".to_utf8_buffer() if r.is_empty() else r.to_byte_array())
+				h.update("|".to_utf8_buffer())
+		var ms := (Time.get_ticks_usec() - t) / 1000.0
+		if cnt != int(want.n) or h.finish().hex_encode() != want.md5:
+			return "seed %s: routes differ from the HTML version" % seed_str
+		checked += 1
+		print("       seed %s: %d road/rail/sea routes identical to HTML, %.0f ms" % [seed_str, cnt * 3, ms])
+	return "" if checked else "no reference routes"

@@ -19,6 +19,9 @@ const r=await p.evaluate(()=>{
     towns:BOARD.towns.map(t=>({x:t.x,z:t.z,node:t.node,type:t.type,pop:t.pop,cid:t.cid,name:t.name,port:!!t.port,wc:t.wc||null,airOv:!!t.airOv,portOv:t.portOv??null,extra:!!t.extra})),
     hw:LOG.hw.map(h=>({lv:h.lv,p:Array.from(h.p)})),rail:LOG.rail.map(h=>Array.from(h.p)),
     cps:BOARD.cps.map(c=>({x:c.x,z:c.z,a:c.a,b:c.b,rail:c.rail})),
+    routes:(()=>{const T=BOARD.towns,n=T.length,out=[];for(let i=0;i<n;i+=3){const j=(i*13+5)%n;if(i===j)continue;
+      const r=boardPath(T[i].node,T[j].node),rr=T[i]&&BOARD.rbits[T[i].node]&&BOARD.rbits[T[j].node]?boardPath(T[i].node,T[j].node,BOARD.rbits):null,sea=T[i].wc&&T[j].wc?boardSea({id:i},{id:j}):null;
+      out.push({a:i,b:j,road:r?Array.from(r):null,rail:rr?Array.from(rr):null,sea:sea?Array.from(sea):null})}return out})(),
     bits:b64(BOARD.bits),rbits:b64(BOARD.rbits),comp:b64(BOARD.comp)}});
 for(const [k,ext] of [["bits","u8"],["rbits","u8"],["comp","i32"]]){fs.writeFileSync(path.join(out,k+"."+ext),Buffer.from(r[k],'base64'));delete r[k]}
 fs.writeFileSync(path.join(out,'board.json'),JSON.stringify(r));
