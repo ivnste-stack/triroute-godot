@@ -6,6 +6,11 @@ func _fp() -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/world_fingerprints.json"))
 
 
+## a double stored as 16 hex digits (little-endian IEEE-754)
+func _f64(hex: String) -> float:
+	return hex.hex_decode().decode_double(0)
+
+
 func _md5(bytes: PackedByteArray) -> String:
 	var h := HashingContext.new()
 	h.start(HashingContext.HASH_MD5)
@@ -41,4 +46,33 @@ func test_worlds_match_html() -> String:
 		if c0.lx != int(want.first_country.lx) or c0.ly != int(want.first_country.ly) or Array(c0.neighbors) != want.first_country.neighbors.map(func(v): return int(v)):
 			return "seed %s: first state %s" % [seed_str, c0]
 		print("       seed %s: identical to HTML, %d ms" % [seed_str, ms])
+	return ""
+
+
+func test_boards_match_html() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var fp := _fp()
+	for seed_str in fp.keys():
+		var want: Dictionary = fp[seed_str].board
+		var gen: Object = ClassDB.instantiate("TRWorldGen")
+		gen.generate(int(seed_str))
+		var t := Time.get_ticks_msec()
+		var pops := PackedFloat64Array()
+		for p in want.pops:
+			pops.append(_f64(p))   # stored as raw IEEE-754 bytes: JSON and to_float() both round the last bit
+		var b: Dictionary = gen.generate_board(pops)
+		var ms := Time.get_ticks_msec() - t
+		var parts := PackedStringArray()
+		for tw in b.towns:
+			parts.append("%s:%s:%d:%d:%s%s" % [tw.name, tw.type, tw.cid, tw.node, "P" if tw.port else "", "A" if tw.air_ov else ""])
+		if b.towns.size() != int(want.towns) or _md5("|".join(parts).to_utf8_buffer()) != want.towns_md5:
+			return "seed %s: towns differ (%d, want %d; first %s)" % [seed_str, b.towns.size(), want.towns, b.towns[0] if b.towns.size() else {}]
+		if b.towns[0].pop != _f64(want.first_town.pop):
+			return "seed %s: first town population %s, want %s" % [seed_str, b.towns[0].pop, _f64(want.first_town.pop)]
+		if _md5(b.bits) != want.bits or _md5(b.rbits) != want.rbits:
+			return "seed %s: road or rail graph differs" % seed_str
+		if b.roads.size() != int(want.roads) or b.railways.size() != int(want.railways) or b.checkpoints.size() != int(want.checkpoints):
+			return "seed %s: %d roads / %d railways / %d checkpoints, want %s / %s / %s" % [seed_str, b.roads.size(), b.railways.size(), b.checkpoints.size(), want.roads, want.railways, want.checkpoints]
+		print("       seed %s: %d towns, %d roads, %d railways, %d checkpoints — identical to HTML, %d ms" % [seed_str, b.towns.size(), b.roads.size(), b.railways.size(), b.checkpoints.size(), ms])
 	return ""
