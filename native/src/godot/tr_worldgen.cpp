@@ -77,6 +77,8 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("air_path", "x0", "z0", "x1", "z1"), &TRWorldGen::air_path);
 	ClassDB::bind_method(D_METHOD("set_blocks", "blocks"), &TRWorldGen::set_blocks);
 	ClassDB::bind_method(D_METHOD("state_at", "x", "z"), &TRWorldGen::state_at);
+	ClassDB::bind_method(D_METHOD("continents"), &TRWorldGen::continents);
+	ClassDB::bind_method(D_METHOD("states_rng_state"), &TRWorldGen::states_rng_state);
 	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
 
@@ -248,7 +250,7 @@ Dictionary TRWorldGen::build_textures() {
 Array TRWorldGen::generate_states() {
 	Array out;
 	if (!world_) return out;
-	auto S = tr::generate_states(uint32_t(seed_ & 0xFFFFFFFF), *world_);
+	auto S = tr::generate_states(uint32_t(seed_ & 0xFFFFFFFF), *world_, &states_rng_);
 	state_pops_.clear();
 	auto str = [](const std::string &s) { return String::utf8(s.c_str()); };
 	for (const auto &c : S) {
@@ -354,6 +356,36 @@ void TRWorldGen::set_blocks(const Dictionary &d) {
 
 int64_t TRWorldGen::state_at(double x, double z) const {
 	return nav_ ? nav_->own_at(x, z) : -1;
+}
+
+PackedInt32Array TRWorldGen::continents() const {
+	PackedInt32Array out;
+	if (!world_) return out;
+	const tr::World &w = *world_;
+	const int n = int(w.countries.size()), MW = w.p.mw, MH = w.p.mh;
+	std::vector<int> par(n);
+	for (int i = 0; i < n; i++) par[i] = i;
+	auto f = [&](int a) {
+		while (par[a] != a) a = par[a] = par[par[a]];
+		return a;
+	};
+	auto ok = [&](int o) { return o >= 0 && o < n; };
+	for (int y = 0; y < MH; y++)
+		for (int x = 0; x < MW; x++) {
+			int o = w.own[size_t(y) * MW + x];
+			if (!ok(o)) continue;
+			int r = x + 1 < MW ? w.own[size_t(y) * MW + x + 1] : -1, d = y + 1 < MH ? w.own[size_t(y + 1) * MW + x] : -1;
+			if (ok(r) && r != o) {
+				int a = f(o), b = f(r);
+				if (a != b) par[a] = b;
+			}
+			if (ok(d) && d != o) {
+				int a = f(o), b = f(d);
+				if (a != b) par[a] = b;
+			}
+		}
+	for (int i = 0; i < n; i++) out.push_back(f(i));
+	return out;
 }
 
 } // namespace godot

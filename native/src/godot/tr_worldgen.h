@@ -52,6 +52,10 @@ public:
 	void set_blocks(const Dictionary &blocks);
 	// state at a world point (bOwn), -1 water / neutral
 	int64_t state_at(double x, double z) const;
+	// continent of every state (coCont): states whose land touches share a continent id (a state index)
+	PackedInt32Array continents() const;
+	// position of the game RNG after the states were made (mulberry(seed^0x5bd1e995) state), for the game logic
+	int64_t states_rng_state() const { return int64_t(states_rng_); }
 
 	// Map shader textures for the last generated world, ready for Image.create_from_data():
 	//   terrain: RGBAH with mipmaps (MW x MH) — coast/height, lattice diagonal, lighting, noise
@@ -63,6 +67,7 @@ public:
 private:
 	std::shared_ptr<tr::World> world_;
 	std::vector<double> state_pops_;
+	uint32_t states_rng_ = 0;
 	std::shared_ptr<tr::Board> board_;
 	std::shared_ptr<tr::Nav> nav_;
 	std::shared_ptr<tr::Blocks> blocks_;
