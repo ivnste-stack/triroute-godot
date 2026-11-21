@@ -153,13 +153,34 @@ func _policy(sim: Sim, scenario: String = "") -> int:
 	var L: Array = sim.CO.board.duplicate()
 	Sim._stable_sort(L, func(a, b): return b.pay - a.pay)
 	for k in L:
-		if k.get("legs") != null and k.legs.size() > 1:
-			continue
 		var P: Dictionary = sim.co_plan(k)
 		if P.ok and not P.late:
 			sim.co_dispatch(k, P, true)
 			n += 1
+	# the route planner: the best-paying chain order left is sent along its legs when that pays
+	if scenario == "abroad" or scenario == "ocean":
+		var ks: Array = sim.CO.board.filter(func(x): return x.get("legs") != null)
+		Sim._stable_sort(ks, func(a, b): return b.pay - a.pay)
+		if ks.size():
+			var k: Dictionary = ks[0]
+			var LP := {"k": k, "pts": [k.from] + k.legs.map(func(L): return L.b), "modes": k.legs.map(func(L): return L.m), "veh0": null}
+			var C: Dictionary = sim.lp_calc(LP)
+			if C.done and sim.lp_block(LP, C) == null and C.net > 0:
+				sim.lp_go(LP)
+				n += 100
 	return n
+
+
+## the planner's estimates for the first orders on the board (simref.js lpRec)
+func _lp_rec(sim: Sim) -> String:
+	var out := PackedStringArray()
+	for k in sim.CO.board.slice(0, 4):
+		var legs: bool = k.get("legs") != null
+		var LP := {"k": k, "pts": ([k.from] + k.legs.map(func(L): return L.b)) if legs else [k.from, k.to], "modes": k.legs.map(func(L): return L.m) if legs else [k.mode], "veh0": null}
+		var C: Dictionary = sim.lp_calc(LP)
+		var b: Variant = sim.lp_block(LP, C)
+		out.append("%d:%s:%s:%s:%s:%d:%s:%d" % [k.id, _h(C.t), _h(C.c), _h(C.risk), _h(C.net), 1 if C.done else 0, "".join(C.legs.map(func(L): return "o" if L.own else "p")), 1 if b != null else 0])
+	return " ".join(out)
 
 
 func _readable(key: String, v: Variant) -> String:
@@ -179,7 +200,8 @@ func test_simulation_days_match_html() -> String:
 			return "seed %s: company %s at %d, want %s at %d" % [run.seed, sim.CO.name, sim.CO.hq, run.name, run.hq]
 		var SC: Dictionary = {"fleet": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
 			"abroad": {"cash": 2e6, "tier": 4, "staff": {"driver": 12, "rail": 6}, "veh": ["truck", "truck", "truck", "rtrain", "reefer", "ltruck", "van", "train", "train"]},
-			"staff": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]}}.get(run.scenario, {})
+			"staff": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
+			"ocean": {"cash": 5e7, "tier": 5, "staff": {"driver": 16, "rail": 8, "sailor": 40}, "veh": ["truck", "truck", "truck", "truck", "train", "train"]}}.get(run.scenario, {})
 		if SC:
 			sim.CO.cash = SC.cash
 			sim.CO.tier = SC.tier
@@ -190,6 +212,19 @@ func test_simulation_days_match_html() -> String:
 			sim.CO.mgr.cto = sim.CO.cand.cto[0].duplicate()
 			sim.CO.cand.erase("cto")
 			sim.CO.auto = true
+		if run.scenario == "ocean":
+			var H: Dictionary = sim.PL[sim.CO.hq]
+			var P: Variant = H if H.port != null else null
+			if P == null:
+				var L: Array = sim.PL.filter(func(p): return p.port != null and p.land == H.land)
+				Sim._stable_sort(L, func(a, b): return JS.hypot(a.x - H.x, a.z - H.z) - JS.hypot(b.x - H.x, b.z - H.z))
+				P = L[0] if L.size() else null
+			if P != null:
+				if P.id != sim.CO.hq:
+					sim.CO.hubs.append({"pid": P.id, "lvl": 1, "share": .04, "mk": 0})
+				for vt in ["feeder", "ship", "feeder"]:
+					sim.CO.veh.append({"id": sim.CO.uid, "t": vt, "loc": P.id, "st": "idle", "cond": 100.0, "km": 0.0})
+					sim.CO.uid += 1
 		if run.scenario == "staff":
 			sim.auto_choice = 1
 			sim.CO.wageLv = .7
@@ -209,6 +244,7 @@ func test_simulation_days_match_html() -> String:
 				sim.co_frame(f / 8.0)
 			sim.co_day()
 			var got := _record(sim, sent)
+			got.lp = _lp_rec(sim) if n % 10 == 9 else ""
 			for key in want.keys():
 				var g: Variant = got[key]
 				var w: Variant = want[key]

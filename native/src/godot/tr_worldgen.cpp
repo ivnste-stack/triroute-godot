@@ -74,7 +74,7 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board, DEFVAL(PackedFloat64Array()));
 	ClassDB::bind_method(D_METHOD("generate_states"), &TRWorldGen::generate_states);
 	ClassDB::bind_method(D_METHOD("route", "mode", "a", "b"), &TRWorldGen::route);
-	ClassDB::bind_method(D_METHOD("node_path", "a", "b", "rail"), &TRWorldGen::node_path);
+	ClassDB::bind_method(D_METHOD("node_path", "a", "b", "rail", "ignore_wx"), &TRWorldGen::node_path, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("air_path", "x0", "z0", "x1", "z1"), &TRWorldGen::air_path);
 	ClassDB::bind_method(D_METHOD("set_blocks", "blocks"), &TRWorldGen::set_blocks);
 	ClassDB::bind_method(D_METHOD("state_at", "x", "z"), &TRWorldGen::state_at);
@@ -318,8 +318,13 @@ PackedFloat32Array TRWorldGen::route(const String &mode, int64_t a, int64_t b) c
 	return PackedFloat32Array();
 }
 
-PackedFloat32Array TRWorldGen::node_path(int64_t a, int64_t b, bool rail) const {
+PackedFloat32Array TRWorldGen::node_path(int64_t a, int64_t b, bool rail, bool ignore_wx) const {
 	if (!nav_) return PackedFloat32Array();
+	if (ignore_wx && blocks_ && !blocks_->ignore_wx && !blocks_->wx.empty()) {
+		tr::Blocks nb = *blocks_;
+		nb.ignore_wx = true;
+		return to_packed(nav_->path(int(a), int(b), rail, &nb));
+	}
 	return to_packed(nav_->path(int(a), int(b), rail, blocks_.get()));
 }
 

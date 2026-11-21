@@ -44,7 +44,8 @@ public:
 	// route(mode, a, b): path between towns a and b ("road" | "rail" | "sea" | "air") as x,z pairs; empty if none.
 	PackedFloat32Array route(const String &mode, int64_t a, int64_t b) const;
 	// path on the road or rail graph between two lattice nodes (empty if none)
-	PackedFloat32Array node_path(int64_t a, int64_t b, bool rail) const;
+	// ignore_wx: the planner's ordinary route does not steer around the weather (BLK_NOWX)
+	PackedFloat32Array node_path(int64_t a, int64_t b, bool rail, bool ignore_wx = false) const;
 	// flight path between two points, around a closed sky
 	PackedFloat32Array air_path(double x0, double z0, double x1, double z1) const;
 	// route blocking (incBlk): {wx: PackedByteArray per node (1 road, 2 rail), closed_states: PackedInt32Array,

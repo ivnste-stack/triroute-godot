@@ -7,9 +7,11 @@ extends RefCounted
 ## Part 1: places, company start, the order board (coGen with permits and firms).
 ## Part 2: planning a trip (coPlan1/coPlan), dispatch with border checkpoints, the trip state machine, delivery,
 ## returns to the hub, the day (coLocal, the board, the dispatcher, prices, permits) and the month.
-## Incidents (08f-incidents.js) are in sim.gd (class Sim, which extends this one) and plug in through
-## _inc_frame() and _jobs_day().
-## Not ported yet: chains and the route planner (lpRunLeg), consolidated trips, the postal service.
+## Part 3: chains of legs (lpRunLeg of 08q-planner.js): every leg is a trip of its own, the next one starts
+## where the last one unloads; a leg without own vehicles goes to a partner carrier.
+## Incidents (08f-incidents.js) are in sim_incidents.gd (SimIncidents extends this class) and plug in through
+## _inc_frame() and _jobs_day(); the route planner's calculations are in sim.gd (Sim extends SimIncidents).
+## Not ported yet: multi-drop flights and consolidated trips, the postal service.
 
 const D = preload("res://scripts/logistics/game_data.gd")
 
@@ -180,7 +182,21 @@ func co_board_max() -> int:
 
 
 # ---------- routes (coRoute, cached) ----------
+var lp_ovr: Variant = null      # LP_OVR: a route the player drew, used for one key while planning
+
+
+## LP_OVR / lpWith: plan with a given route for one leg
+func lp_with(key: String, r: Variant, f: Callable) -> Variant:
+	var s: Variant = lp_ovr
+	lp_ovr = {"key": key, "r": r} if r != null else null
+	var res: Variant = f.call()
+	lp_ovr = s
+	return res
+
+
 func co_route(mode: String, a: int, b: int) -> Variant:
+	if lp_ovr != null and lp_ovr.key == mode + str(a) + ":" + str(b):
+		return lp_ovr.r
 	var A: Dictionary = PL[a]
 	if a == b:
 		return {"p": PackedFloat32Array([A.x, A.z, A.x, A.z]), "len": 0.0}
@@ -1254,8 +1270,11 @@ func co_dispatch(k: Dictionary, P: Dictionary, _silent: bool = false) -> bool:
 	if not P.get("ok"):
 		return false
 	if P.has("chain"):
-		push_error("Sim: chains of legs (lpRunLeg) are not ported yet")
-		return false
+		_drop(CO.board, k)
+		hub_tax_pay(P.ht)
+		var plan := {"legs": k.legs.map(func(L): return {"a": L.a, "b": L.b, "m": L.m, "r": null})}
+		lp_run_leg(k, plan, 0, day + k.dlDays)
+		return true
 	CO.cash -= P.fuel
 	CO.m.fuel += P.fuel
 	var lp: PackedFloat32Array = P.leadR.p
@@ -1296,6 +1315,71 @@ func co_dispatch(k: Dictionary, P: Dictionary, _silent: bool = false) -> bool:
 	if k.mode == "sea" and PL[k.from].land != PL[k.to].land:
 		CO.flags.ocean = 1
 	return true
+
+
+# ---------- chains: legs run one after another (lpRunLeg, lpFee, lpUnlocked) ----------
+func lp_unlocked(m: String) -> bool:
+	for t in D.VT:
+		if D.VT[t].mode == m and D.VT[t].tier <= CO.tier:
+			return true
+	return false
+
+
+## a partner carrier's price: market rate for a hand-made multi-drop leg, a share of the order otherwise
+func lp_fee(k: Dictionary, r: Dictionary, m: String, tons: float, cid: int) -> float:
+	if k.get("multi"):
+		return JS.round_js(({"road": 600, "rail": 5000, "sea": 20000, "air": 15000}[m] * .25 + {"road": 150, "rail": 22, "sea": 9, "air": 260}[m] * r.len * JS.pow(tons, .85)) * cargo_i[k.cg].k * price_k(cid) * .5)
+	var kl: float = k.len if k.get("len") else r.len
+	return JS.round_js(k.pay * .55 * minf(1.4, r.len / maxf(.05, kl)) + {"road": 150, "rail": 900, "sea": 4000, "air": 3000}[m] * price_k(cid))
+
+
+## plan: {legs: [{a, b, m, r (a drawn route or null), tons?, pay?, dl?}], veh0?, ctry?}
+func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
+	var L: Dictionary = plan.legs[i]
+	var kk := k.duplicate()
+	kk.multi = null
+	kk.legs = null
+	kk.cons = null
+	if i == 0 and plan.get("veh0") != null:
+		kk._veh = plan.veh0
+	kk.from = L.a
+	kk.to = L.b
+	kk.mode = L.m
+	kk.minR = 0
+	kk.id = k.id
+	kk.tons = L.tons if L.get("tons") else k.tons
+	kk.pay = L.pay if L.get("pay") != null else k.pay
+	var P: Variant = null
+	if lp_unlocked(L.m):
+		P = lp_with(L.m + str(L.a) + ":" + str(L.b), L.get("r"), func(): return co_plan(kk))
+	if P == null or not P.ok:
+		var r: Variant = L.get("r") if L.get("r") != null else co_route(L.m, L.a, L.b)
+		if r == null:
+			co_news("bad", "", "Ділянку не пройти: %s → %s" % [PL[L.a].name, PL[L.b].name])
+			return
+		var t := "truck"
+		for x in D.VT:
+			if D.VT[x].mode == L.m and not D.VT[x].get("loc", 0):
+				t = x
+				break
+		var T: Dictionary = D.VT[t]
+		var tm: float = r.len / (T.spd * spd_k())
+		var hs: float = D.HAND[L.m] * hand_k()
+		var fee := lp_fee(k, r, L.m, L.tons if L.get("tons") else k.tons, PL[L.a].cid)
+		P = {"ok": true, "t": t, "n": 1, "vids": [], "lead": 0.0, "leadR": {"p": PackedFloat32Array([r.p[0], r.p[1]]), "len": 0.0}, "main": r, "tl": 0.0, "tm": tm,
+			"hs": hs, "cust": 0.0, "tot": hs + tm + hs, "fuel": fee, "profit": 0.0, "late": false}
+	if i > 0:
+		var f := JS.round_js((250 + k.tons * 1.5) * price_k(PL[L.a].cid))
+		CO.cash -= f
+		CO.m.other += f
+	co_dispatch(kk, P, true)
+	for j in CO.jobs:
+		if is_same(j.k, kk):
+			j.lp = {"plan": plan, "i": i, "k0": k}
+			j.dl = L.dl if L.get("dl") else dl
+			if i > 0:
+				j.cont = false
+			return
 
 
 # ---------- the dispatcher (coAuto) ----------
@@ -1430,7 +1514,7 @@ func co_job_state0(j: Dictionary, e: float) -> Dictionary:
 
 # ---------- delivery (coComplete, coXP) ----------
 func co_xp(j: Dictionary, k: Dictionary, late: float) -> int:
-	var nl: int = j.lp.plan.size() if j.get("lp") else 1
+	var nl: int = j.lp.plan.legs.size() if j.get("lp") else 1
 	var mgr: bool = k.get("how") == "mgr"
 	var x := (10 + 6 * (nl - 1) + 4 * JS.log2(1 + k.pay / 2000)) * (.5 if late > 0 else 1.0) * (.6 if j.dmg > .05 else 1.0)
 	if mgr:
@@ -1445,8 +1529,32 @@ func _last(e: Dictionary) -> void:
 
 
 func co_complete(j: Dictionary) -> void:
-	if j.get("lp") or j.get("cons"):
-		push_error("Sim: chains and consolidated trips are not ported yet")
+	if j.get("cons") or (j.get("lp") and j.lp.plan.get("cons")):
+		push_error("Sim: consolidated trips are not ported yet")
+	# a leg of a chain: the cargo is handed over and the next leg starts (the wrapper of 08q-planner.js)
+	if j.get("lp") and j.lp.i < j.lp.plan.legs.size() - 1 and not j.get("back") and not j.get("cx0"):
+		_drop(CO.jobs, j)
+		var L: Dictionary = j.lp.plan.legs[j.lp.i]
+		if (L.get("drop") or L.get("drops")) and not L.get("paid"):
+			push_error("Sim: multi-drop legs are not ported yet")
+		for v in CO.veh:
+			if j.vids.has(v.id):
+				v.st = "idle"
+				v.job = null
+				v.loc = L.b
+				v.idle0 = null if hub_at(L.b) != null else co_now()
+		co_news("", "", "Перевантаження в %s: «%s» їде далі" % [PL[L.b].name, cargo_i[j.k.cg].n.to_lower()])
+		var d: float = j.dmg
+		var lost: bool = j.lost
+		var ev: Array = j.ev
+		lp_run_leg(j.lp.k0, j.lp.plan, j.lp.i + 1, j.dl)
+		for n in CO.jobs:
+			if n.get("lp") and is_same(n.lp.k0, j.lp.k0):
+				n.dmg = d
+				n.lost = lost
+				n.ev = ev + n.ev
+				break
+		return
 	if j.get("ret"):
 		_drop(CO.jobs, j)
 		for v in CO.veh:
