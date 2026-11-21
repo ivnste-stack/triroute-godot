@@ -5,6 +5,8 @@
 # Output goes to ../godot/bin/ where triroute.gdextension points.
 env = SConscript("godot-cpp/SConstruct")
 env.Append(CPPPATH=["src/"])
+# the game logic must give the same numbers on every platform: no contraction of a*b+c into FMA
+env.Append(CCFLAGS=["-ffp-contract=off"])
 sources = Glob("src/core/*.cpp") + Glob("src/godot/*.cpp")
 library = env.SharedLibrary(
     "../godot/bin/libtriroute{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),

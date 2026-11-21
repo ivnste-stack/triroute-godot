@@ -78,6 +78,7 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_blocks", "blocks"), &TRWorldGen::set_blocks);
 	ClassDB::bind_method(D_METHOD("state_at", "x", "z"), &TRWorldGen::state_at);
 	ClassDB::bind_method(D_METHOD("continents"), &TRWorldGen::continents);
+	ClassDB::bind_method(D_METHOD("crossings", "p", "eco"), &TRWorldGen::crossings);
 	ClassDB::bind_method(D_METHOD("states_rng_state"), &TRWorldGen::states_rng_state);
 	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
@@ -385,6 +386,24 @@ PackedInt32Array TRWorldGen::continents() const {
 			}
 		}
 	for (int i = 0; i < n; i++) out.push_back(f(i));
+	return out;
+}
+
+Array TRWorldGen::crossings(const PackedFloat32Array &p, double eco) const {
+	Array out;
+	if (!board_) return out;
+	std::vector<float> v(size_t(p.size()));
+	for (int64_t i = 0; i < p.size(); i++) v[size_t(i)] = p[i];
+	for (const auto &c : tr::board_crossings(*world_, *board_, v, eco)) {
+		Dictionary d;
+		d["ws"] = c.ws;
+		d["s"] = c.s;
+		d["x"] = c.x;
+		d["z"] = c.z;
+		d["a"] = c.a;
+		d["b"] = c.b;
+		out.push_back(d);
+	}
 	return out;
 }
 

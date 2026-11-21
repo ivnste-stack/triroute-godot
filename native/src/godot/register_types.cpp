@@ -1,4 +1,5 @@
 // Registers the TriRoute native classes with Godot.
+#include "tr_math.h"
 #include "tr_worldgen.h"
 
 #include <gdextension_interface.h>
@@ -11,6 +12,7 @@ using namespace godot;
 static void initialize_triroute(ModuleInitializationLevel level) {
 	if (level != MODULE_INITIALIZATION_LEVEL_SCENE) return;
 	GDREGISTER_CLASS(TRWorldGen);
+	GDREGISTER_CLASS(TRMath);
 }
 
 static void uninitialize_triroute(ModuleInitializationLevel level) {}

@@ -54,6 +54,8 @@ public:
 	int64_t state_at(double x, double z) const;
 	// continent of every state (coCont): states whose land touches share a continent id (a state index)
 	PackedInt32Array continents() const;
+	// border crossings along a path (bCrossings): Array of {ws, s, x, z, a, b}; s = ws * eco
+	Array crossings(const PackedFloat32Array &p, double eco) const;
 	// position of the game RNG after the states were made (mulberry(seed^0x5bd1e995) state), for the game logic
 	int64_t states_rng_state() const { return int64_t(states_rng_); }
 

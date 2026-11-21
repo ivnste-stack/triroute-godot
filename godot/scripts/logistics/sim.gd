@@ -4,7 +4,11 @@ extends RefCounted
 ## and the modules that wrap it). Names follow the original (CO, PL, coGen…) so every function can be checked
 ## against its JS source. The order of RNG calls is kept, so a new game starts exactly like the HTML version.
 ##
-## Part 1 (this file so far): places, company start, the order board (coGen with permits and firms).
+## Part 1: places, company start, the order board (coGen with permits and firms).
+## Part 2: planning a trip (coPlan1/coPlan), dispatch with border checkpoints, the trip state machine, delivery,
+## returns to the hub, the day (coLocal, the board, the dispatcher, prices, permits) and the month.
+## Not ported yet: incidents (incDay, incFrame, coJobsDay), monthly events and tenders (coMonthEvents),
+## chains and the route planner (lpRunLeg), consolidated trips, the postal service.
 
 const D = preload("res://scripts/logistics/game_data.gd")
 
@@ -24,11 +28,20 @@ var firms := {}                 # FIRMS
 var nspec := {}                 # NSPEC
 var cargo_i := {}               # CARGO_I
 var perm_i := {}                # PERM_I
+var me := -1                    # G.me: the state of the headquarters
+var sky := {}                   # SKY: states with a closed sky
+var blk := false                # BLK: routes are blocked (closed borders, weather)
+var over := false               # G.over: bankrupt
+var neighbors: Array = []       # G.C[i].geo.neighbors
+var news: Array = []            # coNews: [tone, icon, text], newest last
 
 
 ## A new game on the world made by gen.generate(seed) (states, board and textures already built there).
-func setup(gen_: Object, seed_: int, states_: Array, board_: Dictionary) -> void:
+func setup(gen_: Object, seed_: int, states_: Array, board_: Dictionary, world: Dictionary = {}) -> void:
 	gen = gen_
+	neighbors = []
+	for c in world.get("countries", []):
+		neighbors.append(c.neighbors)
 	seed_value = seed_
 	states = states_
 	board = board_
@@ -239,6 +252,7 @@ func co_zero() -> Dictionary:
 
 func co_set_hq(pid: int) -> void:
 	CO.hq = pid
+	me = PL[pid].cid
 	CO.hubs = [{"pid": pid, "lvl": 1, "share": .05, "mk": 0}]
 	CO.veh = [{"id": CO.uid, "t": "ltruck", "loc": pid, "st": "idle", "cond": 100.0, "km": 0.0}]
 	CO.uid += 1
@@ -246,7 +260,7 @@ func co_set_hq(pid: int) -> void:
 	CO.comp = []
 	var cn: Array = D.COMP_N
 	for i in cn.size():
-		var rev := exp(log(1.5e6) + (float(i) / (cn.size() - 1) * .8 + R2.next() * .2) * log(60))
+		var rev := JS.exp(JS.log(1.5e6) + (float(i) / (cn.size() - 1) * .8 + R2.next() * .2) * JS.log(60))
 		CO.comp.append({"n": cn[i], "rev": rev, "g": .004 + R2.next() * .01})
 	var i := 0
 	while i < 40 and CO.board.size() < mini(co_board_max(), 10):
@@ -262,7 +276,7 @@ func co_mgr_sal(skill: int) -> int:
 	var rev := 0.0
 	if CO.lm != null:
 		rev = CO.lm.local + CO.lm.contract + CO.lm.tender
-	return int(JS.round_js((1200 + skill * 380) * (1 + log(1 + rev / 150000) / log(10) * .8) * (.6 + .4 * price_k(hq_p().cid)) / 10) * 10)
+	return int(JS.round_js((1200 + skill * 380) * (1 + JS.log10(1 + rev / 150000) * .8) * (.6 + .4 * price_k(hq_p().cid)) / 10) * 10)
 
 
 func co_mgr_cand(id: String) -> void:
@@ -391,7 +405,7 @@ func ch_near(p: Dictionary, m: String, n: int = 2) -> Array:
 
 
 func ch_cost(m: String, len_: float, t: float) -> float:
-	return D.CH_RATE[m] * len_ * pow(t, .85) + D.CH_BASE[m] * .15
+	return D.CH_RATE[m] * len_ * JS.pow(t, .85) + D.CH_BASE[m] * .15
 
 
 func ch_land(X: Dictionary, Y: Dictionary, tons: float, no_rail: bool) -> Variant:
@@ -551,7 +565,7 @@ func _co_gen() -> Variant:
 			if dd < d:
 				d = dd
 				lv = h.lvl
-		var w: float = pow(firms_of(p.id).size(), 1.25) * (sqrt(p.pop) + .15) * D.HUB_ORD[lv] / (1 + (d / Dref) * (d / Dref)) * (3.0 if waitAt.has(p.id) else 1.0) / (1 + 1.5 * onB.get(str(p.id), 0)) * (1.0 if ownC.has(p.cid) else .3)
+		var w: float = JS.pow(firms_of(p.id).size(), 1.25) * (sqrt(p.pop) + .15) * D.HUB_ORD[lv] / (1 + (d / Dref) * (d / Dref)) * (3.0 if waitAt.has(p.id) else 1.0) / (1 + 1.5 * onB.get(str(p.id), 0)) * (1.0 if ownC.has(p.cid) else .3)
 		tw += w
 		ws.append(w)
 	var chosen := -1
@@ -659,7 +673,7 @@ func _co_gen() -> Variant:
 	var cg: Dictionary = pick(cgs)
 	var lo := maxf(cg.t[0], rng_[0])
 	var hi := minf(cg.t[1], rng_[1])
-	var tons := lo * pow(hi / lo, pow(R.next(), 1.6))
+	var tons := lo * JS.pow(hi / lo, JS.pow(R.next(), 1.6))
 	if mode == "road":
 		var ov := 0.0
 		for v in CO.veh:
@@ -727,7 +741,7 @@ func _co_gen() -> Variant:
 	var pk := (price_k(F.cid) + price_k(T_.cid)) / 2
 	var base := 0.0
 	for L in legs:
-		base += D.CH_BASE[L.m] * (1.0 if is_same(L, ml) else .25) + D.CH_RATE[L.m] * L.len * pow(tons, .85)
+		base += D.CH_BASE[L.m] * (1.0 if is_same(L, ml) else .25) + D.CH_RATE[L.m] * L.len * JS.pow(tons, .85)
 	var pay := JS.round_js(base * cg.k * pk * (1 + urg * .45) * (1 + risk * .18) * (.8 + CO.rating * .07) * (1 + msk("cco") * .12) * (1.3 if min_r else 1.0) * (1.4 if aid else 1.0) * rnd(.9, 1.1) * (1 + gr * .03) * (rnd(1.4, 1.6) if prem else 1.0) * (1.35 if vip else 1.0))
 	var dl_k := .65 if prem else (1.25 if gr < 2 else 1.0)
 	var k := {"id": CO.uid, "from": from, "to": to, "cg": cg.id, "tons": tons, "pay": pay, "dlDays": JS.fixed1(dl_days * dl_k), "mode": ml.m, "risk": risk,
@@ -746,3 +760,1164 @@ func _co_gen() -> Variant:
 		k.pOut = p_out
 		k.dst = B.id
 	return k
+
+
+# =====================================================================================================
+# Part 2: trips, the day and the month
+# =====================================================================================================
+
+# ---------- small helpers (08e-company.js, 08g-business.js) ----------
+func co_now() -> float:
+	return day + CO.get("lastFr", 0.0)
+
+
+func dfk() -> float:
+	return [.6, 1.0, 1.45][diff]
+
+
+func co_news(tone: String, icon: String, text: String) -> void:
+	news.append([tone, icon, text])
+	if news.size() > 200:
+		news.pop_front()
+
+
+## Array.filter(x => x !== o) for one object: dictionaries compare by value in GDScript, so by identity here.
+static func _drop(a: Array, o: Variant) -> void:
+	for i in a.size():
+		if is_same(a[i], o):
+			a.remove_at(i)
+			return
+
+
+func hub_veh_n(pid: int) -> int:
+	var n := 0
+	for v in CO.veh:
+		if v.loc == pid and v.st != "trip":
+			n += 1
+	return n
+
+
+func hub_veh_cap(h: Dictionary) -> int:
+	return D.HUB_VEH[h.lvl]
+
+
+func hand_f(pid: int) -> float:
+	var h: Variant = hub_at(pid)
+	return D.HUB_HAND[h.lvl if h != null else 0]
+
+
+func hub_cost(p: Dictionary) -> float:
+	return JS.round_js({"cap": 60000, "big": 35000, "city": 20000, "town": 8000, "vil": 4000}.get(p.type, 8000) * price_k(p.cid))
+
+
+func hub_rent_m(h: Dictionary) -> float:
+	var p: Dictionary = PL[h.pid]
+	return D.HUB_RENT[h.lvl] * price_k(p.cid) * (2.5 if h.get("rent") else 1.0) + (hub_cost(p) * .05 if h.get("rent") else 0.0)
+
+
+func co_rev(m: Variant) -> float:
+	return m.local + m.contract + m.tender if m != null else 0.0
+
+
+func co_cost(m: Variant) -> float:
+	if m == null:
+		return 0.0
+	return m.get("office", 0) + m.wage + m.mgmt + m.fuel + m.upkeep + m.rent + m.ins + m.interest + m.claims + m.other + m.mk + m.get("hubtax", 0)
+
+
+func co_value() -> float:
+	var v: float = CO.cash
+	for x in CO.veh:
+		v += D.VT[x.t].cost * (.35 + .4 * x.cond / 100)
+	for h in CO.hubs:
+		v += hub_cost(PL[h.pid]) * h.lvl * .8
+	for l in CO.loans:
+		v -= l.left
+	return v
+
+
+func co_credit() -> float:
+	return maxf(15000, JS.round_js(co_value() * .45 + co_rev(CO.lm) * 2))
+
+
+func co_year_rev() -> float:
+	var h: Array = CO.hist.rev.slice(-12)
+	var s := 0.0
+	for x in h:
+		s += x
+	return s / maxf(1, h.size()) * 12 if h.size() < 12 else s
+
+
+func co_rank() -> int:
+	var my := co_year_rev()
+	var n := 1
+	for c in CO.comp:
+		if c.rev > my:
+			n += 1
+	return n
+
+
+func co_crew_free() -> Dictionary:
+	var f := {}
+	for r in D.ROLE:
+		f[r] = CO.staff.get(r, 0) + (CO.founder if r == "driver" else 0)
+	for v in CO.veh:
+		if v.st == "trip" or v.st == "tender":
+			var T: Dictionary = D.VT[v.t]
+			f[T.role] -= T.get("crew", 1)
+	return f
+
+
+func has_u(id: String) -> bool:
+	return CO.has("upg") and CO.upg.has(id)
+
+
+func fuel_k(mode: String) -> float:
+	var k := 1.0
+	for u in D.UPG:
+		if has_u(u.id) and u.has("fx") and u.fx.get(mode, 0):
+			k *= 1 - u.fx[mode]
+	return k
+
+
+func rep_k() -> float:
+	var k: float = CO.get("parts", 1) if CO.get("parts", 0) else 1.0
+	for u in D.UPG:
+		if has_u(u.id) and u.get("rep", 0):
+			k *= 1 - u.rep
+	return k
+
+
+func rev_key(k: Dictionary) -> String:
+	return "local" if PL[k.from].cid == PL[k.to].cid else "contract"
+
+
+# ---------- node specialisation (nodeSpec, specWhy of 08g) ----------
+func node_spec(p: Dictionary) -> Dictionary:
+	if nspec.has(p.id):
+		return nspec[p.id]
+	var sd := seed_value if seed_value else 1
+	var h: int = (((p.id + 1) * 2654435761) & 0xFFFFFFFF) ^ ((sd * 40503) & 0xFFFFFFFF)
+	var a := h % 100
+	var b := (h >> 8) % 100
+	var c := (h >> 16) % 100
+	var port: bool = p.port != null
+	var s := {"reefer": port and (p.type == "cap" or p.type == "big" or (p.type == "city" and a < 60) or (p.type == "town" and a < 25)),
+		"deep": port and (p.type == "cap" or (p.type == "big" and b < 70) or (p.type == "city" and b < 30)),
+		"heavy": p.air == true and (p.type == "cap" or (p.type == "big" and c < 65) or (p.type == "city" and c < 20))}
+	nspec[p.id] = s
+	return s
+
+
+func spec_why(k: Dictionary, t: Variant) -> Variant:
+	var A: Dictionary = PL[k.from]
+	var B: Dictionary = PL[k.to]
+	var cg: Variant = cargo_i.get(k.cg)
+	if k.mode == "sea" and cg != null and cg.get("reefer"):
+		for p in [A, B]:
+			if not node_spec(p).reefer:
+				return "Порт %s не приймає рефрижераторні контейнери" % p.name
+	if t == "bulk":
+		for p in [A, B]:
+			if not node_spec(p).deep:
+				return "Порт %s мілководний: балкер не зайде" % p.name
+	if t == "jumbo" or t == "mega":
+		for p in [A, B]:
+			if not node_spec(p).heavy:
+				return "Аеропорт %s: коротка смуга для важкого літака" % p.name
+	return null
+
+
+## incPortCl (08f): why a port or an airport is closed now, or null
+func inc_port_cl(p: Dictionary, mode: String) -> Variant:
+	if CO.get("cls") == null:
+		return null
+	if mode == "air" and sky.has(p.cid):
+		return "Закрите небо: воєнний стан"
+	for c in CO.cls:
+		if c.kind == "cty" and c.a == p.cid:
+			return c.why
+	for w in CO.get("wx", []):
+		var K: Dictionary = D.WXK[w.k]
+		if w.t0 > co_now():
+			continue
+		if (K.get("sea") if mode == "sea" else K.get("air")) and JS.hypot(p.x - w.x, p.z - w.z) < w.r:
+			return w.n
+	return null
+
+
+# ---------- positions along a trip (coCum, coPosAt, retPos, retLead, vCid) ----------
+func co_cum(j: Dictionary) -> PackedFloat32Array:
+	var n: int = j.p.size() / 2
+	if j.has("_c") and j._c.size() == n:
+		return j._c
+	var c := PackedFloat32Array()
+	c.resize(n)
+	for i in range(1, n):
+		c[i] = c[i - 1] + JS.hypot(j.p[i * 2] - j.p[i * 2 - 2], j.p[i * 2 + 1] - j.p[i * 2 - 1])
+	j._c = c
+	return c
+
+
+func co_pos_at(j: Dictionary, s: float) -> Array:
+	s /= CO_DU
+	var c := co_cum(j)
+	var n := c.size()
+	var p: PackedFloat32Array = j.p
+	if s <= 0:
+		return [p[0], p[1], 0]
+	if s >= c[n - 1]:
+		return [p[n * 2 - 2], p[n * 2 - 1], 0]
+	var lo := 0
+	var hi := n - 1
+	while hi - lo > 1:
+		var m := (lo + hi) >> 1
+		if c[m] <= s:
+			lo = m
+		else:
+			hi = m
+	var d: float = c[hi] - c[lo]
+	var t: float = (s - c[lo]) / (d if d else 1.0)
+	return [p[lo * 2] + (p[hi * 2] - p[lo * 2]) * t, p[lo * 2 + 1] + (p[hi * 2 + 1] - p[lo * 2 + 1]) * t, lo]
+
+
+func _ret_job(v: Dictionary) -> Variant:
+	for x in CO.jobs:
+		if x.get("ret") and x.vids.has(v.id):
+			return x
+	return null
+
+
+func is_ret_v(v: Dictionary) -> bool:
+	return v.st == "trip" and D.VT[v.t].mode == "road" and _ret_job(v) != null
+
+
+func ret_pos(v: Dictionary) -> Variant:
+	var j: Variant = _ret_job(v)
+	if j == null:
+		return null
+	return co_pos_at(j, co_job_state(j, co_now() - j.t0).s)
+
+
+func node_at(x: float, z: float) -> int:
+	var i := int(JS.clamp_js(JS.round_js((x + board.wx / 2) / board.st), 0, board.nx - 1))
+	var k := int(JS.clamp_js(JS.round_js((z + board.wz / 2) / board.st), 0, board.nz - 1))
+	return k * board.nx + i
+
+
+func ret_lead(v: Dictionary, dest: int) -> Variant:
+	var q: Variant = ret_pos(v)
+	if q == null:
+		return null
+	var p: PackedFloat32Array = gen.node_path(node_at(q[0], q[1]), PL[dest].node, false)
+	if p.is_empty():
+		return null
+	var a: Array = [q[0], q[1]]
+	a.append_array(Array(p))
+	var L := 0.0
+	for i in range(2, a.size(), 2):
+		L += JS.hypot(a[i] - a[i - 2], a[i + 1] - a[i - 1])
+	return {"p": PackedFloat32Array(a), "len": L * CO_DU}
+
+
+func v_cid(v: Dictionary) -> int:
+	if v.st == "trip":
+		var q: Variant = ret_pos(v)
+		if q != null:
+			var o: int = gen.state_at(q[0], q[1])
+			if o >= 0:
+				return o
+	return PL[v.loc].cid if v.loc != null and v.loc >= 0 and v.loc < PL.size() else -1
+
+
+# ---------- planning one leg (coPlan1) ----------
+func cp_wait(cid: int, mode: String) -> float:
+	return ((.25 if mode == "rail" else .35) + bur(cid) / 110) * (1 - .6 * msk("clo")) * .45
+
+
+func co_plan1(k: Dictionary) -> Dictionary:
+	var mode: String = k.mode
+	var A: Dictionary = PL[k.from]
+	if k.get("minR", 0) and CO.rating < k.minR:
+		return {"ok": false, "why": "Замовник хоче рейтинг %.1f+" % k.minR}
+	if CO.strike > day:
+		return {"ok": false, "why": "Страйк: водії не виходять на рейси"}
+	var nd := perm_need(cargo_i.get(k.cg), mode).filter(func(x): return not perm_ok(x))
+	if nd.size():
+		return {"ok": false, "why": "Потрібна ліцензія «%s»" % perm_i[nd[0]].n, "perm": nd[0]}
+	var w0: Variant = spec_why(k, null)
+	if w0 != null:
+		return {"ok": false, "why": w0}
+	if mode == "sea" or mode == "air":
+		for pid in [k.from, k.to]:
+			var w: Variant = inc_port_cl(PL[pid], mode)
+			if w != null:
+				return {"ok": false, "why": "%s %s закрито: %s" % ["Порт" if mode == "sea" else "Аеропорт", PL[pid].name, w.to_lower()]}
+	var main: Variant = co_route(mode, k.from, k.to)
+	if main == null:
+		return {"ok": false, "why": "Маршрут перекрито: закритий кордон або негода" if blk else "Маршрут недоступний"}
+	var free := co_crew_free()
+	var best: Variant = null
+	var why: String = "Немає вільної техніки: " + D.MODE_N[mode].to_lower()
+	var ex: Dictionary = k.get("_ex", {})
+	for t in D.VT:
+		var T: Dictionary = D.VT[t]
+		if T.mode != mode:
+			continue
+		var sw: Variant = spec_why(k, t)
+		if sw != null:
+			why = sw
+			continue
+		var idle := []
+		for v in CO.veh:
+			if v.t != t:
+				continue
+			var ok_st: bool = (v.st == "idle" and (hub_at(v.loc) != null or (v.get("idle0") != null and co_now() - v.idle0 < 1))) or is_ret_v(v)
+			if not ok_st:
+				continue
+			if k.get("_ctry") != null and v_cid(v) != k._ctry:
+				continue
+			if ex.has(v.id):
+				continue
+			if k.get("_veh") != null and v.id != k._veh:
+				continue
+			if v.get("resv") and v.id != k.get("_veh"):
+				continue
+			idle.append(v)
+		if idle.is_empty():
+			continue
+		var crew: int = T.get("crew", 1)
+		var vol_n := 1
+		if T.get("vol", 0):
+			var cv: Variant = cargo_i.get(k.cg)
+			var vol: float = k._vol if k.get("_vol") != null else k.tons * (cv.v if cv != null and cv.get("v", 0) else 3)
+			vol_n = int(ceil(vol / T.vol))
+		var n := maxi(int(ceil(k.tons / T.cap)), vol_n)
+		if k.get("_one") and n > 1:
+			why = "Не вміщує: %s бере %s т і %s м³" % [T.n.to_lower(), T.cap, T.vol]
+			continue
+		if n > 14:
+			why = "Замало місткості: потрібно %d × %s" % [n, T.n.to_lower()]
+			continue
+		if idle.size() < n:
+			why = "Потрібно %d × %s, вільних %d" % [n, T.n.to_lower(), idle.size()]
+			continue
+		var ret_n := 0
+		for v in idle:
+			if is_ret_v(v):
+				ret_n += 1
+		if free[T.role] + mini(n, ret_n) * crew < crew * n:
+			why = "Бракує персоналу: " + D.ROLE[T.role].n.to_lower()
+			continue
+		_stable_sort(idle, func(a, b): return JS.hypot(PL[a.loc].x - A.x, PL[a.loc].z - A.z) - JS.hypot(PL[b.loc].x - A.x, PL[b.loc].z - A.z))
+		var sel := []
+		var lead := 0.0
+		var lead_r: Variant = null
+		for v in idle:
+			var r: Variant = ret_lead(v, k.from) if v.st == "trip" else co_route(mode, v.loc, k.from)
+			if r == null:
+				continue
+			sel.append(v)
+			if lead_r == null or r.len >= lead:
+				lead = r.len
+				lead_r = r
+			if sel.size() == n:
+				break
+		if sel.size() < n:
+			why = "Техніку відрізано: закритий кордон або негода" if blk else "Техніка на іншому материку"
+			continue
+		var border: bool = PL[k.from].cid != PL[k.to].cid
+		var cust := 0.0
+		if border:
+			if mode == "road" or mode == "rail":
+				cust = cp_wait(PL[k.to].cid, mode) * maxf(1, JS.round_js(JS.hypot(PL[k.to].x - A.x, PL[k.to].z - A.z) / 5))
+			else:
+				cust = .3
+		var tl: float = lead / (T.spd * spd_k())
+		var tm: float = main.len / (T.spd * spd_k())
+		var hs: float = D.HAND[mode] * hand_k() * (hand_f(k.from) + hand_f(k.to)) / 2
+		var tot: float = tl + hs + tm + cust + hs
+		var fuel: float = (lead + main.len) * T.fuel * CO.fuel * fuel_k(mode) * n * (1 - .06 * msk("cto")) * 1
+		var runc: float = (T.up * rep_k() * [.8, 1.0, 1.35][CO.maint] + D.ROLE[T.role].w * wage_k(me) * CO.wageLv / 30 * crew) * tot * n
+		var pk_ := 1.2 if T.has("fit") and T.fit.has(k.cg) else 1.0
+		var c := {"ok": true, "t": t, "n": n, "vids": sel.map(func(v): return v.id), "lead": lead, "leadR": lead_r, "main": main, "tl": tl, "tm": tm,
+			"hs": hs, "cust": cust, "tot": tot, "fuel": fuel, "payK": pk_, "profit": k.pay * pk_ - fuel - runc, "late": tot > k.dlDays}
+		if best == null or (not c.late and best.late) or (c.late == best.late and c.profit > best.profit):
+			best = c
+	return best if best != null else {"ok": false, "why": why}
+
+
+# ---------- planning an order (coPlan: chains of legs, the multi-drop wrapper of 08r) ----------
+func hub_tax(k: Variant, pid: int, m: String) -> float:
+	if hub_at(pid) != null:
+		return 0.0
+	return JS.round_js((k.pay if k != null else 0.0) * .04 + {"road": 120, "rail": 450, "sea": 1500, "air": 1100}[m] * price_k(PL[pid].cid))
+
+
+func hub_tax_pay(ht: Array) -> float:
+	var x := 0.0
+	for h in ht:
+		x += h.f
+	if x:
+		CO.cash -= x
+		CO.m.hubtax = CO.m.get("hubtax", 0) + x
+	return x
+
+
+func co_plan(k: Dictionary) -> Dictionary:
+	if k.get("multi"):
+		return {"ok": false, "why": "Збірний рейс: порядок посадок прокладається вручну"}
+	var legs: Array = k.get("legs", []) if k.get("legs") != null else []
+	if legs.size() < 2:
+		return co_plan1(k)
+	if k.get("minR", 0) and CO.rating < k.minR:
+		return {"ok": false, "why": "Замовник хоче рейтинг %.1f+" % k.minR}
+	var ex := {}
+	var sub := []
+	var ht := []
+	var tot := 0.0
+	var fuel := 0.0
+	var cost := 0.0
+	var pay_k := 1.0
+	for i in legs.size():
+		var L: Dictionary = legs[i]
+		var kk := k.duplicate()
+		var r: Variant = co_route(L.m, L.a, L.b)
+		kk.legs = null
+		kk.from = L.a
+		kk.to = L.b
+		kk.mode = L.m
+		kk.minR = 0
+		kk.pay = 0
+		kk._ex = ex
+		kk.len = r.len if r != null and r.len else k.len
+		var P := co_plan1(kk)
+		if not P.ok:
+			return {"ok": false, "why": "Ділянка %d (%s %s → %s): %s" % [i + 1, D.MODE_N[L.m].to_lower(), PL[L.a].name, PL[L.b].name, P.why]}
+		for id in P.vids:
+			ex[id] = true
+		sub.append(P)
+		tot += P.tot
+		fuel += P.fuel
+		cost += -P.profit + ((250 + k.tons * 1.5) * price_k(PL[L.a].cid) if i else 0.0)
+		if i and legs[i - 1].m != L.m:
+			var x := hub_tax(k, L.a, L.m)
+			if x:
+				cost += x
+				ht.append({"pid": L.a, "f": x})
+		if L.m == k.mode:
+			pay_k = P.payK if P.payK else 1.0
+	var mi := -1
+	for i in legs.size():
+		if legs[i].m == k.mode:
+			mi = i
+			break
+	var M: Dictionary = sub[mi] if mi >= 0 else sub[0]
+	return {"ok": true, "chain": sub, "ht": ht, "t": M.t, "n": M.n, "lead": sub[0].lead, "tot": tot, "fuel": fuel, "payK": pay_k,
+		"profit": k.pay * pay_k - cost, "late": tot > k.dlDays}
+
+
+# ---------- dispatch (coDispatch) ----------
+func co_dispatch(k: Dictionary, P: Dictionary, _silent: bool = false) -> bool:
+	if not P.get("ok"):
+		return false
+	if P.has("chain"):
+		push_error("Sim: chains of legs (lpRunLeg) are not ported yet")
+		return false
+	CO.cash -= P.fuel
+	CO.m.fuel += P.fuel
+	var lp: PackedFloat32Array = P.leadR.p
+	var mp: PackedFloat32Array = P.main.p
+	var path := PackedFloat32Array(lp)
+	path.append_array(mp.slice(2))
+	var j := {"id": k.id, "k": k, "mode": k.mode, "t": P.t, "n": P.n, "vids": P.vids, "payK": P.payK if P.get("payK") else 1.0, "p": path, "lead": P.lead,
+		"len": P.main.len, "tl": P.tl, "tm": P.tm, "hs": P.hs, "cust": P.cust, "tot": P.tot, "t0": co_now(), "dl": day + k.dlDays, "dmg": 0.0,
+		"lost": false, "hold": 0.0, "ev": []}
+	if k.mode == "road" or k.mode == "rail":
+		var tot: float = j.lead + j.len
+		var wl := 0.0
+		for i in range(2, path.size(), 2):
+			wl += JS.hypot(path[i] - path[i - 2], path[i + 1] - path[i - 1])
+		var eco: float = tot / wl if wl > 0 else CO_DU
+		var stops := []
+		for c in gen.crossings(path, eco):
+			stops.append({"s": c.s, "a": c.a, "b": c.b, "x": c.x, "z": c.z, "w": cp_wait(c.b, k.mode)})
+		j.stops = stops
+		if stops.size():
+			var W := 0.0
+			for q in stops:
+				W += q.w
+			j.tot = j.tl + j.hs + j.tm + j.hs + W
+			j.cust = 0.0
+	for v in CO.veh:
+		if P.vids.has(v.id) and v.st == "trip":
+			var rj: Variant = _ret_job(v)
+			if rj != null:
+				_drop(CO.jobs, rj)   # a truck on its way home turns to the new order
+	for v in CO.veh:
+		if P.vids.has(v.id):
+			v.st = "trip"
+			v.job = j.id
+			v.idle0 = null
+	CO.jobs.append(j)
+	_drop(CO.board, k)
+	if k.mode == "sea" and PL[k.from].land != PL[k.to].land:
+		CO.flags.ocean = 1
+	return true
+
+
+# ---------- the dispatcher (coAuto) ----------
+func co_auto() -> void:
+	if not CO.auto or not CO.mgr.has("cto") or CO.strike > day:
+		return
+	var n := 0
+	var lim := 4
+	var sk := msk("cto")
+	var L: Array = CO.board.duplicate()
+	_stable_sort(L, func(a, b): return b.pay - a.pay)
+	for k in L:
+		if n >= lim:
+			break
+		var P := co_plan(k)
+		var guess: float = P.get("profit", NAN) * (1 + (R.next() - .5) * (1 - sk) * .9)   # a weak dispatcher misjudges orders
+		if P.ok and (not P.late and guess > k.pay * .15):
+			var extra := JS.round_js(P.fuel * (1 - sk) * .45)   # and plans longer, costlier routes
+			CO.cash -= extra
+			CO.m.fuel += extra
+			k.how = "mgr"
+			co_dispatch(k, P, true)
+			n += 1
+	if n:
+		co_news("", "cpu", "Диспетчерська %s відправила %d %s" % [CO.name, n, "рейс" if n == 1 else "рейси"])
+
+
+# ---------- trip state (driveAt, segW, coJobState, coJobState0) ----------
+func drive_at(j: Dictionary, e: float, s0: float, s1: float, T: float) -> Dictionary:
+	var st := []
+	for q in j.get("stops", []):
+		if q.s >= s0 and q.s < s1:
+			st.append(q)
+	if st.is_empty():
+		return {"s": s0 + (e / T if T > 0 else 1.0) * (s1 - s0)}
+	var v := (s1 - s0) / T if T > 0 else 1e9
+	var pos := s0
+	for q in st:
+		var t: float = (q.s - pos) / v
+		if e < t:
+			return {"s": pos + e * v}
+		e -= t
+		pos = q.s
+		if e < q.w:
+			return {"s": pos, "wait": q}
+		e -= q.w
+	return {"s": minf(s1, pos + e * v)}
+
+
+func seg_w(j: Dictionary, s0: float, s1: float) -> float:
+	var a := 0.0
+	for q in j.get("stops", []):
+		if q.s >= s0 and q.s < s1:
+			a += q.w
+	return a
+
+
+func co_job_state(j: Dictionary, e: float) -> Dictionary:
+	var inc: Variant = null
+	if j.get("pz"):
+		var sub := 0.0
+		for p in j.pz:
+			if e >= p.e + p.w:
+				sub += p.w
+			elif e >= p.e:
+				inc = p
+				sub += e - p.e
+				break
+			else:
+				break
+		e -= sub
+	var drg: Variant = null
+	if j.get("drag"):
+		for d in j.drag:
+			if e > d.e0:
+				if e < d.e1:
+					drg = d
+				e -= (minf(e, d.e1) - d.e0) * (1 - d.f)
+	var st := co_job_state0(j, e)
+	if inc != null:
+		st.ph = inc.ph
+		st.inc = inc
+	elif drg != null and st.seg >= 0:
+		st.ph = drg.ph
+	elif j.get("gps") and co_now() < j.gps.until:
+		st.ph = "Втрачено сигнал GPS: остання відома позиція"
+	elif j.get("back") and st.seg >= 0:
+		st.ph = "Везе вантаж назад відправнику"
+	return st
+
+
+func _cp_ph(q: Dictionary) -> String:
+	return "Пропускний пункт %s → %s: очікування" % [states[q.a].name, states[q.b].name]
+
+
+func co_job_state0(j: Dictionary, e: float) -> Dictionary:
+	var h0: float = 0.0 if j.get("cont") else j.hs
+	if j.get("stops") and not j.get("ret"):
+		var tl: float = j.tl + seg_w(j, 0, j.lead)
+		var tm: float = j.tm + seg_w(j, j.lead, j.lead + j.len + 1e-9)
+		if e < tl:
+			var d := drive_at(j, e, 0, j.lead, j.tl)
+			var wt: Variant = d.get("wait")
+			return {"s": d.s, "w": wt, "seg": -1 if wt != null else 0, "f": d.s / j.lead if j.lead > 0 else 1.0,
+				"ph": _cp_ph(wt) if wt != null else "Порожній перегін до відвантаження"}
+		e -= tl
+		if e < h0:
+			return {"s": j.lead, "seg": -1, "ph": "Завантаження"}
+		e -= h0
+		if e < tm:
+			var d := drive_at(j, e, j.lead, j.lead + j.len + 1e-9, j.tm)
+			var wt: Variant = d.get("wait")
+			return {"s": d.s, "w": wt, "seg": -1 if wt != null else 1, "f": (d.s - j.lead) / (j.len if j.len else 1.0),
+				"ph": _cp_ph(wt) if wt != null else ("Захоплено" if j.hold > 0 else "У дорозі з вантажем")}
+		return {"s": j.lead + j.len, "seg": -1, "ph": "Розвантаження"}
+	if j.get("ret"):
+		var f := JS.clamp_js(e / j.tm, 0, 1)
+		return {"s": f * j.len, "seg": 1, "f": f, "ph": "Повертається в хаб без вантажу"}
+	if e < j.tl:
+		return {"s": e / j.tl * j.lead if j.tl > 0 else 0.0, "seg": 0, "f": e / j.tl if j.tl > 0 else 1.0, "ph": "Порожній перегін до відвантаження"}
+	e -= j.tl
+	if e < h0:
+		return {"s": j.lead, "seg": -1, "ph": "Завантаження"}
+	e -= h0
+	if e < j.tm:
+		return {"s": j.lead + e / j.tm * j.len, "seg": 1, "f": e / j.tm, "ph": "Захоплено" if j.hold > 0 else "У дорозі з вантажем"}
+	e -= j.tm
+	if e < j.cust:
+		return {"s": j.lead + j.len, "seg": -1, "ph": "Митне оформлення"}
+	return {"s": j.lead + j.len, "seg": -1, "ph": "Розвантаження"}
+
+
+# ---------- delivery (coComplete, coXP) ----------
+func co_xp(j: Dictionary, k: Dictionary, late: float) -> int:
+	var nl: int = j.lp.plan.size() if j.get("lp") else 1
+	var mgr: bool = k.get("how") == "mgr"
+	var x := (10 + 6 * (nl - 1) + 4 * JS.log2(1 + k.pay / 2000)) * (.5 if late > 0 else 1.0) * (.6 if j.dmg > .05 else 1.0)
+	if mgr:
+		x *= .08
+	return int(maxf(0 if mgr else 1, JS.round_js(x)))
+
+
+func _last(e: Dictionary) -> void:
+	CO.last.push_front(e)
+	if CO.last.size() > 30:
+		CO.last.pop_back()
+
+
+func co_complete(j: Dictionary) -> void:
+	if j.get("lp") or j.get("cons"):
+		push_error("Sim: chains and consolidated trips are not ported yet")
+	if j.get("ret"):
+		_drop(CO.jobs, j)
+		for v in CO.veh:
+			if j.vids.has(v.id):
+				v.st = "idle"
+				v.job = null
+				v.loc = j.k.to
+				v.km += j.len * D.KM
+				v.idle0 = null
+		return
+	if j.get("back") or j.get("cx0"):
+		_drop(CO.jobs, j)
+		var at: int = j.k.from
+		for v in CO.veh:
+			if j.vids.has(v.id):
+				v.st = "idle"
+				v.job = null
+				v.loc = at
+				v.idle0 = null if hub_at(at) != null else co_now()
+				v.km += j.get("len", 0) * D.KM
+		if j.get("back"):
+			co_news("warn", "", "%s: вантаж «%s» повернено відправнику в %s" % [CO.name, cargo_i[j.k.cg].n.to_lower(), PL[at].name])
+			_last({"d": date.duplicate(), "from": j.k.from, "to": j.k.to, "cg": j.k.cg, "pay": j.get("comp", 0), "tone": "warn", "mode": j.mode})
+		return
+	_drop(CO.jobs, j)
+	var k: Dictionary = j.k
+	var cg: Dictionary = cargo_i[k.cg]
+	var late := maxf(0, day - j.dl)
+	var pay: float = k.pay * (j.payK if j.get("payK") else 1.0)
+	if late > 0:
+		pay *= maxf(.35, 1 - late * .12)
+	var value: float = k.tons * cg.val
+	var claim := 0.0
+	if j.lost:
+		pay = 0
+		claim = value * .6
+	elif j.dmg > 0:
+		claim = minf(value * minf(1, j.dmg) * .8, k.pay * 3 + 1500)
+		pay *= 1 - minf(.8, j.dmg)
+		if j.dmg > .08:
+			CO.rating = JS.clamp_js(CO.rating - minf(.3, j.dmg * .6), 1, 5)
+	var covered := claim * .8 if CO.ins else 0.0
+	CO.cash += pay - claim + covered
+	CO.m[rev_key(k)] += pay
+	CO.m.claims += claim - covered
+	var s := 1.0 if j.lost else (1.6 if j.dmg > .3 else (2.0 if late > 2 else (3.2 if late > 0 else (3.8 if j.dmg > 0 else 5.0))))
+	var w := minf(.05, .01 + JS.log10(1 + k.pay) * .005)
+	CO.rating = JS.clamp_js(CO.rating + (s - CO.rating) * w, 1, 5)
+	var wear: float = {"road": 1.6, "rail": .5, "sea": .25, "air": .12}[j.mode] * [1.4, 1.0, .65][CO.maint]
+	for v in CO.veh:
+		if j.vids.has(v.id):
+			v.st = "idle"
+			v.job = null
+			v.loc = k.to
+			v.idle0 = null if hub_at(k.to) != null else co_now()
+			v.km += (j.lead + j.len) * D.KM
+			v.cond = maxf(0, v.cond - (j.lead + j.len) * wear)
+	if not j.lost:
+		CO.cdel += 1
+		CO.deliv += 1
+		CO.tons += k.tons
+		var xp := co_xp(j, k, late)
+		CO.xp = CO.get("xp", 0) + xp
+		j.xp = xp
+	var tone := "bad" if j.lost else ("warn" if late > 0 or j.dmg > .05 else "good")
+	co_news(tone, "", "%s: %s доставлено в %s" % [CO.name, cg.n.to_lower(), PL[k.to].name])
+	_last({"d": date.duplicate(), "from": k.from, "to": k.to, "cg": k.cg, "pay": pay - claim + covered, "tone": tone, "mode": j.mode})
+
+
+# ---------- returns to a hub (coReturns + the home-hub wrapper of 08w) ----------
+func _ret_trip(v: Dictionary, to: int, r: Dictionary) -> void:
+	var T: Dictionary = D.VT[v.t]
+	var fuel: float = r.len * T.fuel * CO.fuel * fuel_k(T.mode)
+	CO.cash -= fuel
+	CO.m.fuel += fuel
+	var tm: float = r.len / (T.spd * spd_k())
+	var j := {"id": CO.uid, "ret": true, "k": {"id": 0, "from": v.loc, "to": to, "cg": "parcel", "tons": 0, "pay": 0, "dlDays": 1e3, "mode": T.mode, "risk": 0},
+		"mode": T.mode, "t": v.t, "n": 1, "vids": [v.id], "p": r.p, "lead": 0.0, "len": r.len, "tl": 0.0, "tm": tm, "hs": 0.0, "cust": 0.0, "tot": tm,
+		"t0": co_now(), "dl": day + 1e3, "dmg": 0.0, "lost": false, "hold": 0.0, "ev": []}
+	CO.uid += 1
+	v.st = "trip"
+	v.job = j.id
+	v.idle0 = null
+	CO.jobs.append(j)
+
+
+func co_returns() -> void:
+	# a vehicle with a home hub goes there, not to the nearest one
+	for v in CO.veh:
+		if v.get("home") == null or v.st != "idle" or v.loc == v.home or hub_at(v.loc) != null:
+			continue
+		var h: Variant = hub_at(v.home)
+		if h == null:
+			v.home = null
+			continue
+		if v.get("idle0") == null or co_now() - v.idle0 < 1:
+			continue
+		var r: Variant = co_route(D.VT[v.t].mode, v.loc, v.home)
+		if r == null or hub_veh_n(v.home) >= hub_veh_cap(h):
+			continue
+		_ret_trip(v, v.home, r)
+	for v in CO.veh:
+		var T: Dictionary = D.VT[v.t]
+		if v.st != "idle" or T.mode == "local":
+			v.idle0 = null
+			continue
+		if hub_at(v.loc) != null:
+			v.idle0 = null
+			continue
+		if v.get("idle0") == null:
+			v.idle0 = co_now()
+			continue
+		if co_now() - v.idle0 < 1:
+			continue   # a day in the unloading city waiting for a new order
+		var best: Variant = null
+		var bl := 1e9
+		for h in CO.hubs:
+			if not mode_ok(T.mode, PL[h.pid]) or hub_veh_n(h.pid) >= hub_veh_cap(h):
+				continue
+			var r: Variant = co_route(T.mode, v.loc, h.pid)
+			if r != null and r.len < bl:
+				bl = r.len
+				best = {"h": h, "r": r}
+		if best == null:
+			v.idle0 = co_now() + 30
+			continue
+		_ret_trip(v, best.h.pid, best.r)
+
+
+# ---------- per frame: trips finish mid-day (coFrame) ----------
+## fr: the fraction of the current day that has passed (0…1)
+func co_frame(fr: float) -> void:
+	CO.lastFr = fr
+	var T := day + fr
+	var done := 0
+	for j in CO.jobs.duplicate():
+		if j.hold <= 0 and T - j.t0 >= j.tot:
+			co_complete(j)
+			done += 1
+	if done:
+		co_returns()
+
+
+# ---------- the city: local deliveries, upkeep, rating, morale (coLocal) ----------
+func co_local() -> void:
+	var free := co_crew_free()
+	var drv: float = free.driver
+	var rev := 0.0
+	var tot := 0.0
+	var strike: bool = CO.strike > day
+	for h in CO.hubs:
+		var p: Dictionary = PL[h.pid]
+		var c: Dictionary = states[p.cid]
+		var mk := JS.log10(1 + h.get("mk", 0) / 400.0) * .05
+		var target := JS.clamp_js(.035 + (CO.rating - 3) * .035 + h.lvl * .015 + msk("cco") * .03 + mk, .01, .5)
+		h.share += (target - h.share) * .015
+		var market: float = (p.pop * 1000 + 400) * (.45 + c.dev)
+		var w: float = market * h.share
+		var cap := 0.0
+		var n := 0
+		h.ids = []
+		for v in CO.veh:
+			if v.loc != p.id or v.st != "idle":
+				continue
+			var T: Dictionary = D.VT[v.t]
+			if not T.get("loc", 0):
+				continue
+			var crew: int = T.get("crew", 1)
+			if drv < crew:
+				continue
+			drv -= crew
+			v.today = JS.round_js(T.loc * sqrt(R.next()) * (1.0 if v.cond > 35 else .6))
+			cap += v.today
+			n += 1
+			h.ids.append(v.id)
+		var cm: float = (.72 + CO.morale / 220) * (1 + msk("coo") * .08) * (.1 if strike else 1.0)
+		cap *= cm
+		var served := minf(w, cap)
+		var fr_ := served / cap if cap > 0 else 0.0
+		for id in h.ids:
+			for v in CO.veh:
+				if v.id == id:
+					v.done = JS.round_js(v.today * cm * fr_)
+					break
+		h.want = w
+		h.cap = cap
+		h.served = served
+		h.nloc = n
+		var price := 4.2 * price_k(p.cid) * (1 + msk("cco") * .06)
+		rev += served * price
+		tot += served
+		h.earn = h.get("earn", 0) + served * price
+	CO.cash += rev
+	CO.m.local += rev
+	CO.deliv += tot
+	CO.dayLocal = tot
+	# wear & upkeep
+	var up := 0.0
+	for v in CO.veh:
+		var T: Dictionary = D.VT[v.t]
+		up += T.up * [.8, 1.0, 1.35][CO.maint]
+		if T.get("loc", 0) and v.st == "idle":
+			v.cond = maxf(0, v.cond - .035 * [1.5, 1.0, .6][CO.maint])
+	CO.cash -= up
+	CO.m.upkeep += up
+	# service quality → rating
+	if tot > 0:
+		var avg_c := 100.0
+		if CO.veh.size():
+			avg_c = 0.0
+			for v in CO.veh:
+				avg_c += v.cond
+			avg_c /= CO.veh.size()
+		var s := JS.clamp_js(2.7 + 1.4 * CO.morale / 100 + msk("coo") * .6 + (avg_c - 80) / 80 + (-1.5 if strike else 0.0), 1, 5)
+		var w := minf(.012, tot * .00015)
+		CO.rating = JS.clamp_js(CO.rating + (s - CO.rating) * w, 1, 5)
+	# morale
+	var over_n := 0
+	for h in CO.hubs:
+		if h.want > h.cap * 1.6:
+			over_n += 1
+	var mt := JS.clamp_js(52 + (CO.wageLv - 1) * 130 + msk("hro") * 16 - over_n * 3 - (12 if CO.cash < 0 else 0) + (6 if CO.founder else 0), 5, 98)
+	CO.morale += (mt - CO.morale) * .04
+	# local accidents
+	for v in CO.veh:
+		var T: Dictionary = D.VT[v.t]
+		if not T.get("loc", 0) or v.loc == null or v.st != "idle":
+			continue
+		if chance(dfk() * .0009 * (1 - .45 * msk("coo")) * (1.35 - CO.morale / 100) * (1.2 - v.cond / 250)):
+			var cost := JS.round_js(rnd(800, 4500) * price_k(PL[v.loc].cid))
+			CO.cash -= cost
+			CO.m.claims += cost
+			v.cond = maxf(0, v.cond - rnd(15, 40))
+			CO.rating = JS.clamp_js(CO.rating - .01, 1, 5)
+			co_news("bad", "alert", "%s %s потрапив у ДТП у місті %s" % [T.n, CO.name, PL[v.loc].name])
+
+
+# ---------- the order board (coBoardDay) ----------
+func co_board_day() -> void:
+	CO.board = CO.board.filter(func(k): return k.exp > day)
+	var mx := co_board_max()
+	var i := 0
+	while i < maxi(3, int(ceil(mx / 5.0))) and CO.board.size() < mx:
+		i += 1
+		if not chance(.65):
+			continue
+		for a in 5:
+			var k: Variant = co_gen()
+			if k != null:
+				CO.board.append(k)
+				break
+
+
+# ---------- world prices, permits (08g) ----------
+func biz_prices() -> void:
+	if not CO.get("parts", 0):
+		CO.parts = 1.0
+	var conf: int = CO.conf.size()
+	var cls: Array = CO.get("cls", [])
+	var sanc := 0
+	var cty := 0
+	for c in cls:
+		var why: String = c.why.to_lower()
+		if why.contains("санкц") or why.contains("торговельна"):
+			sanc += 1
+		if c.kind == "cty":
+			cty += 1
+	var hur := 0
+	for w in CO.get("wx", []):
+		if w.k == "hur":
+			hur += 1
+	var fT := 1 + .1 * conf + .04 * sanc + .03 * cty + .03 * hur
+	var pT := 1 + .07 * conf + .08 * sanc + .03 * cty
+	CO.fuel = JS.clamp_js(CO.fuel + (fT - CO.fuel) * .015 + CO.fuel * rnd(-.006, .006), .6, 2.2)
+	CO.parts = JS.clamp_js(CO.parts + (pT - CO.parts) * .015 + CO.parts * rnd(-.004, .004), .7, 2)
+
+
+func perm_fee(id: String) -> float:
+	var p: Dictionary = perm_i[id]
+	return JS.round_js(p.fee * (.55 + .45 * price_k(hq_p().cid)) * (1 + .05 * CO.conf.size()) / 100) * 100
+
+
+func perm_day() -> void:
+	if not CO.has("perm"):
+		return
+	for id in CO.perm:
+		var P: Dictionary = CO.perm[id]
+		var p: Dictionary = perm_i[id]
+		var left := JS.round_js(P.until - day)
+		if left == 30 and not P.get("warn"):
+			P.warn = 1
+			co_news("warn", "doc", "Через 30 днів спливає ліцензія «%s»" % p.n)
+		if P.until <= day and not P.get("gone"):
+			var f := perm_fee(id)
+			if P.auto and CO.cash >= f:
+				CO.cash -= f
+				CO.m.other += f
+				P.until += 365
+				P.warn = 0
+				co_news("good", "doc", "Ліцензію «%s» продовжено ще на рік" % p.n)
+			else:
+				P.gone = 1
+				co_news("bad", "doc", "Ліцензія «%s» сплила: такі вантажі більше не можна брати" % p.n)
+		if P.until > day:
+			P.gone = 0
+
+
+func biz_month() -> void:
+	if has_u("shop"):
+		var c: float = D.UPG.filter(func(u): return u.id == "shop")[0].mo
+		CO.cash -= c
+		CO.m.upkeep += c
+	if chance(.07):
+		var E := [["Дефіцит мікрочипів: запчастини й електроніка для техніки подорожчали", rnd(1.12, 1.3)], ["Нові мита на імпортні запчастини", rnd(1.08, 1.15)],
+			["Обвал цін на сталь: запчастини подешевшали", rnd(.85, .93)]]
+		var e: Array = pick(E)
+		CO.parts = JS.clamp_js(CO.get("parts", 1) * e[1], .7, 2)
+		co_news("bad" if e[1] > 1 else "good", "gear", e[0])
+
+
+# ---------- the day (coDay) ----------
+func co_day() -> void:
+	if over:
+		return
+	day += 1
+	date.d += 1
+	var dim: int = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][date.m]
+	var nm := false
+	if date.d > dim:
+		date.d = 1
+		date.m += 1
+		nm = true
+		if date.m > 11:
+			date.m = 0
+			date.y += 1
+	for k in D.RES.size():   # updateMarketDaily: world commodity prices (not shown in logistics), one R() each
+		R.next()
+	co_local()
+	# coJobsDay, incDay: incidents — not ported yet
+	co_board_day()
+	co_auto()
+	co_returns()
+	biz_prices()
+	perm_day()
+	if nm:
+		co_month()
+
+
+# ---------- the month (coMonth + bizMonth) ----------
+const CO_MS := [["d100", "Перша сотня"], ["f5", "Маленький автопарк"], ["van", "На колесах"], ["hub2", "Друга точка"], ["c1", "Перший контракт"],
+	["abroad", "За кордон"], ["d10k", "Десять тисяч"], ["rail", "Сталеві колії"], ["ocean", "Через океан"], ["air", "У небі"], ["m1", "Мільйон на місяць"],
+	["c3", "Три материки"], ["r45", "Бездоганна репутація"], ["top3", "Призер"], ["top1", "Лідер ринку"]]
+
+
+func _ms_done(id: String) -> bool:
+	match id:
+		"d100": return CO.deliv >= 100
+		"f5": return CO.veh.size() >= 5
+		"van": return CO.veh.any(func(v): return v.t == "van")
+		"hub2": return CO.hubs.size() >= 2
+		"c1": return CO.cdel >= 1
+		"abroad": return CO.hubs.any(func(h): return PL[h.pid].cid != me)
+		"d10k": return CO.deliv >= 1e4
+		"rail": return CO.veh.any(func(v): return D.VT[v.t].mode == "rail")
+		"ocean": return CO.flags.get("ocean", 0) != 0
+		"air": return CO.veh.any(func(v): return D.VT[v.t].mode == "air")
+		"m1": return co_rev(CO.lm) >= 1e6
+		"c3":
+			var s := {}
+			for h in CO.hubs:
+				s[PL[h.pid].land] = true
+			return s.size() >= 3
+		"r45": return CO.rating >= 4.5
+		"top3": return co_rank() <= 3
+		"top1": return co_rank() == 1
+	return false
+
+
+func co_month() -> void:
+	var m: Dictionary = CO.m
+	var wk: float = wage_k(me) * CO.wageLv * (1 - msk("hro") * .08)
+	var wage := 0.0
+	var mgmt := 0.0
+	var rent := 0.0
+	var mk := 0.0
+	var ins := 0.0
+	var interest := 0.0
+	var stolen := 0.0
+	for r in D.ROLE:
+		wage += CO.staff.get(r, 0) * D.ROLE[r].w * wk
+	var N := 0
+	for r in CO.staff:
+		N += CO.staff[r]
+	var office := JS.round_js(45 * JS.pow(N, 1.12) * price_k(me) * (1 - msk("cfo") * .1))
+	m.office = m.get("office", 0) + office
+	CO.cash -= office
+	# labour market refresh: depends on wages, HR director, network size
+	var lk: float = JS.clamp_js(CO.wageLv, .8, 1.8) * (1 + msk("hro") * .8) * (1 + minf(3, CO.hubs.size() * .25))
+	for r in D.ROLE:
+		var open := false
+		for t in D.VT:
+			if D.VT[t].role == r and D.VT[t].tier <= CO.tier:
+				open = true
+		var pl: float = D.ROLE[r].pool
+		CO.pool[r] = JS.round_js(minf(CO.pool.get(r, 0) * .5 + pl * lk, pl * lk * 2.5)) if open else 0.0
+	for id in CO.mgr:
+		mgmt += CO.mgr[id].sal
+	for h in CO.hubs:
+		rent += hub_rent_m(h)
+		mk += h.get("mk", 0)
+	if CO.ins:
+		var vc := 0.0
+		for v in CO.veh:
+			vc += D.VT[v.t].cost
+		ins = JS.round_js(500 + vc * .0035)
+	for l in CO.loans:
+		var it: float = l.left * l.rate / 12
+		var pr: float = minf(l.left, l.amt / 24)
+		interest += it
+		l.left -= pr
+		CO.cash -= pr
+	CO.loans = CO.loans.filter(func(l): return l.left > 1)
+	if CO.cash < 0:
+		interest += -CO.cash * .025
+	# tenders
+	for t in CO.tenders:
+		m.tender += t.pay * t.n
+		t.left -= 1
+	CO.cash += m.tender
+	for t in CO.tenders:
+		if t.left <= 0:
+			var n: int = t.n
+			for v in CO.veh:
+				if n > 0 and v.st == "tender" and v.t == t.t:
+					v.st = "idle"
+					n -= 1
+			co_news("good", "doc", "Завершено тендер «%s»: техніка повернулася в роботу" % t.n_)
+	CO.tenders = CO.tenders.filter(func(t): return t.left > 0)
+	# dishonest managers
+	for id in CO.mgr:
+		if not CO.mgr[id].honest:
+			stolen += maxf(200, co_rev(m) * rnd(.008, .025))
+	m.wage += wage
+	m.mgmt += mgmt
+	m.rent += rent
+	m.mk += mk
+	m.ins += ins
+	m.interest += interest
+	m.stolen += stolen
+	m.other += stolen
+	CO.cash -= wage + mgmt + rent + mk + ins + interest + stolen
+	# history
+	CO.hist.cash.append(CO.cash)
+	CO.hist.rev.append(co_rev(m))
+	CO.hist.rat.append(JS.fixed2(CO.rating))
+	CO.hist.prof.append(co_rev(m) - co_cost(m))
+	for key in CO.hist:
+		if CO.hist[key].size() > 48:
+			CO.hist[key].pop_front()
+	CO.lm = m
+	CO.m = co_zero()
+	# competitors
+	for c in CO.comp:
+		c.rev *= 1 + c.g + rnd(-.02, .02)
+	# world: border conflicts
+	for x in CO.conf:
+		if x.until <= day:
+			co_news("good", "handshake", "Кордон %s — %s знову відкрито" % [states[x.a].name, states[x.b].name])
+	CO.conf = CO.conf.filter(func(x): return x.until > day)
+	if chance(.12) and CO.conf.size() < 3:
+		var a: Dictionary = pick(states)
+		var nb: Array = Array(neighbors[a.id]) if a.id < neighbors.size() else []
+		nb = nb.filter(func(j): return j >= 0 and j < states.size())
+		var bi: Variant = _pick_or_null(nb)
+		if bi != null and not in_conf(a.id) and not in_conf(bi):
+			var b: Dictionary = states[bi]
+			CO.conf.append({"a": a.id, "b": b.id, "until": day + rint(90, 270)})
+			co_news("bad", "swords", "Конфлікт на кордоні %s — %s: перевезення ускладнені, ризики зросли" % [a.name, b.name])
+	if chance(.05):
+		var k := rnd(1.15, 1.4)
+		CO.fuel = minf(2.2, CO.fuel * k)
+		co_news("bad", "barrel", "Пальне подорожчало на %d%%: світові ціни на нафту стрибнули" % int(JS.round_js((k - 1) * 100)))
+	# coMonthEvents (events, tenders): not ported yet
+	# management candidates refresh
+	for sd in D.MG:
+		if not CO.mgr.has(sd.id) and (not CO.cand.has(sd.id) or chance(.25)):
+			co_mgr_cand(sd.id)
+	# achievements
+	for ms in CO_MS:
+		if not CO.ms.has(ms[0]) and _ms_done(ms[0]):
+			CO.ms.append(ms[0])
+			co_news("good", "star", "Досягнення %s: «%s»" % [CO.name, ms[1]])
+	# bankruptcy
+	if CO.cash < -co_credit() * .5:
+		CO.neg += 1
+	elif CO.cash > 0:
+		CO.neg = 0
+	if CO.neg >= 3:
+		over = true
+	biz_month()
+
+
+## pick() of an empty array: the HTML version still draws R() and gets undefined
+func _pick_or_null(a: Array) -> Variant:
+	var i := int(floor(R.next() * a.size()))
+	return a[i] if i < a.size() else null
