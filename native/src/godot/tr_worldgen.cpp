@@ -1,4 +1,5 @@
 #include "tr_worldgen.h"
+#include "core/jsmath.h"
 
 #include "core/board.h"
 #include "core/nav.h"
@@ -77,6 +78,7 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("air_path", "x0", "z0", "x1", "z1"), &TRWorldGen::air_path);
 	ClassDB::bind_method(D_METHOD("set_blocks", "blocks"), &TRWorldGen::set_blocks);
 	ClassDB::bind_method(D_METHOD("state_at", "x", "z"), &TRWorldGen::state_at);
+	ClassDB::bind_method(D_METHOD("sky_hit", "x0", "z0", "x1", "z1"), &TRWorldGen::sky_hit);
 	ClassDB::bind_method(D_METHOD("continents"), &TRWorldGen::continents);
 	ClassDB::bind_method(D_METHOD("crossings", "p", "eco"), &TRWorldGen::crossings);
 	ClassDB::bind_method(D_METHOD("states_rng_state"), &TRWorldGen::states_rng_state);
@@ -351,8 +353,31 @@ void TRWorldGen::set_blocks(const Dictionary &d) {
 		PackedInt32Array a = d["sky"];
 		for (int64_t i = 0; i < a.size(); i++) b->sky.insert(a[i]);
 	}
+	// weather zones that shut roads/rails (incBlk): x, z, r, flags (1 road, 2 rail) per zone;
+	// a lattice node is shut when it lies within 0.8 r of the zone centre
+	if (d.has("wx_zones") && board_) {
+		PackedFloat64Array a = d["wx_zones"];
+		const tr::Board &B = *board_;
+		if (a.size() >= 4 && b->wx.empty()) b->wx.assign(size_t(B.nx) * B.nz, 0);
+		for (int64_t q = 0; q + 3 < a.size(); q += 4) {
+			const double x = a[q], z = a[q + 1], r = a[q + 2];
+			const uint8_t fl = uint8_t(int(a[q + 3]));
+			const int i0 = std::max(0, int(std::floor((x - r + B.wx / 2) / B.st))), i1 = std::min(B.nx - 1, int(std::ceil((x + r + B.wx / 2) / B.st)));
+			const int k0 = std::max(0, int(std::floor((z - r + B.wz / 2) / B.st))), k1 = std::min(B.nz - 1, int(std::ceil((z + r + B.wz / 2) / B.st)));
+			for (int k = k0; k <= k1; k++)
+				for (int i = i0; i <= i1; i++) {
+					const double nx = -B.wx / 2 + i * B.st, nz = -B.wz / 2 + k * B.st;
+					if (tr::js_hypot(nx - x, nz - z) < r * .8) b->wx[size_t(k) * B.nx + i] |= fl;
+				}
+		}
+	}
 	b->ignore_wx = d.get("ignore_wx", false);
 	blocks_ = b;
+}
+
+bool TRWorldGen::sky_hit(double x0, double z0, double x1, double z1) const {
+	if (!nav_ || !blocks_ || blocks_->sky.empty()) return false;
+	return nav_->sky_hit(x0, z0, x1, z1, blocks_->sky);
 }
 
 int64_t TRWorldGen::state_at(double x, double z) const {

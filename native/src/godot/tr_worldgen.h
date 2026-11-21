@@ -51,6 +51,8 @@ public:
 	//   closed_pairs: PackedInt32Array of a,b pairs, closed_cps: PackedFloat32Array of x,z, sky: PackedInt32Array, ignore_wx: bool}
 	void set_blocks(const Dictionary &blocks);
 	// state at a world point (bOwn), -1 water / neutral
+	// does a straight flight cross a closed sky (skyHit)
+	bool sky_hit(double x0, double z0, double x1, double z1) const;
 	int64_t state_at(double x, double z) const;
 	// continent of every state (coCont): states whose land touches share a continent id (a state index)
 	PackedInt32Array continents() const;

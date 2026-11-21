@@ -30,13 +30,13 @@ public:
 	std::vector<float> sea(int ta, int tb) const;
 	// flight path; straight unless it crosses a closed sky
 	std::vector<float> air(double x0, double z0, double x1, double z1, const Blocks *blk) const;
+	bool sky_hit(double x0, double z0, double x1, double z1, const std::set<int> &sky) const;
 
 private:
 	const World &w_;
 	const Board &b_;
 	std::vector<int> nown_;         // state per lattice node
 	std::vector<uint8_t> water_;    // water cell per lattice square (boardSea)
-	bool sky_hit(double x0, double z0, double x1, double z1, const std::set<int> &sky) const;
 	bool blocked(int n, int m, bool rail, const Blocks &blk) const;
 };
 

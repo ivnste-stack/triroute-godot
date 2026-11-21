@@ -92,7 +92,10 @@ func _record(sim: Sim, sent: int) -> Dictionary:
 		bd.append("%d:%s" % [k.id, _h(k.pay)])
 	var jb := PackedStringArray()
 	for j in CO.jobs:
-		jb.append("%d:%s%s:%s:%s:%d" % [j.id, "r" if j.get("ret") else "", _h(j.tot), _h(j.t0), "/".join(j.vids.map(func(x): return str(x))), j.get("stops", []).size()])
+		var fl: String = ("r" if j.get("ret") else "") + ("b" if j.get("back") else "") + ("x" if j.get("cx0") else "") + ("l" if j.get("lost") else "")
+		var pk: float = j.payK if j.get("payK") else 1.0
+		jb.append("%d:%s%s:%s:%s:%d:%s:%d:%s" % [j.id, fl, _h(j.tot), _h(j.t0), "/".join(j.vids.map(func(x): return str(x))), j.get("stops", []).size(),
+			_h(j.dmg), j.get("pz", []).size() if j.get("pz") != null else 0, _h(pk)])
 	var vh := PackedStringArray()
 	for v in CO.veh:
 		vh.append("%d:%d:%s:%s:%s" % [v.id, v.loc, v.st, _h(v.cond), _h(v.km)])
@@ -108,7 +111,23 @@ func _record(sim: Sim, sent: int) -> Dictionary:
 	var pl := PackedStringArray()
 	for k in CO.pool:
 		pl.append("%s=%d" % [k, int(CO.pool[k])])
-	return {"day": sim.day, "sent": sent, "cash": _h(CO.cash), "rating": _h(CO.rating), "morale": _h(CO.morale), "fuel": _h(CO.fuel),
+	var cl := PackedStringArray()
+	for c in CO.get("cls", []):
+		cl.append("%d%s%d-%s@%s" % [c.id, c.kind, c.a, str(c.b) if c.get("b") != null else "", _h(c.until)])
+	var wx := PackedStringArray()
+	for w in CO.get("wx", []):
+		wx.append("%d%s@%s" % [w.id, w.k, _h(w.until)])
+	var bn := PackedStringArray()
+	for z in CO.get("band", []):
+		bn.append("%d@%s" % [z.id, _h(z.x)])
+	var pr := PackedStringArray()
+	for z in CO.get("pir", []):
+		pr.append("%d@%s" % [z.id, _h(z.x)])
+	var jm := PackedStringArray()
+	for J in sim.jam:
+		jm.append("%d:%d@%s" % [J.id, J.n, _h(J.until)])
+	return {"cls": " ".join(cl), "wx": " ".join(wx), "band": " ".join(bn), "pir": " ".join(pr), "jam": " ".join(jm), "mcd": CO.get("mcd", 0),
+		"day": sim.day, "sent": sent, "cash": _h(CO.cash), "rating": _h(CO.rating), "morale": _h(CO.morale), "fuel": _h(CO.fuel),
 		"parts": _h(CO.get("parts", 1.0)), "uid": CO.uid, "deliv": _h(CO.deliv), "cdel": CO.cdel, "xp": CO.get("xp", 0), "m": " ".join(m),
 		"board": " ".join(bd), "jobs": " ".join(jb), "veh": " ".join(vh), "hubs": " ".join(hb), "conf": " ".join(cf), "comp": " ".join(cp), "pool": " ".join(pl)}
 
