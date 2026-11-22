@@ -34,6 +34,12 @@ var _pending: Variant = null     # a saved game waiting for its world
 
 
 ## the interface in CSS pixels, like the browser: the system scale (Windows display scaling), or the setting
+## VSync off by default: the frame rate is not tied to the monitor
+func apply_video() -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(Settings.get_value("vsync")) else DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = 0
+
+
 func apply_ui_scale() -> void:
 	Ui.set_blur(bool(Settings.get_value("blur")))
 	var sc := float(Settings.get_value("ui_scale"))
@@ -49,6 +55,7 @@ func apply_ui_scale() -> void:
 
 func _ready() -> void:
 	apply_ui_scale()
+	apply_video()
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else ""
@@ -162,8 +169,10 @@ func _new_game_dialog() -> void:
 
 func _settings() -> void:
 	var c := Ui.vbox(12)
-	var wfx_on: bool = float(Settings.get_value("wfx")) > 0
-	c.add_child(Ui.hbox(12, [Ui.note("Відблиски й хвилі на воді"), Ui.spacer(), Ui.seg([[true, "Увімкнено"], [false, "Вимкнено"]], wfx_on, func(v): Settings.set_value("wfx", 1.0 if v else 0.0))]))
+	c.add_child(Ui.hbox(12, [Ui.note("Вертикальна синхронізація (VSync)"), Ui.spacer(), Ui.seg([[false, "Вимкнено"], [true, "Увімкнено"]], bool(Settings.get_value("vsync")), func(v):
+		Settings.set_value("vsync", v)
+		apply_video())]))
+	c.add_child(Ui.note("VSync прибирає розриви кадру, але обмежує FPS частотою монітора."))
 	var auto_sc: float = float(Settings.get_value("ui_scale"))
 	c.add_child(Ui.hbox(12, [Ui.note("Масштаб інтерфейсу"), Ui.spacer(), Ui.seg([[0.0, "Авто"], [1.0, "100%"], [1.25, "125%"], [1.5, "150%"], [2.0, "200%"]], auto_sc, func(v):
 		Settings.set_value("ui_scale", v)
@@ -265,8 +274,6 @@ func _on_world(w: Dictionary) -> void:
 		for l in FileAccess.get_file_as_string(_args.colors).split("\n", false):
 			cols.append(Color(l.strip_edges()))
 		map.set_colors(cols)
-	if _args.has("wfx"):
-		Settings.set_value("wfx", float(_args.wfx))
 	if session != null:
 		session.queue_free()
 	session = GameSession.new()

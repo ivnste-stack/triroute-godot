@@ -15,6 +15,19 @@ var top := false
 var dpr := 1.0
 var hits: Array = []           # {x, y, r, kind, data}: hover targets (INC_HIT / JAM_HIT)
 var _border_cache := {}
+var _key := ""
+var _anim: Piece
+var _anim_on := false
+var _hits_static: Array = []
+var _hits_anim: Array = []
+
+
+class Piece extends Node2D:
+	var fn: Callable
+
+	func _draw() -> void:
+		if fn.is_valid():
+			fn.call(self)
 
 
 func _ready() -> void:
@@ -29,8 +42,27 @@ func _process(_delta: float) -> void:
 
 
 func _process_t(_delta: float) -> void:
-	if session != null and session.sim != null:
+	if session == null or session.sim == null or camera == null:
+		return
+	var sim := session.sim
+	var CO := sim.CO
+	# the situation changes with the camera and with the game (a few times a game day), not every frame
+	var k := "%.4f|%.4f|%.4f|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [camera.tx, camera.tz, camera.dist, size, dpr, int(sim.co_now() * 8),
+		CO.get("clV", 0), CO.get("wx", []).size(), CO.get("pir", []).size(), CO.get("band", []).size(), sim.jam.size(), sim.sky.size(), camera.dist < 26]
+	if k != _key:
+		_key = k
 		queue_redraw()
+	# the moving parts: pulsing road closures (base), the running dashes of a closed sky (top)
+	if _anim == null:
+		_anim = Piece.new()
+		_anim.fn = _anim_top if top else _anim_base
+		add_child(_anim)
+	if (top and sim.sky.size()) or (not top and sim.jam.size() and camera.dist < 26):
+		_anim.queue_redraw()
+		_anim_on = true
+	elif _anim_on:
+		_anim.queue_redraw()
+		_anim_on = false
 
 
 func _P(x: float, z: float) -> Variant:
@@ -82,6 +114,8 @@ func _draw_t() -> void:
 		_draw_top()
 	else:
 		_draw_base()
+	_hits_static = hits
+	hits = _hits_static + _hits_anim
 
 
 func _draw_base() -> void:
@@ -122,21 +156,6 @@ func _draw_base() -> void:
 		var c: Variant = _P(w.x, w.z)
 		if c != null and camera.dist < 26:
 			_badge(c, K.ic, _c("150,160,172") if w.t0 > sim.co_now() else _c(K.col))
-	# road closures
-	if sim.jam.size() and camera.dist < 26:
-		var r := clampf(9 / sqrt(camera.dist), 2.2, 5) * dpr
-		var T_ := sim.co_now()
-		for J in sim.jam:
-			var q: Variant = _P(J.x, J.z)
-			if q == null or q.x < -20 or q.y < -20 or q.x > W + 20 or q.y > H + 20:
-				continue
-			var pl: bool = J.t0 > T_
-			var col := _c("150,160,172") if pl else (_c("240,68,60") if J.sev > 1 else _c("255,138,42"))
-			var f: float = .3 if pl else .5 + .5 * sin(t * 4 + J.id)
-			draw_circle(q, r * (1.9 + .4 * f), Color(col, .18 + .14 * f))
-			draw_circle(q, r, col)
-			draw_arc(q, r, 0, TAU, 20, Color("#0b1520"), 1.2 * dpr, true)
-			hits.append({"x": q.x, "y": q.y, "r": r / dpr + 5, "kind": "jam", "data": J})
 	# closed borders: red lines along the border
 	var zw := clampf(13 / camera.dist, 1, 3.2)
 	for cl in CO.get("cls", []):
@@ -154,6 +173,33 @@ func _draw_base() -> void:
 				pts.append(q)
 			if pts.size() > 1:
 				draw_polyline(pts, Color("#f0443c"), 1.25 * zw * dpr, true)
+
+
+## the pulsing road closures (redrawn every frame while there are any)
+func _anim_base(n: Node2D) -> void:
+	_hits_anim = []
+	if session == null or session.sim == null:
+		return
+	var sim := session.sim
+	var t := Time.get_ticks_msec() / 1000.0
+	var W := size.x
+	var H := size.y
+	# road closures
+	if sim.jam.size() and camera.dist < 26:
+		var r := clampf(9 / sqrt(camera.dist), 2.2, 5) * dpr
+		var T_ := sim.co_now()
+		for J in sim.jam:
+			var q: Variant = _P(J.x, J.z)
+			if q == null or q.x < -20 or q.y < -20 or q.x > W + 20 or q.y > H + 20:
+				continue
+			var pl: bool = J.t0 > T_
+			var col := _c("150,160,172") if pl else (_c("240,68,60") if J.sev > 1 else _c("255,138,42"))
+			var f: float = .3 if pl else .5 + .5 * sin(t * 4 + J.id)
+			n.draw_circle(q, r * (1.9 + .4 * f), Color(col, .18 + .14 * f))
+			n.draw_circle(q, r, col)
+			n.draw_arc(q, r, 0, TAU, 20, Color("#0b1520"), 1.2 * dpr, true)
+			_hits_anim.append({"x": q.x, "y": q.y, "r": r / dpr + 5, "kind": "jam", "data": J})
+	hits = _hits_static + _hits_anim
 
 
 ## the border lines a closure covers (incBorderPts)
@@ -180,16 +226,6 @@ func _draw_top() -> void:
 	var H := size.y
 	# a closed sky: a running dashed line along the borders of the states at war, a badge at the capital
 	if sim.sky.size():
-		var off := fmod(Time.get_ticks_msec() / 1000.0 * 14 * dpr, 13 * dpr)
-		for l in lines:
-			if not (sim.sky.has(l.a - 1) or sim.sky.has(l.b - 1)):
-				continue
-			var pts := PackedVector2Array()
-			for i in range(0, l.p.size(), 2):
-				var q: Variant = _P(l.p[i], l.p[i + 1])
-				if q != null:
-					pts.append(q)
-			_dashed(pts, 7 * dpr, 6 * dpr, off, Color(214 / 255.0, 150 / 255.0, 1.0, .95), 2 * dpr)
 		for cid in sim.sky:
 			var cap: Variant = null
 			for p in sim.PL:
@@ -262,8 +298,25 @@ func _draw_top() -> void:
 			hits.append({"x": q.x, "y": q.y, "r": R / dpr + 3, "kind": "port", "data": {"place": p, "what": ks[i][0], "why": ks[i][1]}})
 
 
+## the running dashes along the borders of the states at war (a closed sky)
+func _anim_top(n: Node2D) -> void:
+	if session == null or session.sim == null or session.sim.sky.is_empty():
+		return
+	var sim := session.sim
+	var off := fmod(Time.get_ticks_msec() / 1000.0 * 14 * dpr, 13 * dpr)
+	for l in lines:
+		if not (sim.sky.has(l.a - 1) or sim.sky.has(l.b - 1)):
+			continue
+		var pts := PackedVector2Array()
+		for i in range(0, l.p.size(), 2):
+			var q: Variant = _P(l.p[i], l.p[i + 1])
+			if q != null:
+				pts.append(q)
+		_dashed(n, pts, 7 * dpr, 6 * dpr, off, Color(214 / 255.0, 150 / 255.0, 1.0, .95), 2 * dpr)
+
+
 ## a dashed polyline with a moving offset (setLineDash + lineDashOffset)
-func _dashed(pts: PackedVector2Array, dash: float, gap: float, off: float, col: Color, w: float) -> void:
+func _dashed(n: CanvasItem, pts: PackedVector2Array, dash: float, gap: float, off: float, col: Color, w: float) -> void:
 	var per := dash + gap
 	var acc := per - fmod(off, per)
 	for i in range(1, pts.size()):
@@ -275,7 +328,7 @@ func _dashed(pts: PackedVector2Array, dash: float, gap: float, off: float, col: 
 			var ph := fmod(acc, per)
 			if ph < dash:
 				var e := minf(L, s + dash - ph)
-				draw_line(a.lerp(b, s / L), a.lerp(b, e / L), col, w, true)
+				n.draw_line(a.lerp(b, s / L), a.lerp(b, e / L), col, w, true)
 				acc += e - s
 				s = e
 			else:

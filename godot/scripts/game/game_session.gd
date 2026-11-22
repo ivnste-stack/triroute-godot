@@ -61,6 +61,16 @@ func demo_fleet() -> void:
 	sim.co_auto()
 
 
+var _logic_t := 1.0
+var _logic_day := -1.0
+
+
+func n_days_done(d: float) -> bool:
+	var changed := d != _logic_day
+	_logic_day = d
+	return changed
+
+
 ## while set, time may not run (the route planner is open): why
 var lock_speed := ""
 signal speed_refused(why: String)
@@ -116,4 +126,11 @@ func _process_t(delta: float) -> void:
 			sim.co_day()
 			Perf.end("co_day")
 			day_passed.emit(int(sim.day))
-	sim.co_frame(fraction())
+	# the game logic of a frame (incidents, arrivals) up to 60 times a second, like the HTML version at 60 Hz;
+	# in between only the moment of the day moves on, so vehicles still glide at any frame rate
+	_logic_t += delta
+	if _logic_t >= 1.0 / 60.0 or n_days_done(sim.day):
+		_logic_t = 0.0
+		sim.co_frame(fraction())
+	else:
+		sim.CO.lastFr = fraction()

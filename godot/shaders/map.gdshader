@@ -16,7 +16,6 @@ uniform vec2 WSZ = vec2(22.5, 15.0);        // world size
 uniform vec3 col[120];
 uniform int hov = -1;
 uniform int sel = -1;
-uniform float wfx = 0.5;
 
 varying vec3 wp;
 
@@ -101,14 +100,6 @@ void fragment() {
 		w = mix(w, deep, smoothstep(.18, .85, depth));
 		w += vec3(.12, .22, .24) * exp(-depth * 45.);
 		w = w * (.84 + .32 * tH) + vec3(0., .035, .045) * (tH - .5);
-		// sun glints: a few water triangles light up for a moment, like ripples catching the sun
-		if (wfx > 0.) {
-			float s2 = hsh(tcuv * vec2(917.3, 613.7) + tH);
-			float on = step(1. - .09 * wfx, s2);
-			float ph = fract(TIME * (.18 + .22 * fract(s2 * 13.7)) + tH * 7.3);
-			float gl = pow(max(0., 1. - abs(ph - .5) * 9.), 2.);
-			w += vec3(.42, .62, .72) * gl * on * (.55 + .45 * wfx) * smoothstep(.0, .04, depth);
-		}
 		// ---- land: state colour
 		uint id = idAt(tcuv);
 		vec3 L = cc(id);

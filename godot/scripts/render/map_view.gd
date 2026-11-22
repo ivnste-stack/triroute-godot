@@ -91,7 +91,6 @@ func _ready() -> void:
 	vehicles = VehicleLayer.new()
 	vehicles.camera = camera
 	cl.add_child(vehicles)
-	EventBus.settings_changed.connect(func(k, v): if k == "wfx": _mat.set_shader_parameter("wfx", float(v)))
 
 
 ## Starts generating a world; world_ready fires when the map is on screen.
@@ -183,7 +182,6 @@ func _show(w: Dictionary) -> void:
 	_mat.set_shader_parameter("MWH", Vector2(mw, mh))
 	_mat.set_shader_parameter("WSZ", size)
 	_mat.set_shader_parameter("triS", float(w.tri_s))
-	_mat.set_shader_parameter("wfx", float(Settings.get_value("wfx")))
 	set_colors(w.states.map(func(st): return Color(st.color)))
 	camera.set_world(size)
 	_plane.visible = true
