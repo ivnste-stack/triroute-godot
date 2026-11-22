@@ -345,6 +345,17 @@ func _on_world(w: Dictionary) -> void:
 			get_viewport().warp_mouse(Vector2(float(c[0]), float(c[1])))
 			for i in 4:
 				await get_tree().process_frame
+		if _args.has("toast"):   # test: a toast
+			toasts.push("warn", "Немає ліцензії", "Залізниця: цей вид транспорту ще недоступний")
+			toasts.push("good", "Рейс відправлено", "Вантажна машина: Річар → Сенвіль")
+			for i in 20:
+				await get_tree().process_frame
+		if _args.has("dd"):   # test: the first dropdown of the open window, opened
+			var ob: Array = win.body.find_children("*", "OptionButton", true, false)
+			if ob.size():
+				ob[0].show_popup()
+			for i in 6:
+				await get_tree().process_frame
 		if _args.has("click"):   # test: a click on the map
 			var c: PackedStringArray = String(_args.click).split(",")
 			map.camera.clicked.emit(Vector2(float(c[0]), float(c[1])))
@@ -442,6 +453,8 @@ func _win_tick(force: bool = false) -> void:
 	var sim := session.sim
 	if not force and sim.day == _win_day:
 		return
+	if not force and _win_day >= 0 and (win.scroll as SmoothScroll).busy():
+		return   # later: the content does not change under the reader's hand
 	# a new day: the window changes in small steps over a few frames; opening it or an action: at once
 	var smooth := not force and _win_day >= 0 and hud.open_window == _win_id
 	_win_day = sim.day
@@ -489,6 +502,7 @@ func _win_tick(force: bool = false) -> void:
 		if not force:
 			_restore_scroll(keep)
 	off.free()
+	get_viewport().update_mouse_cursor_state()   # the button under the pointer lights up again
 	if _args.has("perf"):
 		print("PERF window %s %s in %.1f ms" % [id, "swapped" if smooth else "built", (Time.get_ticks_usec() - t0) / 1000.0])
 

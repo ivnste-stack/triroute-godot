@@ -25,13 +25,8 @@ func push(tone: String, title: String, text: String = "") -> void:
 	sb.border_width_left = 3
 	sb.content_margin_left = 12
 	g.add_theme_stylebox_override("panel", sb)
-	# the coloured left edge over the thin border
-	var edge := ColorRect.new()
-	edge.color = col
-	edge.custom_minimum_size.x = 3
-	edge.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	edge.offset_right = 3
-	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# the coloured left edge (border-left: 3px), drawn by the panel under its content
+	g.draw.connect(func(): g.draw_rect(Rect2(0, 0, 3, g.size.y), col))
 	var ic := Ui.icon({"bad": "alert", "good": "check"}.get(tone, "info"), 18, col)
 	ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var tt := Ui.vbox(2, [Ui.label(title, 13, Ui.FG, Ui.font("body", 600))])
@@ -41,7 +36,6 @@ func push(tone: String, title: String, text: String = "") -> void:
 		tt.add_child(d)
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	g.add_child(Ui.hbox(10, [ic, tt]))
-	g.add_child(edge)
 	g.mouse_filter = Control.MOUSE_FILTER_PASS
 	g.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: g.queue_free())
 	add_child(g)

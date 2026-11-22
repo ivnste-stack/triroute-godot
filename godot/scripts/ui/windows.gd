@@ -253,11 +253,7 @@ func _dd(options: Array, sel: Variant, cb: Callable) -> OptionButton:
 	o.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(10, 5, 10, 5)))
 	o.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(10, 5, 10, 5)))
 	o.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	var pm := o.get_popup()
-	pm.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_HI, Ui.LINE_HI, 1, Vector4(4, 4, 4, 4)))
-	pm.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT))
-	pm.add_theme_color_override("font_color", Ui.FG2)
-	pm.add_theme_color_override("font_hover_color", Ui.FG)
+	Ui.style_popup(o.get_popup())
 	for i in options.size():
 		var x: Array = options[i]
 		if x.size() > 2 and x[2] != "":

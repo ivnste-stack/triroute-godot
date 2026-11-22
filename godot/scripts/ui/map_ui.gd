@@ -83,7 +83,7 @@ func _ready() -> void:
 	sep.custom_minimum_size.y = 1
 	col.add_child(sep)
 	_insp_scroll = SmoothScroll.new()
-	_insp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_insp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER   # never wider than 330
 	_insp_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(_insp_scroll)
 	_insp_body = Ui.vbox(10)
@@ -109,16 +109,7 @@ func attach(s: GameSession, m: MapView) -> void:
 
 
 static func _xbtn(cb: Callable) -> Button:
-	var x := Button.new()
-	x.flat = true
-	x.icon = Icons.tex("close", Ui.MUTED, 18)
-	x.add_theme_constant_override("icon_max_width", 18)
-	x.custom_minimum_size = Vector2(30, 30)
-	x.focus_mode = Control.FOCUS_NONE
-	x.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	x.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	x.pressed.connect(cb)
-	return x
+	return Ui.xbtn(cb)
 
 
 ## CO_LN: names of the continents and islands, the biggest first
@@ -791,6 +782,7 @@ func _build_card() -> void:
 	col.add_child(Ui.margin(body, 12))
 	_card.add_child(col)
 	_card.visible = true
+	get_viewport().update_mouse_cursor_state.call_deferred()
 	_card.reset_size()
 
 
@@ -924,6 +916,15 @@ func _build_insp(keep: bool = false) -> void:
 	if keep:
 		_restore(scroll)
 	_insp.visible = true
+	_fit_insp.call_deferred()
+	get_viewport().update_mouse_cursor_state()
+
+
+## #insp: 330 wide at the right edge, never past the screen
+func _fit_insp() -> void:
+	var vs := get_viewport_rect().size
+	_insp.size = Vector2(330, vs.y - 170)
+	_insp.position = Vector2(vs.x - 14 - _insp.size.x, 84)
 
 
 func _restore(v: int) -> void:

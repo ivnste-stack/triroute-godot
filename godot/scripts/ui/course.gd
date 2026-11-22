@@ -337,15 +337,13 @@ func _draw_course() -> void:
 	if s0 != null:
 		n.draw_circle(s0, 8.5, Planner.LP_C[m])
 		n.draw_circle(s0, 5.5, Color.WHITE)
-	var B: Dictionary = sim.PL[j.k.to]
-	var d: Variant = planner._scr(B.x, 0, B.z)
-	if d != null:
-		var f := fmod(Time.get_ticks_msec() / 900.0, 1.0)
-		n.draw_arc(d, 10 + f * 16, 0, TAU, 40, Color(Planner.ARR, 1 - f), 2.4, true)
+	# departure and arrival: blinking waves, as in the planner
+	planner._wave(n, sim.PL[j.k.from], Planner.DEP)
+	planner._wave(n, sim.PL[j.k.to], Planner.ARR)
 
 
 ## the departure and arrival blocks (lpTags)
 func _draw() -> void:
 	if not on:
 		return
-	planner.draw_tags(self, [{"pid": j.k.from, "tag": "ВІДПРАВКА", "col": Planner.DEP}, {"pid": j.k.to, "tag": "ПРИБУТТЯ", "col": Planner.ARR}])
+	pass   # the waves on the map show departure and arrival

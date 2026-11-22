@@ -37,13 +37,7 @@ func _init() -> void:
 	var tm := Ui.margin(tt, 16, 14)
 	tm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(tm)
-	var x := Button.new()
-	x.flat = true
-	x.icon = Icons.tex("close", Ui.MUTED, 18)
-	x.add_theme_constant_override("icon_max_width", 18)
-	x.focus_mode = Control.FOCUS_NONE
-	x.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	x.pressed.connect(func(): close_requested.emit())
+	var x := Ui.xbtn(func(): close_requested.emit())
 	head.add_child(x)
 	head.add_child(Ui.margin(null, 5))
 	col.add_child(head)

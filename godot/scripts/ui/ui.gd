@@ -237,6 +237,42 @@ static func btn(text: String, kind: String = "", ic: String = "", cb: Callable =
 	return b
 
 
+## .xbtn: 30×30, transparent; under the pointer a thin border and the icon in fg
+static func xbtn(cb: Callable) -> Button:
+	var x := Button.new()
+	x.icon = Icons.tex("close", MUTED, 18)
+	x.add_theme_constant_override("icon_max_width", 18)
+	x.custom_minimum_size = Vector2(30, 30)
+	x.focus_mode = Control.FOCUS_NONE
+	x.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	x.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	x.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	x.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	x.add_theme_stylebox_override("hover", box(Color.TRANSPARENT, LINE_HI))
+	x.add_theme_stylebox_override("pressed", box(Color(1, 1, 1, .05), LINE_HI))
+	x.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	x.mouse_entered.connect(func(): x.icon = Icons.tex("close", FG, 18))
+	x.mouse_exited.connect(func(): x.icon = Icons.tex("close", MUTED, 18))
+	x.pressed.connect(cb)
+	return x
+
+
+## the list of a dropdown (OptionButton) styled like .ddlist: no radio marks, small icons, accent on hover
+static func style_popup(pm: PopupMenu) -> void:
+	pm.add_theme_stylebox_override("panel", box(Color(12 / 255.0, 19 / 255.0, 28 / 255.0, .97), LINE_HI, 1, Vector4(4, 4, 4, 4)))
+	pm.add_theme_stylebox_override("hover", box(ACCENT_SOFT))
+	pm.add_theme_color_override("font_color", FG2)
+	pm.add_theme_color_override("font_hover_color", FG)
+	pm.add_theme_font_size_override("font_size", 13)
+	pm.add_theme_constant_override("icon_max_width", 14)
+	pm.add_theme_constant_override("v_separation", 8)
+	pm.add_theme_constant_override("h_separation", 8)
+	pm.add_theme_constant_override("item_start_padding", 8)
+	var none := ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RGBA8))
+	for k in ["radio_checked", "radio_unchecked", "radio_checked_disabled", "radio_unchecked_disabled", "checked", "unchecked"]:
+		pm.add_theme_icon_override(k, none)
+
+
 ## .pill (tone: "", "good", "warn", "bad", "acc")
 static func pill(text: String, tone: String = "", ic: String = "") -> PanelContainer:
 	var col: Color = {"good": GOOD, "warn": WARN, "bad": BAD, "acc": ACCENT}.get(tone, FG2)
@@ -247,7 +283,10 @@ static func pill(text: String, tone: String = "", ic: String = "") -> PanelConta
 	h.add_theme_constant_override("separation", 5)
 	if ic != "":
 		h.add_child(icon(ic, 12, col))
-	h.add_child(label(text, 11, col, font("body", 500)))
+	if text != "":
+		h.add_child(label(text, 11, col, font("body", 500)))
+	else:
+		h.alignment = BoxContainer.ALIGNMENT_CENTER
 	p.add_child(h)
 	# .pill: as tall as its text (3 px around), never stretched by the row it sits in
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER

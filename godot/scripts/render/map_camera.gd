@@ -97,7 +97,7 @@ func pick_plane(screen: Vector2) -> Variant:
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton
-		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN) and get_viewport().gui_get_hovered_control() == null:
 			var f := 1.12 if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else .89
 			tdist = clampf(tdist * f, min_dist, world_size.x * 1.25)
 		elif mb.button_index == MOUSE_BUTTON_LEFT:

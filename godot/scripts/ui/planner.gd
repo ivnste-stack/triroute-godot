@@ -660,7 +660,6 @@ func _process(_delta: float) -> void:
 	if not on:
 		return
 	_draw_node.queue_redraw()
-	queue_redraw()
 
 
 func _scr(x: float, y: float, z: float) -> Variant:
@@ -781,9 +780,7 @@ func _draw_route() -> void:
 
 ## lpTags: the departure and arrival blocks above the towns, with a leader and a ring
 func _draw() -> void:
-	if not on:
-		return
-	draw_tags(self, _tags)
+	pass   # departure and arrival are shown by their waves only (no blocks over the towns)
 
 
 func draw_tags(n: CanvasItem, tags: Array) -> void:
