@@ -1078,7 +1078,13 @@ func _fleet(body: VBoxContainer) -> void:
 			var home: Variant = v.get("home")
 			var mtip := _tip("Перемістити в інший хаб", "Покаже на мапі всі ваші хаби — клікніть, щоб приписати техніку туди. Лише по дорозі%s: на інший континент не перемістити.%s" % [" (залізниці)" if Ty.mode == "rail" else "", (" Зараз приписана: %s." % _pl(home)) if home != null else ""])
 			var mb := _btn("", "sm", "updown", func(): move(v), true, mtip)
-			mb.custom_minimum_size = Vector2(26, 24)
+			mb.custom_minimum_size = Vector2(0, 22)   # .btn.sm.icon: padding 3px 5px
+			for k in ["normal", "hover", "pressed"]:
+				var sb: StyleBoxFlat = mb.get_theme_stylebox(k).duplicate()
+				sb.content_margin_left = 5
+				sb.content_margin_right = 5
+				mb.add_theme_stylebox_override(k, sb)
+			mb.add_theme_constant_override("icon_max_width", 14)
 			name_c.add_child(mb)
 		var acts := _right([])
 		if v.st == "idle":
