@@ -131,3 +131,36 @@ func test_consolidated_trip_from_the_board() -> String:
 	if not w.cons_orders().is_empty():
 		return "the panel keeps sent orders"
 	return ""
+
+
+func test_move_vehicle_to_another_hub() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game()
+	sim.CO.xp = 1e6
+	var w := Windows.new(sim)
+	var asked := []
+	w.move_vehicle.connect(func(v): asked.append(v))
+	var hq: Dictionary = sim.PL[sim.CO.hq]
+	var near: Array = sim.PL.filter(func(p): return p.cid == hq.cid and p.id != hq.id)
+	near.sort_custom(func(a, b): return Vector2(a.x - hq.x, a.z - hq.z).length() < Vector2(b.x - hq.x, b.z - hq.z).length())
+	sim.CO.cash = 1e7
+	var r := sim.act_hub(near[0].id)
+	if sim.hub_at(near[0].id) == null:
+		return "no second hub: %s" % [r]
+	var v: Variant = null
+	for x in sim.CO.veh:
+		if x.st == "idle" and Sim.D.VT[x.t].mode == "road" and x.loc == sim.CO.hq:
+			v = x
+	if v == null:
+		return "no idle truck at the headquarters"
+	w.move(v)
+	if asked.is_empty():
+		return "the map was not asked to pick a hub"
+	var ts: Array = sim.mv_targets(v).filter(func(t): return t.why == "")
+	if ts.is_empty():
+		return "no target hub"
+	var res := sim.act_move(v, ts[0].pid)
+	if v.st != "trip" or v.home != ts[0].pid:
+		return "the vehicle did not set off: %s" % [res]
+	return ""

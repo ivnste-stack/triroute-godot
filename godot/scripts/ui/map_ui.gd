@@ -43,6 +43,9 @@ var _risk_q := []
 var _risk_k := ""
 var _rng := RandomNumberGenerator.new()
 var _day := -1.0
+var mv_v: Variant = null         # MV: the vehicle being re-based
+var mv_ts: Array = []
+var _mv_node: Control
 
 
 func _ready() -> void:
@@ -193,6 +196,8 @@ func _flag(cid: int, w: float = 18, h: float = 12) -> ColorRect:
 func _process(_delta: float) -> void:
 	if sim == null:
 		return
+	if mv_v != null:
+		_mv_node.queue_redraw()
 	_follow()
 	_place_card()
 	if _card.visible and Time.get_ticks_msec() - _card_t > 700:
@@ -226,7 +231,7 @@ func _hover() -> void:
 	if best != null:
 		_show_tip("inc:%s:%d" % [best.kind, int(best.x * 7 + best.y)], func(): return _inc_tip(best), mp, 340)
 		return
-	if (planner != null and planner.on) or (course != null and course.on):
+	if (planner != null and planner.on) or (course != null and course.on) or mv_v != null:
 		_show_tip("", null, mp)
 		return
 	# vehicles grouped in a city
@@ -443,6 +448,9 @@ func _zone_tip(w: Vector3) -> Variant:
 func _on_click(mp: Vector2) -> void:
 	if sim == null or _over_ui():
 		return
+	if mv_v != null:
+		_mv_click(mp)
+		return
 	if planner != null and planner.on:
 		planner.click(mp)
 		return
@@ -508,6 +516,92 @@ func _screen(x: float, z: float) -> Variant:
 	if cam.is_position_behind(p):
 		return null
 	return cam.unproject_position(p)
+
+
+# ====================================================================== re-basing a vehicle (08w-move.js)
+func move_start(v: Dictionary) -> void:
+	mv_v = v
+	mv_ts = sim.mv_targets(v)
+	if _mv_node == null:
+		_mv_node = Control.new()
+		_mv_node.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_mv_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_mv_node.draw.connect(_mv_draw)
+		map.vehicles.get_parent().add_child(_mv_node)
+	acted.emit({"tone": "", "t": "%s: оберіть новий хаб" % D.VT[v.t].n, "d": "Клікніть на підсвічене місто. Esc — скасувати."})
+
+
+func move_cancel(say: bool = true) -> void:
+	if mv_v == null:
+		return
+	mv_v = null
+	mv_ts = []
+	_mv_node.queue_redraw()
+	if say:
+		acted.emit({"tone": "", "t": "Переміщення скасовано", "d": ""})
+
+
+func _mv_click(mp: Vector2) -> void:
+	if not sim.CO.veh.any(func(x): return is_same(x, mv_v)):
+		move_cancel(false)
+		return
+	var best: Variant = null
+	var bd := 26.0
+	for t in mv_ts:
+		var p: Dictionary = sim.PL[t.pid]
+		var q: Variant = _screen(p.x, p.z)
+		if q == null:
+			continue
+		var d: float = q.distance_to(mp)
+		if d < bd:
+			bd = d
+			best = t
+	if best == null:
+		acted.emit({"tone": "warn", "t": "Оберіть хаб", "d": "Клікніть на підсвічене місто з хабом. Esc — скасувати."})
+		return
+	if best.why != "":
+		acted.emit({"tone": "warn", "t": sim.PL[best.pid].name, "d": best.why})
+		return
+	var v: Dictionary = mv_v
+	move_cancel(false)
+	acted.emit(sim.act_move(v, best.pid))
+
+
+func _unhandled_key_input(e: InputEvent) -> void:
+	if mv_v != null and e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		move_cancel()
+
+
+func _mv_draw() -> void:
+	if mv_v == null:
+		return
+	var n := _mv_node
+	var f := fmod(Time.get_ticks_msec() / 1000.0 * .8, 1.0)
+	var font := Ui.font("mono", 700)
+	for t in mv_ts:
+		var p: Dictionary = sim.PL[t.pid]
+		var q: Variant = _screen(p.x, p.z)
+		if q == null:
+			continue
+		var ok: bool = t.why == ""
+		var col := Color8(92, 200, 242) if ok else Color8(150, 160, 172)
+		if ok:
+			n.draw_arc(q, 10 + f * 22, 0, TAU, 40, Color(col, 1 - f), 2, true)
+		n.draw_circle(q, 8.75, Color("#0b1520"))
+		n.draw_circle(q, 8, col)
+		Icons.draw(n, "updown", q.x - 5, q.y, 10, Color("#0b1520"))
+		var txt: String = p.name if ok else "%s · %s" % [p.name, t.why]
+		var tw := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 12
+		var r := Rect2(q.x - tw / 2, q.y + 12, tw, 17)
+		n.draw_rect(r, Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .9))
+		n.draw_rect(r, Color(col, .9), false, 1)
+		n.draw_string(font, Vector2(q.x - tw / 2 + 6, q.y + 24.5), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
+	var vp: Dictionary = sim.PL[sim.mv_from(mv_v)]
+	var s: Variant = _screen(vp.x, vp.z)
+	if s != null:
+		n.draw_circle(s, 5.75, Color("#0b1520"))
+		n.draw_circle(s, 5, Color("#ffb347"))
 
 
 # ====================================================================== the trip card

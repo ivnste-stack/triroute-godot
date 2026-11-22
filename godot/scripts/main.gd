@@ -309,6 +309,10 @@ func _play(hq: int, auto_decisions: bool) -> void:
 	map_ui.course = course
 	map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
+	wins.move_vehicle.connect(func(v):
+		if win.visible:
+			_toggle_window("")
+		map_ui.move_start(v))
 	if not session.speed_refused.is_connected(_speed_refused):
 		session.speed_refused.connect(_speed_refused)
 	map_ui.visible = true
@@ -451,7 +455,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			if session != null and session.sim != null and hud.visible:
 				session.set_speed(e.keycode - KEY_0)
 		KEY_ESCAPE:
-			if planner.on or course.on:
+			if planner.on or course.on or map_ui.mv_v != null:
 				return
 			if win.visible:
 				_toggle_window("")

@@ -9,6 +9,7 @@ signal acted(res: Dictionary)
 signal goto_place(pid: int)
 signal select_job(j: Dictionary)
 signal plan_order(k: Dictionary)    # ACT.lpPlan: open the route planner
+signal move_vehicle(v: Dictionary)  # ACT.coMove: pick a new home hub on the map
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -586,6 +587,21 @@ func _perm_sect(body: VBoxContainer) -> void:
 	body.add_child(v)
 
 
+## ACT.coMove: the fleet window closes and the map shows the hubs to pick from
+func move(v: Dictionary) -> void:
+	var T: Dictionary = D.VT[v.t]
+	if T.mode != "road" and T.mode != "rail":
+		_do({"tone": "warn", "t": "Лише наземна техніка", "d": "Переміщувати між хабами можна машини й потяги"})
+		return
+	if not gr_ok("move"):
+		return
+	var ts := sim.mv_targets(v)
+	if not ts.any(func(t): return t.why == ""):
+		_do({"tone": "warn", "t": "Немає куди перемістити", "d": "Відкрийте ще один хаб — тоді техніку можна буде перевести туди" if sim.CO.hubs.size() < 2 else "Усі інші хаби недоступні: інший континент, немає сполучення або вони заповнені"})
+		return
+	move_vehicle.emit(v)
+
+
 ## grOK: some features open with a grade of experience; a toast says how far it is
 func gr_ok(f: String) -> bool:
 	var need: int = GR_FEAT.get(f, 0)
@@ -1055,6 +1071,12 @@ func _fleet(body: VBoxContainer) -> void:
 		var name_c := Ui.hbox(6, [Ui.icon(Ty.ic, 16, Ui.FG), _b(Ty.n, 13)])
 		if g.size() > 1:
 			name_c.add_child(Ui.pill("×%d" % g.size()))
+		if Ty.mode == "road" or Ty.mode == "rail":
+			var home: Variant = v.get("home")
+			var mtip := _tip("Перемістити в інший хаб", "Покаже на мапі всі ваші хаби — клікніть, щоб приписати техніку туди. Лише по дорозі%s: на інший континент не перемістити.%s" % [" (залізниці)" if Ty.mode == "rail" else "", (" Зараз приписана: %s." % _pl(home)) if home != null else ""])
+			var mb := _btn("", "sm", "updown", func(): move(v), true, mtip)
+			mb.custom_minimum_size = Vector2(26, 24)
+			name_c.add_child(mb)
 		var acts := _right([])
 		if v.st == "idle":
 			var t: String = v.t
