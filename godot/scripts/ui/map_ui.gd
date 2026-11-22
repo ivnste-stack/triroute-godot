@@ -19,6 +19,7 @@ const RISK_N := [["Низький", "good"], ["Помірний", "warn"], ["В�
 const LP_N := {"road": "авто", "rail": "залізниця", "sea": "море", "air": "авіа"}
 
 var map: MapView
+var planner: Planner   # while it is open, the clicks place the points of the route
 var session: GameSession
 var sim: Sim
 var follow := false             # CO.follow: the camera follows the selected vehicle
@@ -222,6 +223,9 @@ func _hover() -> void:
 				best = h
 	if best != null:
 		_show_tip("inc:%s:%d" % [best.kind, int(best.x * 7 + best.y)], func(): return _inc_tip(best), mp, 340)
+		return
+	if planner != null and planner.on:
+		_show_tip("", null, mp)
 		return
 	# vehicles grouped in a city
 	for h in map.vehicles.hits:
@@ -436,6 +440,9 @@ func _zone_tip(w: Vector3) -> Variant:
 # ====================================================================== clicks
 func _on_click(mp: Vector2) -> void:
 	if sim == null or _over_ui():
+		return
+	if planner != null and planner.on:
+		planner.click(mp)
 		return
 	# a vehicle
 	var jh: Variant = null

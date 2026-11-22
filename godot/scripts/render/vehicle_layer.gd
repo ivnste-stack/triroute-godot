@@ -307,6 +307,10 @@ func _route(j: Dictionary, T0: float) -> void:
 
 ## a dashed line anchored to the world: the pattern does not crawl when the camera moves (wdash)
 func _wdash(pts: Array, col: Color, w: float) -> void:
+	_wdash_on(self, pts, col, w)
+
+
+func _wdash_on(n: CanvasItem, pts: Array, col: Color, w: float) -> void:
 	if pts.size() < 2:
 		return
 	var q := pow(2.0, round(log(maxf(.25, camera.dist)) / log(2.0)))
@@ -332,7 +336,7 @@ func _wdash(pts: Array, col: Color, w: float) -> void:
 				var pa: Variant = _P(a.x + (b.x - a.x) * s / L, a.y + (b.y - a.y) * s / L, a.z + (b.z - a.z) * s / L)
 				var pb: Variant = _P(a.x + (b.x - a.x) * e / L, a.y + (b.y - a.y) * e / L, a.z + (b.z - a.z) * e / L)
 				if pa != null and pb != null:
-					draw_line(pa, pb, col, w, true)
+					n.draw_line(pa, pb, col, w, true)
 				acc += e - s
 				s = e
 			else:

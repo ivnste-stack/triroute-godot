@@ -61,7 +61,15 @@ func demo_fleet() -> void:
 	sim.co_auto()
 
 
+## while set, time may not run (the route planner is open): why
+var lock_speed := ""
+signal speed_refused(why: String)
+
+
 func set_speed(i: int) -> void:
+	if i and lock_speed != "":
+		speed_refused.emit(lock_speed)
+		return
 	if i == speed:
 		return
 	if i == 0:

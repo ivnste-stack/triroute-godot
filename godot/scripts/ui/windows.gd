@@ -8,6 +8,7 @@ extends RefCounted
 signal acted(res: Dictionary)
 signal goto_place(pid: int)
 signal select_job(j: Dictionary)
+signal plan_order(k: Dictionary)    # ACT.lpPlan: open the route planner
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -663,14 +664,46 @@ func _board_card(k: Dictionary) -> PanelContainer:
 	if P.ok:
 		var pl := _plan_line(k, P)
 		v.add_child(pl)
-		v.add_child(Ui.hbox(8, [_btn("Відправити", "pri sm", "send", func(): _do(sim.act_send(id)))]))
+		v.add_child(Ui.hbox(8, [_btn("Прокласти маршрут", "pri sm", "road", func(): plan_order.emit(k))]))
 	else:
 		var why: String = P.why
 		var quiet: bool = why.begins_with("Замовник хоче рейтинг") or why.begins_with("Немає вільної техніки") \
 			or (sim.perm_need(cg, k.mode).any(func(x): return not sim.perm_ok(x)) and why.begins_with("Потрібна ліцензія «"))
 		if not quiet:
 			v.add_child(_icl("alert", why, Ui.WARN))
+		v.add_child(Ui.hbox(8, [_btn("Прокласти маршрут", "sm", "road", func(): pass, false, _tip("Маршрут не прокласти", why + "."))]))
 	return _blk(v)
+
+
+## a multi-drop flight on the board (08r-multi.js)
+func _multi_card(k: Dictionary) -> PanelContainer:
+	var cg: Dictionary = sim.cargo_i[k.cg]
+	var air := Color8(214, 150, 255)
+	var mi := Ui.icon("plane", 18, air)
+	mi.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var info := Ui.vbox(2, [Ui.hbox(6, [_b("Збірний авіарейс з"), _place(k.from)]), _icl(cg.ic, "%s · %s т · %d країни · один літак" % [cg.n, Ui.loc(k.tons), k.multi.size()])])
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var pay := Ui.num(Ui.usd(k.pay), 16)
+	pay.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var ex := Ui.label("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), 13, Ui.FG2)
+	ex.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var v := Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, ex])])])
+	var dv := Ui.vbox(4)
+	for d in k.multi:
+		var l := Ui.hbox(6, [_place(d.to, 14, false), Ui.label(Ui.loc(d.tons) + " т", 13, Ui.FG2)])
+		var r := Ui.rich(("[color=#f0625f]критично[/color] · " if d.get("crit") else "") + "до %s · %s" % [Ui.days(d.dl), Ui.usd(d.pay)], 13)
+		r.size_flags_horizontal = Control.SIZE_SHRINK_END
+		r.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		dv.add_child(Ui.hbox(8, [l, r]))
+	v.add_child(dv)
+	var id: int = k.id
+	var n := _note("У кожної країни свій термін — порядок посадок обираєте ви.")
+	v.add_child(Ui.hbox(8, [n, _btn("Прокласти маршрут", "pri sm", "road", func(): plan_order.emit(k)), _btn("", "sm", "trash", func():
+		sim.act_decline(id)
+		_do({}), true, "Прибрати")]))
+	var b := _blk(v, Color(air, .45))
+	return b
 
 
 func _jobs(body: VBoxContainer) -> void:
@@ -705,7 +738,7 @@ func _jobs(body: VBoxContainer) -> void:
 		var n: int = maxi(st.bmore, 15)
 		var v := Ui.vbox(8)
 		for k in bd.slice(0, n):
-			v.add_child(_board_card(k))
+			v.add_child(_multi_card(k) if k.get("multi") else _board_card(k))
 		body.add_child(v)
 		if bd.size() > n:
 			body.add_child(_more(bd.size() - n, "bmore"))

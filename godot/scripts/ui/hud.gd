@@ -28,6 +28,7 @@ var _logo: Control
 var _kpis: HBoxContainer
 var _kpi_vals: Array = []
 var _rail_btns := {}
+var _rail: Control
 var _badges := {}
 var _speed_btns: Array = []
 var _cells := {}
@@ -121,9 +122,15 @@ static func paint_logo(c: Control, sim: Variant) -> void:
 
 
 # ---------- the rail of windows ----------
+## body.lplan: the rail of windows steps aside while the route planner is open
+func set_planning(on: bool) -> void:
+	_rail.visible = not on
+
+
 func _build_rail() -> void:
 	var g := Ui.glass()
 	g.position = Vector2(14, 84)
+	_rail = g
 	var v := Ui.vbox(0)
 	g.add_child(Ui.margin(v, 4))
 	add_child(g)

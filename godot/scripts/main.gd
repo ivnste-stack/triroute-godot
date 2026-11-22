@@ -4,7 +4,7 @@ extends Node
 ## Command line (automatic screenshots): godot --path godot -- [--seed=777] [--shot=path.png] [--cam=x,z,dist]
 ##   [--company [--demo: a fleet with a dispatcher] [--hq=place id]] [--days=N] [--speed=0…3] [--select]
 ##   [--win=coJobs] [--pick: stop at the choice of the headquarters] [--menu: the main menu]
-##   [--place=pid | --country=cid: the card on the right] [--mouse=x,y: hover] [--click=x,y]
+##   [--plan[=auto]: the planner for the first order] [--place=pid | --country=cid: the card on the right] [--mouse=x,y: hover] [--click=x,y]
 
 const DIFF_N := [[0, "Навчальна"], [1, "Звичайна"], [2, "Жорстка"]]
 const SIZE_N := [["s", "Мала · 2×1"], ["m", "Середня · 3×2"], ["l", "Велика · 4×3"]]
@@ -19,6 +19,7 @@ var win: WindowPanel
 var wins: Windows
 var toasts: Toasts
 var map_ui: MapUi
+var planner: Planner
 var menu: StartMenu
 var _args := {}
 var _ng := {"size": "m", "diff": 1, "seed": 0}
@@ -59,6 +60,10 @@ func _ready() -> void:
 	_ui.add_child(win)
 	toasts = Toasts.new()
 	_ui.add_child(toasts)
+	planner = Planner.new()
+	planner.acted.connect(_on_act)
+	planner.closed.connect(_planner_closed)
+	_ui.add_child(planner)
 	modals = ModalLayer.new()
 	modals.theme = Ui.theme()
 	modals.opened.connect(func(): if session != null: session.hold = true)
@@ -215,6 +220,12 @@ func _on_world(w: Dictionary) -> void:
 		if _args.has("select") and session.sim.CO.jobs.size():
 			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret"))
 			map_ui.select_job(js[0] if js.size() else session.sim.CO.jobs[0], true)
+		if _args.has("plan"):
+			var ks: Array = session.sim.CO.board.filter(func(x): return session.sim.co_plan(x).ok)
+			if ks.size():
+				_plan(ks[0])
+				if _args.plan == "auto":
+					planner.auto_use()
 		if _args.has("place"):
 			map_ui.show_place(int(_args.place))
 		if _args.has("country"):
@@ -279,6 +290,11 @@ func _play(hq: int, auto_decisions: bool) -> void:
 	wins.goto_place.connect(_goto_place)
 	wins.select_job.connect(func(j): map_ui.select_job(j, true))
 	map_ui.attach(session, map)
+	map_ui.planner = planner
+	planner.attach(session, map)
+	wins.plan_order.connect(_plan)
+	if not session.speed_refused.is_connected(_speed_refused):
+		session.speed_refused.connect(_speed_refused)
 	map_ui.visible = true
 	hud.visible = true
 	var p: Dictionary = session.sim.PL[hq]
@@ -364,6 +380,29 @@ func _on_act(res: Dictionary) -> void:
 	map_ui.refresh()
 
 
+## ACT.lpPlan: the route planner over the map; the windows, the rail and the cards step aside
+func _plan(k: Dictionary) -> void:
+	var why := planner.open(k)
+	if why != "":
+		toasts.push("warn", "Маршрут не прокласти", why)
+		return
+	if win.visible:
+		_toggle_window("")
+	map_ui.close_insp()
+	map_ui.close_card()
+	hud.set_planning(true)
+
+
+func _planner_closed(reopen: String) -> void:
+	hud.set_planning(false)
+	if reopen != "" and hud.open_window != reopen:
+		_toggle_window(reopen)
+
+
+func _speed_refused(why: String) -> void:
+	toasts.push("warn", "Час на паузі", why)
+
+
 func _goto_place(pid: int) -> void:
 	map_ui.fly(pid)
 
@@ -382,6 +421,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			if session != null and session.sim != null and hud.visible:
 				session.set_speed(e.keycode - KEY_0)
 		KEY_ESCAPE:
+			if planner.on:
+				return
 			if win.visible:
 				_toggle_window("")
 
