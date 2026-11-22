@@ -15,6 +15,8 @@ var session: GameSession
 var hud: Hud
 var modals: ModalLayer
 var win: WindowPanel
+var wins: Windows
+var toasts: Toasts
 var menu: StartMenu
 var _args := {}
 var _ng := {"size": "m", "diff": 1, "seed": 0}
@@ -44,8 +46,11 @@ func _ready() -> void:
 	_ui.add_child(hud)
 	win = WindowPanel.new()
 	win.visible = false
+	win.theme = Ui.theme()
 	win.close_requested.connect(func(): _toggle_window(hud.open_window))
 	_ui.add_child(win)
+	toasts = Toasts.new()
+	_ui.add_child(toasts)
 	modals = ModalLayer.new()
 	modals.theme = Ui.theme()
 	modals.opened.connect(func(): if session != null: session.hold = true)
@@ -243,6 +248,9 @@ func _play(hq: int, auto_decisions: bool) -> void:
 	session.choose_hq(hq, auto_decisions)
 	session.set_speed(0)
 	map.attach_session(session)
+	wins = Windows.new(session.sim)
+	wins.acted.connect(_on_act)
+	wins.goto_place.connect(_goto_place)
 	hud.visible = true
 	var p: Dictionary = session.sim.PL[hq]
 	map.camera.look_at_point(Vector2(p.x, p.z + .3), 6.0)
@@ -279,7 +287,7 @@ func _toggle_window(id: String) -> void:
 var _win_day := -1.0
 
 
-## the content of the open window (the windows themselves are ported in stage 6b)
+## the content of the open window, built again every game day and after every action
 func _win_tick(force: bool = false) -> void:
 	var sim := session.sim
 	if not force and sim.day == _win_day:
@@ -288,6 +296,7 @@ func _win_tick(force: bool = false) -> void:
 	var id := hud.open_window
 	var h: Array = WIN_HEAD.get(id, ["info", id])
 	win.set_head(h[0], "%s · %s" % [sim.CO.name, Ui.date_str(sim.date)], h[1])
+	var keep := win.scroll.scroll_vertical
 	win.clear_body()
 	if id == "news":
 		for i in range(sim.news.size() - 1, maxi(-1, sim.news.size() - 60), -1):
@@ -301,8 +310,32 @@ func _win_tick(force: bool = false) -> void:
 			win.body.add_child(Ui.hbox(10, [dot, t]))
 		if sim.news.is_empty():
 			win.body.add_child(Ui.note("Поки що новин немає.", Ui.MUTED))
-		return
-	win.body.add_child(Ui.hint("Це вікно переноситься в наступній частині (етап 6б). Логіка вже працює: дані з гри відображатимуться тут так само, як у HTML-версії."))
+	else:
+		wins.build(id, win.body)
+	# the same place in the window after a rebuild
+	if not force:
+		_restore_scroll(keep)
+
+
+func _restore_scroll(v: int) -> void:
+	await get_tree().process_frame
+	win.scroll.scroll_vertical = v
+
+
+## the result of an action in a window: a toast (a dialog for a new licence), then the window again
+func _on_act(res: Dictionary) -> void:
+	if res.get("lic"):
+		modals.push({"icon": "doc", "tone": "good", "eyebrow": "Нова ліцензія", "title": res.t, "body": res.d, "close": true,
+			"choices": [{"t": "Чудово", "f": func(): pass}]})
+	elif res.get("t", "") != "":
+		toasts.push(res.get("tone", ""), res.t, res.get("d", ""))
+	_win_day = -1
+	_win_tick()
+
+
+func _goto_place(pid: int) -> void:
+	var p: Dictionary = session.sim.PL[pid]
+	map.camera.look_at_point(Vector2(p.x, p.z + .3), 6.0)
 
 
 # ---------- checks ----------

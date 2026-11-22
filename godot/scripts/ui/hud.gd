@@ -100,20 +100,24 @@ func _cell_box(right: bool, pad: Vector4 = Vector4(12, 8, 12, 8)) -> StyleBoxFla
 
 ## coLogo: the company colour, a darker wedge, an arrow and the initials
 func _draw_logo() -> void:
-	var w := _logo.size.x
-	var h := _logo.size.y
-	var col := Color(session.sim.CO.get("col", "#ffb347")) if session != null and session.sim != null else Ui.WARM
+	paint_logo(_logo, session.sim if session != null else null)
+
+
+static func paint_logo(c: Control, sim: Variant) -> void:
+	var w := c.size.x
+	var h := c.size.y
+	var col := Color(sim.CO.get("col", "#ffb347")) if sim != null else Ui.WARM
 	var k := Vector2(w / 96.0, h / 64.0)
-	_logo.draw_rect(Rect2(0, 0, w, h), col)
-	_logo.draw_colored_polygon(PackedVector2Array([Vector2(0, 64) * k, Vector2(96, 14) * k, Vector2(96, 64) * k]), Color(0, 0, 0, .18))
-	_logo.draw_polyline(PackedVector2Array([Vector2(18, 44) * k, Vector2(46, 20) * k, Vector2(46, 32) * k, Vector2(78, 32) * k]), Color("#0b1520"), 5 * k.x, true)
-	if session != null and session.sim != null:
+	c.draw_rect(Rect2(0, 0, w, h), col)
+	c.draw_colored_polygon(PackedVector2Array([Vector2(0, 64) * k, Vector2(96, 14) * k, Vector2(96, 64) * k]), Color(0, 0, 0, .18))
+	c.draw_polyline(PackedVector2Array([Vector2(18, 44) * k, Vector2(46, 20) * k, Vector2(46, 32) * k, Vector2(78, 32) * k]), Color("#0b1520"), 5 * k.x, true)
+	if sim != null:
 		var ini := ""
-		for part in String(session.sim.CO.name).split(" ", false):
+		for part in String(sim.CO.name).split(" ", false):
 			ini += part.left(1)
 		var f := Ui.font("body", 700)
-		_logo.draw_string(f, Vector2(58, 56) * k, ini.left(2).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, int(15 * k.y), Color("#0b1520"))
-	_logo.draw_rect(Rect2(0, 0, w, h), Ui.LINE_HI, false, 1)
+		c.draw_string(f, Vector2(58, 56) * k, ini.left(2).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, int(15 * k.y), Color("#0b1520"))
+	c.draw_rect(Rect2(0, 0, w, h), Ui.LINE_HI, false, 1)
 
 
 # ---------- the rail of windows ----------

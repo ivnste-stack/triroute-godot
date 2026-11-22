@@ -331,6 +331,21 @@ static func grp(n: float) -> String:
 	return ("−" if n < 0 else "") + s + out
 
 
+## toLocaleString("uk-UA") of any number: spaces between thousands, up to `dec` decimals, no trailing zeros
+static func loc(x: float, dec: int = 3) -> String:
+	var r := snappedf(absf(x), pow(10.0, -dec))
+	var ip := floorf(r)
+	var fr := String.num(r - ip, dec).trim_prefix("0")
+	if fr == "." or fr == "0":
+		fr = ""
+	return ("−" if x < 0 else "") + grp(ip).trim_prefix("−") + fr.replace(".", ",")
+
+
+## a number as JS prints it (String(x)): 19, 1.1, 0.25
+static func js_num(x: float) -> String:
+	return String.num(x)
+
+
 static func km(len_: float) -> String:
 	return grp(len_ * GameData.KM) + " км"
 

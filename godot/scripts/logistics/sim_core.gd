@@ -1344,6 +1344,8 @@ func lp_fee(k: Dictionary, r: Dictionary, m: String, tons: float, cid: int) -> f
 
 ## plan: {legs: [{a, b, m, r (a drawn route or null), tons?, pay?, dl?}], veh0?, ctry?}
 func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
+	if i == 0 and plan.get("t00") == null:
+		plan.t00 = co_now()   # a chain keeps the moment the order was accepted (08v)
 	var L: Dictionary = plan.legs[i]
 	var kk := k.duplicate()
 	kk.multi = null

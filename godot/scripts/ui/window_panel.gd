@@ -6,6 +6,7 @@ extends PanelContainer
 signal close_requested
 
 var body: VBoxContainer
+var scroll: ScrollContainer
 var _eyebrow: Label
 var _title: Label
 var _icon: TextureRect
@@ -48,7 +49,7 @@ func _init() -> void:
 	sep.color = Ui.LINE
 	sep.custom_minimum_size.y = 1
 	col.add_child(sep)
-	var scroll := ScrollContainer.new()
+	scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)
@@ -67,4 +68,5 @@ func set_head(icon: String, eyebrow: String, title: String) -> void:
 
 func clear_body() -> void:
 	for c in body.get_children():
+		body.remove_child(c)
 		c.queue_free()
