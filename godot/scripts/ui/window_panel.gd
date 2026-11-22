@@ -51,7 +51,7 @@ func _init() -> void:
 	sep.color = Ui.LINE
 	sep.custom_minimum_size.y = 1
 	col.add_child(sep)
-	scroll = ScrollContainer.new()
+	scroll = SmoothScroll.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)

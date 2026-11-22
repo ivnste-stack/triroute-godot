@@ -186,6 +186,7 @@ func _show(w: Dictionary) -> void:
 	camera.set_world(size)
 	_plane.visible = true
 	overlay.build(w.lines, w.board, size, w.own, Vector2i(mw, mh))
+	overlay.walls.set_terrain(terrain, float(w.tri_s), Vector2(mw, mh))   # land per lattice triangle, like the map
 	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
 	inc_base.lines = w.lines
 	inc_top.lines = w.lines

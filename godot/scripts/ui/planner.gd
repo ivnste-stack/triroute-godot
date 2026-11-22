@@ -41,7 +41,7 @@ func _ready() -> void:
 	visible = false
 	_panel = Ui.glass()
 	add_child(_panel)
-	_scroll = ScrollContainer.new()
+	_scroll = SmoothScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_panel.add_child(_scroll)
 	_body = Ui.vbox(0)
@@ -377,7 +377,7 @@ func _panel_build() -> void:
 			b.clip_text = true
 			b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			vl.add_child(b)
-		var sc := ScrollContainer.new()
+		var sc := SmoothScroll.new()
 		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		sc.custom_minimum_size.y = minf(150, (L.slice(0, 12).size() + 1) * 32)
 		vl.size_flags_horizontal = Control.SIZE_EXPAND_FILL

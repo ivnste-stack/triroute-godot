@@ -105,7 +105,7 @@ func _build(spec: Dictionary) -> Control:
 		body.add_child(spec.content)
 	for c in spec.get("choices", []):
 		body.add_child(_choice(c))
-	var scroll := ScrollContainer.new()
+	var scroll := SmoothScroll.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size.y = mini(int(get_viewport_rect().size.y) - 220, 640)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL

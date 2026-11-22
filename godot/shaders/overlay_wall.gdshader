@@ -14,10 +14,33 @@ uniform float wall_h = 0.0625;
 uniform bool lines = false;
 uniform sampler2D land : filter_nearest;
 uniform vec2 world;      // WX, WZ
+uniform sampler2D t0 : filter_linear, repeat_disable;   // the map's terrain: height in r, the diagonal in g
+uniform float triS = 10.0;
+uniform vec2 MWH = vec2(1800.0, 1200.0);
+const float NEAR = 0.1;  // the camera's near plane: what lies behind it is cut off, never projected
 
 varying float v_part;    // faces: 0 soil, 1 water; lines: 0 dark, 1 light
 varying float v_shade;
 varying float v_d;       // lines: the distance across the line in px
+
+// the centre of the lattice triangle under uv (triInfo of map.gdshader): land and sea follow these triangles
+vec2 tri_centre(vec2 uv) {
+	vec2 q = uv * MWH / triS;
+	vec2 fl = floor(q), fr = q - fl;
+	float dg = textureLod(t0, (fl + .5) * triS / MWH, 0.).g;
+	vec2 c;
+	if (dg > .5) c = mix(vec2(1. / 3., 2. / 3.), vec2(2. / 3., 1. / 3.), step(fr.y, fr.x));
+	else c = mix(vec2(1. / 3.), vec2(2. / 3.), step(1., fr.x + fr.y));
+	return (fl + c) * triS / MWH;
+}
+
+// a segment of clip-space points cut at the near plane: false when all of it is behind the camera
+bool clip_seg(inout vec4 a, inout vec4 b) {
+	if (a.w < NEAR && b.w < NEAR) return false;
+	if (a.w < NEAR) a = mix(a, b, (NEAR - a.w) / (b.w - a.w));
+	if (b.w < NEAR) b = mix(b, a, (NEAR - b.w) / (a.w - b.w));
+	return true;
+}
 
 vec2 to_px(vec4 c) {
 	vec2 hs = screen * 0.5;
@@ -35,11 +58,19 @@ void vertex() {
 	vec2 m = (p1 + p2) * 0.5;
 	bool facing = n.x * (eye.x - m.x) + n.y * (eye.z - m.y) > 0.0;
 	vec2 outp = vec2(-1e5);
-	if (facing && wall_h > 0.0) {
+	// a wall with a corner behind the camera is left out, like drawWalls (project() of a corner fails)
+	bool whole = true;
+	for (int k = 0; k < 4; k++) {
+		vec2 q = k % 2 == 0 ? p1 : p2;
+		vec4 c = view_proj * vec4(q.x, k < 2 ? 0.0 : -wall_h, q.y, 1.0);
+		if (c.w < NEAR) whole = false;
+	}
+	if (facing && whole && wall_h > 0.0) {
 		if (!lines) {
-			vec2 g = mix(p1, p2, VERTEX.x);
-			vec4 c = view_proj * vec4(g.x, -VERTEX.y * wall_h, g.y, 1.0);
-			if (c.w > 0.02) outp = to_px(c);
+			// the edge of the face at this depth, cut at the near plane, then the point along it
+			vec4 ca = view_proj * vec4(p1.x, -VERTEX.y * wall_h, p1.y, 1.0);
+			vec4 cb = view_proj * vec4(p2.x, -VERTEX.y * wall_h, p2.y, 1.0);
+			if (clip_seg(ca, cb)) outp = to_px(mix(ca, cb, VERTEX.x));
 			v_part = UV.x;
 		} else {
 			float id = UV.y;
@@ -48,7 +79,7 @@ void vertex() {
 			else if (id < 1.5) { a = vec3(p2.x, 0.0, p2.y); b = vec3(p2.x, -wall_h, p2.y); }
 			else { a = vec3(p1.x, -wall_h * 0.5, p1.y); b = vec3(p2.x, -wall_h * 0.5, p2.y); }
 			vec4 ca = view_proj * vec4(a, 1.0), cb = view_proj * vec4(b, 1.0);
-			if (ca.w > 0.02 && cb.w > 0.02) {
+			if (clip_seg(ca, cb)) {
 				vec2 sa = to_px(ca), sb = to_px(cb);
 				vec2 d = sb - sa;
 				float L = length(d);
@@ -70,7 +101,7 @@ void fragment() {
 	float t = A.y / (A.y - B.y);
 	vec3 g = mix(A, B, t);
 	vec2 uv = (g.xz + world * 0.5) / world;
-	if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x < 1.0 && uv.y < 1.0 && texture(land, uv).r > 0.5) discard;
+	if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x < 1.0 && uv.y < 1.0 && textureLod(t0, tri_centre(uv), 0.).r >= 0.0) discard;
 	if (lines) {
 		float al = clamp(1.0 - abs(v_d), 0.0, 1.0);
 		COLOR = v_part > 0.5 ? vec4(170.0, 225.0, 250.0, 255.0 * 0.45 * al) / 255.0 : vec4(10.0, 16.0, 22.0, 255.0 * 0.45 * al) / 255.0;

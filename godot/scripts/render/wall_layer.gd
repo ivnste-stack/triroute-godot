@@ -133,6 +133,15 @@ static func _instances(data: PackedFloat32Array, mesh: ArrayMesh, mat: ShaderMat
 	return node
 
 
+## the terrain texture and its lattice: the walls hide behind land triangle by triangle, as the map draws it
+func set_terrain(t0: Texture2D, tri_s: float, mwh: Vector2) -> void:
+	for m in [_faces, _lines]:
+		if m != null:
+			m.set_shader_parameter("t0", t0)
+			m.set_shader_parameter("triS", tri_s)
+			m.set_shader_parameter("MWH", mwh)
+
+
 func update(camera: MapCamera, view_proj: Projection, screen: Vector2) -> void:
 	if _faces == null:
 		return

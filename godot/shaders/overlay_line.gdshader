@@ -25,7 +25,7 @@ void vertex() {
 	float w = max(width_px, 0.0);
 	float ext = max(w, 1.0) * 0.5 + 1.0;   // one more pixel for the antialiased edge
 	v_w = w;
-	const float EPS = 0.02;
+	const float EPS = 0.1;   // the camera's near plane: nothing behind it is projected
 	vec2 s = vec2(-1e5);
 	v_d = vec2(0.0);
 	if (discs) {

@@ -233,6 +233,7 @@ static func btn(text: String, kind: String = "", ic: String = "", cb: Callable =
 		b.pressed.connect(cb)
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER   # .btn: 34 / 28 px high, not the height of the row
 	return b
 
 
@@ -248,6 +249,9 @@ static func pill(text: String, tone: String = "", ic: String = "") -> PanelConta
 		h.add_child(icon(ic, 12, col))
 	h.add_child(label(text, 11, col, font("body", 500)))
 	p.add_child(h)
+	# .pill: as tall as its text (3 px around), never stretched by the row it sits in
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	return p
 
 

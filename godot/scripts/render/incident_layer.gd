@@ -47,7 +47,7 @@ func _process_t(_delta: float) -> void:
 	var sim := session.sim
 	var CO := sim.CO
 	# the situation changes with the camera and with the game (a few times a game day), not every frame
-	var k := "%.4f|%.4f|%.4f|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [camera.tx, camera.tz, camera.dist, size, dpr, int(sim.co_now() * 8),
+	var k := "%s|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [camera.global_transform, size, dpr, int(sim.co_now() * 8),
 		CO.get("clV", 0), CO.get("wx", []).size(), CO.get("pir", []).size(), CO.get("band", []).size(), sim.jam.size(), sim.sky.size(), camera.dist < 26]
 	if k != _key:
 		_key = k

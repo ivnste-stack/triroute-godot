@@ -186,7 +186,7 @@ func _process_t(_delta: float) -> void:
 		_content = ck
 		_rebuild()
 		_key = ""
-	var k := "%.4f|%.4f|%.4f|%s" % [camera.tx, camera.tz, camera.dist, size]
+	var k := "%s|%s" % [camera.global_transform, size]   # the camera as it is drawn this frame
 	if k != _key:
 		_key = k
 		Perf.begin("town_layer.layout")

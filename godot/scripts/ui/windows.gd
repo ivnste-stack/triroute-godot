@@ -515,7 +515,7 @@ func _home(body: VBoxContainer) -> void:
 				n.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 				kv.add_child(n)
 			v.add_child(kv)
-			var b := _btn("Отримати ліцензію · " + Ui.usd(l.cost), "pri" if lic.ok else "", "doc", func(): _do(sim.act_lic()), lic.ok)
+			var b := _btn("Отримати ліцензію · " + Ui.usd(l.cost), "pri sm" if lic.ok else "sm", "doc", func(): _do(sim.act_lic()), lic.ok)
 			b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			v.add_child(b)
 		lv.add_child(_blk(v, Ui.ACCENT if cur else (Color(241 / 255.0, 196 / 255.0, 83 / 255.0, .45) if nx else Ui.LINE), 1.0 if got or nx else .55))
