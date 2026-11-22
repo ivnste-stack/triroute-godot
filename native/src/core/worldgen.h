@@ -59,4 +59,12 @@ World generate_world(uint32_t seed, const WorldParams &p);
 // Fills tf / hb / hid exactly like the end of genWorld() (tri lattice branch).
 void build_render_data(World &w);
 
+// coastlines (a == 0) and borders between states a and b (state id + 1; 121+ neutral) as polylines in
+// world coordinates: extractSqLines() of 04-map.js
+struct BorderLine {
+	int a, b;
+	std::vector<float> p;
+};
+std::vector<BorderLine> extract_lines(const World &w);
+
 } // namespace tr

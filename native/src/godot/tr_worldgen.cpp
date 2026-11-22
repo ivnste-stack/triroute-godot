@@ -82,6 +82,7 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("sr_grid", "mode", "x0", "z0", "x1", "z1", "zones"), &TRWorldGen::sr_grid);
 	ClassDB::bind_method(D_METHOD("node_path_avoid", "a", "b", "jam_nodes", "zones"), &TRWorldGen::node_path_avoid);
 	ClassDB::bind_method(D_METHOD("continents"), &TRWorldGen::continents);
+	ClassDB::bind_method(D_METHOD("lines"), &TRWorldGen::lines);
 	ClassDB::bind_method(D_METHOD("crossings", "p", "eco"), &TRWorldGen::crossings);
 	ClassDB::bind_method(D_METHOD("crossings64", "p", "eco"), &TRWorldGen::crossings64);
 	ClassDB::bind_method(D_METHOD("states_rng_state"), &TRWorldGen::states_rng_state);
@@ -419,6 +420,19 @@ bool TRWorldGen::sky_hit(double x0, double z0, double x1, double z1) const {
 
 int64_t TRWorldGen::state_at(double x, double z) const {
 	return nav_ ? nav_->own_at(x, z) : -1;
+}
+
+Array TRWorldGen::lines() const {
+	Array out;
+	if (!world_) return out;
+	for (const auto &l : tr::extract_lines(*world_)) {
+		Dictionary d;
+		d["a"] = l.a;
+		d["b"] = l.b;
+		d["p"] = to_packed(l.p);
+		out.push_back(d);
+	}
+	return out;
 }
 
 PackedInt32Array TRWorldGen::continents() const {

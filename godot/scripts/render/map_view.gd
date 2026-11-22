@@ -1,7 +1,9 @@
 class_name MapView
 extends Node3D
 ## The board map: generates the world with the native TRWorldGen in a background thread, uploads the
-## terrain / border / state textures and draws the board plane with shaders/map.gdshader.
+## terrain / border / state textures and draws the board plane with shaders/map.gdshader; on top of it the
+## vector layers (MapOverlay: coastlines, borders, grid, railways, roads) and the settlements with their
+## labels (TownLayer).
 
 signal world_ready(world: Dictionary)
 
@@ -18,6 +20,8 @@ var _gen: Object
 var _task := -1
 var _seed := 0
 var _result: Dictionary = {}
+var overlay: MapOverlay
+var towns: TownLayer
 
 
 func _ready() -> void:
@@ -40,6 +44,15 @@ func _ready() -> void:
 	add_child(camera)
 	camera.current = true
 	camera.hover_changed.connect(_on_hover)
+	var cl := CanvasLayer.new()
+	cl.layer = 0
+	add_child(cl)
+	overlay = MapOverlay.new()
+	overlay.camera = camera
+	cl.add_child(overlay)
+	towns = TownLayer.new()
+	towns.camera = camera
+	cl.add_child(towns)
 	EventBus.settings_changed.connect(func(k, v): if k == "wfx": _mat.set_shader_parameter("wfx", float(v)))
 
 
@@ -57,6 +70,7 @@ func _generate_in_thread() -> void:
 	w["states"] = _gen.generate_states()
 	w["board"] = _gen.generate_board()
 	w["textures"] = _gen.build_textures()
+	w["lines"] = _gen.lines()
 	_result = w
 
 
@@ -88,6 +102,8 @@ func _show(w: Dictionary) -> void:
 	set_colors(w.states.map(func(st): return Color(st.color)))
 	camera.set_world(size)
 	_plane.visible = true
+	overlay.build(w.lines, w.board, size, w.own, Vector2i(mw, mh))
+	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
 	world_ready.emit(w)
 
 

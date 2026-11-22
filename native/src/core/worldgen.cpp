@@ -2,6 +2,9 @@
 // Every RNG call happens in the same order as in the JS original and arrays that are Float32Array / Int8Array
 // there are float / int8_t here, so the result is the same world bit for bit.
 #include "worldgen.h"
+
+#include <array>
+#include <unordered_map>
 #include "jsmath.h"
 #include "rng.h"
 
@@ -848,6 +851,111 @@ void build_render_data(World &w) {
 			w.tf[i * 4 + 2] = float(clampd(.5 + (lit * .75 + lit2 * .25 - 1) * .85, 0, 1));
 			w.tf[i * 4 + 3] = float(noise(x * .006 + 20, y * .006 + 11) * .5 + noise(x * .018, y * .018 + 60) * .25 + .5);
 		}
+}
+
+std::vector<BorderLine> extract_lines(const World &w) {
+	const int S = w.p.tri_s, SQW = w.sqw, SQH = w.sqh, MW = w.p.mw, MH = w.p.mh, JW = SQH + 3;
+	const double WXh = MW / 160.0, WZh = MH / 160.0;   // half the world size (WX = MW / 80)
+	auto vid = [&](int i, int j) { return (i + 1) * JW + (j + 1); };
+	auto lab = [&](int i, int j, int h) {
+		if (i < 0 || j < 0 || i >= SQW || j >= SQH) return 0;
+		const int d = w.sqd[size_t(j) * SQW + i];
+		double cx, cy;
+		if (d) { cx = h ? 1.0 / 3 : 2.0 / 3; cy = h ? 2.0 / 3 : 1.0 / 3; }
+		else { cx = h ? 2.0 / 3 : 1.0 / 3; cy = h ? 2.0 / 3 : 1.0 / 3; }
+		const int X = std::min(MW - 1, int(std::floor((i + cx) * S))), Y = std::min(MH - 1, int(std::floor((j + cy) * S)));
+		const int o = w.own[size_t(Y) * MW + X];
+		return o < 0 ? 0 : o + 1;
+	};
+	// which half touches each side: "/" (d=0): h0 top+left, h1 bottom+right; "\" (d=1): h0 top+right, h1 bottom+left
+	auto side = [&](int i, int j, char sd) {
+		if (i < 0 || j < 0 || i >= SQW || j >= SQH) return 0;
+		const int d = w.sqd[size_t(j) * SQW + i];
+		const int h = sd == 't' ? 0 : sd == 'b' ? 1 : sd == 'l' ? (d ? 1 : 0) : (d ? 0 : 1);
+		return lab(i, j, h);
+	};
+	// groups keyed a*256+b in insertion order (a JS Map)
+	std::vector<int> keys;
+	std::unordered_map<int, std::vector<int>> groups;
+	auto add = [&](int a, int b, int v1, int v2) {
+		if (a == b) return;
+		if (a > b) std::swap(a, b);
+		const int k = a * 256 + b;
+		auto it = groups.find(k);
+		if (it == groups.end()) {
+			keys.push_back(k);
+			it = groups.emplace(k, std::vector<int>()).first;
+		}
+		it->second.push_back(v1);
+		it->second.push_back(v2);
+	};
+	for (int j = -1; j < SQH; j++)
+		for (int i = -1; i < SQW; i++) {
+			if (i >= 0 && j >= 0) {
+				const int d = w.sqd[size_t(j) * SQW + i];
+				add(lab(i, j, 0), lab(i, j, 1), d ? vid(i, j) : vid(i + 1, j), d ? vid(i + 1, j + 1) : vid(i, j + 1));
+			}
+			if (j >= 0) add(side(i, j, 'r'), side(i + 1, j, 'l'), vid(i + 1, j), vid(i + 1, j + 1));
+			if (i >= 0) add(side(i, j, 'b'), side(i, j + 1, 't'), vid(i, j + 1), vid(i + 1, j + 1));
+		}
+	std::vector<BorderLine> res;
+	for (int key : keys) {
+		const std::vector<int> &e = groups[key];
+		const int a = key >> 8, b = key & 255, ne = int(e.size() / 2);
+		std::vector<int> vorder;
+		std::unordered_map<int, std::vector<int>> adj;
+		for (int q = 0; q < ne; q++)
+			for (int v : {e[q * 2], e[q * 2 + 1]}) {
+				auto it = adj.find(v);
+				if (it == adj.end()) {
+					vorder.push_back(v);
+					it = adj.emplace(v, std::vector<int>()).first;
+				}
+				it->second.push_back(q);
+			}
+		std::vector<uint8_t> used(ne, 0);
+		std::vector<std::vector<int>> chains;
+		auto walk = [&](int start, int ei) {
+			std::vector<int> pts = {start};
+			int v = start;
+			while (ei >= 0 && !used[ei]) {
+				used[ei] = 1;
+				const int nv = e[ei * 2] == v ? e[ei * 2 + 1] : e[ei * 2];
+				pts.push_back(nv);
+				v = nv;
+				const auto &l = adj[v];
+				if (l.size() != 2) break;
+				ei = l[0] == ei ? l[1] : l[0];
+			}
+			return pts;
+		};
+		for (int v : vorder) {
+			const auto l = adj[v];
+			if (l.size() != 2)
+				for (int ei : l)
+					if (!used[ei]) chains.push_back(walk(v, ei));
+		}
+		for (int q = 0; q < ne; q++)
+			if (!used[q]) chains.push_back(walk(e[q * 2], q));
+		for (const auto &ch : chains) {
+			std::vector<std::array<double, 2>> P;
+			for (int v : ch) P.push_back({double((v / JW - 1) * S), double((v % JW - 1) * S)});
+			std::vector<std::array<double, 2>> out = {P[0]};
+			for (size_t k = 1; k + 1 < P.size(); k++) {
+				const auto &A = out.back(), &B = P[k], &C = P[k + 1];
+				if (std::fabs((B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0])) > 1e-3) out.push_back(B);
+			}
+			out.push_back(P.back());
+			BorderLine bl{a, b, {}};
+			for (auto &q : out) {
+				const double x = clampd(q[0], 0, MW), y = clampd(q[1], 0, MH);
+				bl.p.push_back(float(x / MW * (2 * WXh) - WXh));
+				bl.p.push_back(float(y / MH * (2 * WZh) - WZh));
+			}
+			res.push_back(std::move(bl));
+		}
+	}
+	return res;
 }
 
 } // namespace tr

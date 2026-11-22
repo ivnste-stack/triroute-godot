@@ -129,3 +129,35 @@ func test_routes_match_html() -> String:
 		checked += 1
 		print("       seed %s: %d road/rail/sea routes identical to HTML, %.0f ms" % [seed_str, cnt * 3, ms])
 	return "" if checked else "no reference routes"
+
+
+## coastlines and state borders (TRWorldGen.lines, extractSqLines) against the HTML version: the number of lines
+## and points, the pairs of the first lines in order and a weighted sum of every coordinate
+func test_lines_match_html() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var fp: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/lines_fingerprints.json"))
+	for seed_str in fp.keys():
+		var want: Dictionary = fp[seed_str]
+		var gen: Object = ClassDB.instantiate("TRWorldGen")
+		gen.generate(int(seed_str))
+		var L: Array = gen.lines()
+		var n := 0
+		var s := 0.0
+		var coast := 0
+		for l in L:
+			n += l.p.size() / 2
+			if l.a == 0:
+				coast += 1
+			for i in l.p.size():
+				s += l.p[i] * ((i % 7) + 1)
+		if L.size() != int(want.lines) or n != int(want.pts) or coast != int(want.coast):
+			return "seed %s: %d lines (%d coast), %d points; want %d (%d), %d" % [seed_str, L.size(), coast, n, want.lines, want.coast, want.pts]
+		for i in want.ab.size():
+			if L[i].a * 256 + L[i].b != int(want.ab[i]):
+				return "seed %s: line %d is %d-%d" % [seed_str, i, L[i].a, L[i].b]
+		if absf(s - float(want.sum)) > 1e-6 * absf(float(want.sum)):
+			return "seed %s: coordinates differ (sum %f, want %f)" % [seed_str, s, want.sum]
+		print("       seed %s: %d lines, %d points — identical to HTML" % [seed_str, L.size(), n])
+	return ""
+

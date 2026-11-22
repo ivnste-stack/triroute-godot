@@ -60,6 +60,8 @@ public:
 	int64_t state_at(double x, double z) const;
 	// continent of every state (coCont): states whose land touches share a continent id (a state index)
 	PackedInt32Array continents() const;
+	// coastlines (a == 0) and state borders as polylines: Array of {a, b, p: PackedFloat32Array}
+	Array lines() const;
 	// border crossings along a path (bCrossings): Array of {ws, s, x, z, a, b}; s = ws * eco
 	Array crossings(const PackedFloat32Array &p, double eco) const;
 	// the same along a path of doubles (a course drawn by the player)

@@ -1,5 +1,6 @@
 // Loads the built HTML game (legacy/dist/all.js) in Node with a stub DOM and writes the game tables as JSON.
-//   node legacy/tools/dump_tables.js <out.json>      (then native/tools/gen_game_data.py -> godot/scripts/logistics/game_data.gd)
+//   node legacy/tools/dump_tables.js <out.json> [icons.json]   (then native/tools/gen_game_data.py -> godot/scripts/logistics/game_data.gd)
+// icons.json: the line icons (ICONS: SVG fragments in a 24×24 box, stroked) -> godot/assets/icons.json
 const fs=require("fs"),vm=require("vm"),path=require("path");
 const src=fs.readFileSync(path.join(__dirname,"..","dist","all.js"),"utf8");
 const mk=()=>new Proxy(function(){},{get:(t,k)=>k===Symbol.toPrimitive?()=>"":k==="length"?0:mk(),apply:()=>mk(),construct:()=>mk(),set:()=>true});
@@ -13,3 +14,4 @@ const names=["VT","CARGO","LIC","MG","MG_TR","ROLE","HAND","HUB_LV","HUB_UP","HU
   "CO_NAMES_A","CO_NAMES_B","COMP_N","PERM","UPG","IND","CG_IND","WXK","RCK","CL_WHY","GRADES","MODE_N","TINY_ISL","KM","FIRST","LAST","RES"];
 const out={};for(const n of names){try{out[n]=vm.runInContext(n,ctx)}catch(e){}}
 fs.writeFileSync(process.argv[2]||"tables.json",JSON.stringify(out,(k,v)=>typeof v==="function"?undefined:v));
+if(process.argv[3])fs.writeFileSync(process.argv[3],JSON.stringify(vm.runInContext("ICONS",ctx),null,0));
