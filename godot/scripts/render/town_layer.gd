@@ -22,6 +22,7 @@ var cps: Array = []            # border checkpoints
 var mwh := Vector2(1800, 1200)
 var sim: Sim = null            # the company (hubs on the labels), optional
 var dpr := 1.0
+var host: SubViewport          # the buffer this is drawn into, refreshed only when it changes
 var lbl: Array = []             # {pid, r}: the labels and country chips on screen (BOARD.lbl, CITY_EL)
 
 var _order: Array = []
@@ -59,24 +60,34 @@ func setup(board: Dictionary, states_: Array, countries_: Array, mwh_: Vector2) 
 	SimCore._stable_sort(_order, func(a, b): return ORDER[a.type] - ORDER[b.type])
 	_key = ""
 	queue_redraw()
+	if host != null:
+		host.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func _process(_delta: float) -> void:
+	Perf.begin("town_layer._process")
+	_process_t(_delta)
+	Perf.end("town_layer._process")
+
+
+func _process_t(_delta: float) -> void:
 	if camera == null or towns.is_empty():
 		return
 	var k := "%.4f|%.4f|%.4f|%s" % [camera.tx, camera.tz, camera.dist, size]
 	if sim != null:
-		k += "|%d" % sim.CO.get("hubs", []).size()
+		k += "|%s" % [sim.CO.get("hubs", []).map(func(h): return [h.pid, h.lvl, h.get("rent", false)])]
 	if k != _key:
 		_key = k
 		queue_redraw()
+		if host != null:
+			host.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func _P(x: float, z: float) -> Variant:
 	var w := Vector3(x, 0, z)
 	if camera.is_position_behind(w):
 		return null
-	return camera.unproject_position(w)
+	return camera.unproject_position(w) * dpr
 
 
 func _hub(pid: int) -> Variant:
@@ -84,6 +95,14 @@ func _hub(pid: int) -> Variant:
 
 
 func _draw() -> void:
+	Perf.begin("town_layer._draw")
+	_draw_t()
+	Perf.end("town_layer._draw")
+
+
+func _draw_t() -> void:
+	if Perf.off("town"):
+		return
 	lbl = []
 	if camera == null or towns.is_empty():
 		return
@@ -91,7 +110,7 @@ func _draw() -> void:
 	var H := size.y
 	var a: Variant = _P(camera.tx, camera.tz)
 	var b: Variant = _P(camera.tx + 1, camera.tz)
-	var ppu: float = a.distance_to(b) if a != null and b != null else 40.0
+	var ppu: float = a.distance_to(b) / dpr if a != null and b != null else 40.0
 	# border checkpoints: a dark square with a red-white barrier band
 	if ppu > 45:
 		var sz := clampf(ppu / 40, 3.5, 7) * dpr

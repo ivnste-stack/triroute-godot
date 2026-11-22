@@ -28,6 +28,12 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	Perf.begin("vehicle_layer._process")
+	_process_t(_delta)
+	Perf.end("vehicle_layer._process")
+
+
+func _process_t(_delta: float) -> void:
 	if session != null and session.sim != null:
 		queue_redraw()
 
@@ -87,6 +93,14 @@ static func _at(pp: Dictionary, s: float) -> Vector2:
 
 
 func _draw() -> void:
+	Perf.begin("vehicle_layer._draw")
+	_draw_t()
+	Perf.end("vehicle_layer._draw")
+
+
+func _draw_t() -> void:
+	if Perf.off("veh"):
+		return
 	hits = []
 	if camera == null or session == null or session.sim == null:
 		return

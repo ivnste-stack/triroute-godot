@@ -194,6 +194,12 @@ func _flag(cid: int, w: float = 18, h: float = 12) -> ColorRect:
 
 # ====================================================================== frame
 func _process(_delta: float) -> void:
+	Perf.begin("map_ui._process")
+	_process_t(_delta)
+	Perf.end("map_ui._process")
+
+
+func _process_t(_delta: float) -> void:
 	if sim == null:
 		return
 	if mv_v != null:

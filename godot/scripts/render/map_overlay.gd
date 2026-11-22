@@ -16,6 +16,8 @@ var _grid: Array = []   # LineLayer per grid level
 var _built := false
 var walls: WallLayer
 var dpr := 1.0
+var host: SubViewport          # the buffer this is drawn into, refreshed only when the view changes
+var _key := ""
 
 
 static func _c(r: int, g: int, b: int, a: float = 1.0) -> Color:
@@ -93,6 +95,7 @@ func build(lines: Array, board: Dictionary, size: Vector2, own: PackedByteArray,
 	_layer("mway_case", 52, mw_m, _c(6, 12, 18, .55), 3)
 	_layer("mway", 53, mw_m, Color("#f6b94f"), 2)
 	_built = true
+	_key = ""
 	# the walls go right after the frame (drawBorders: frame, walls, coastlines…)
 	move_child(walls, 2)
 
@@ -106,11 +109,30 @@ func ppu() -> float:
 	return a.distance_to(b)
 
 
+func dirty() -> void:
+	_key = ""
+
+
 func _process(_delta: float) -> void:
+	Perf.begin("map_overlay._process")
+	_process_t(_delta)
+	Perf.end("map_overlay._process")
+
+
+func _process_t(_delta: float) -> void:
 	if not _built or camera == null:
 		return
+	if Perf.off("overlay"):
+		visible = false
 	var vp := camera.get_camera_projection() * Projection(camera.get_camera_transform().affine_inverse())
 	var scr := get_viewport_rect().size
+	var key := "%s|%s|%s|%.3f" % [vp.x, vp.y, vp.w, scr.x * 7 + scr.y + dpr]
+	key += "%s" % [vp.z]
+	if key == _key:
+		return
+	_key = key
+	if host != null:
+		host.render_target_update_mode = SubViewport.UPDATE_ONCE
 	for L in _layers.values():
 		L.set_camera(vp, scr)
 	walls.update(camera, vp, scr)

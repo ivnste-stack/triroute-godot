@@ -60,6 +60,12 @@ func eye() -> Vector3:
 
 
 func _process(delta: float) -> void:
+	Perf.begin("map_camera._process")
+	_process_t(delta)
+	Perf.end("map_camera._process")
+
+
+func _process_t(delta: float) -> void:
 	var dt := clampf(delta * 1000.0, 1.0, 50.0)
 	var k := 1.0 - pow(.85, dt / 16.7)
 	dist += (tdist - dist) * k

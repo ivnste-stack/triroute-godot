@@ -42,6 +42,7 @@ func _init(sim_: Sim) -> void:
 
 
 func build(id: String, body: VBoxContainer) -> void:
+	Perf.acc.erase("co_plan")
 	match id:
 		"coHome": _home(body)
 		"coJobs": _jobs(body)
@@ -742,7 +743,9 @@ func _board_card(k: Dictionary) -> PanelContainer:
 	var A: Dictionary = sim.PL[k.from]
 	var B: Dictionary = sim.PL[k.to]
 	var cg: Dictionary = sim.cargo_i[k.cg]
+	Perf.begin("co_plan")
 	var P: Dictionary = sim.co_plan(k)
+	Perf.end("co_plan")
 	var info := Ui.vbox(2)
 	info.add_child(Ui.hbox(6, [_place(k.from), Ui.label("→", 14), _place(k.to)]))
 	var vol: float = k.tons * cg.get("v", 3)

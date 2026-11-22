@@ -29,6 +29,10 @@ var _kpis: HBoxContainer
 var _kpi_vals: Array = []
 var _rail_btns := {}
 var _rail: Control
+var _grade: Control
+var _grade_box: Control
+var _grade_key := ""
+var _refresh_t := 0.0
 var _badges := {}
 var _speed_btns: Array = []
 var _cells := {}
@@ -54,21 +58,23 @@ func _build_top() -> void:
 	top.position = Vector2(14, 14)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(top)
+	# #yearBox.grbox: the badge of the grade of experience, 30 px in a 62 px box, the ladder in the tooltip
 	var menu := Ui.glass()
-	menu.custom_minimum_size = Vector2(62, 62)
-	var mb := Button.new()
-	mb.flat = true
-	mb.icon = Icons.tex("shield", Ui.FG2, 22)
-	mb.add_theme_constant_override("icon_max_width", 22)
-	mb.focus_mode = Control.FOCUS_NONE
-	mb.tooltip_text = "Меню гри"
-	mb.pressed.connect(func(): menu_requested.emit())
-	menu.add_child(mb)
+	menu.custom_minimum_size = Vector2(62, 0)
+	_grade = Control.new()
+	_grade.custom_minimum_size = Vector2(30, 30)
+	_grade.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_grade.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_grade.draw.connect(func(): if session != null and session.sim != null: paint_grade(_grade, session.sim.co_grade(), 30))
+	menu.add_child(_grade)
+	menu.mouse_default_cursor_shape = Control.CURSOR_HELP
+	_grade_box = menu
 	top.add_child(menu)
 	# the company card
 	var who := Ui.glass()
 	_logo = Control.new()
 	_logo.custom_minimum_size = Vector2(46, 30)
+	_logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER   # .who img: 46×30, not the height of the row
 	_logo.draw.connect(_draw_logo)
 	_name = Ui.label("—", 14, Ui.FG, Ui.font("display", 600, .6))
 	_sub = Ui.label("—", 12, Ui.MUTED)
@@ -97,6 +103,57 @@ func _cell_box(right: bool, pad: Vector4 = Vector4(12, 8, 12, 8)) -> StyleBoxFla
 		s.border_color = Ui.LINE
 		s.border_width_right = 1
 	return s
+
+
+## grBadge: a shield in the colour of the grade; a dot, chevrons, or a star with chevrons
+static func paint_grade(c: CanvasItem, g: int, sz: float, at: Vector2 = Vector2.ZERO) -> void:
+	var col := Color(GameData.GRADES[g].col)
+	var k := sz / 32.0
+	var P := func(x: float, y: float) -> Vector2: return at + Vector2(x, y) * k
+	# M16 2.5 27 6.5v8.6c0 7-4.7 12.2-11 14.4C9.7 27.3 5 22.1 5 15.1V6.5z
+	var sh := PackedVector2Array([P.call(16, 2.5), P.call(27, 6.5), P.call(27, 15.1)])
+	for i in range(1, 9):
+		var t := i / 8.0
+		sh.append(P.call(27 - 11 * t, 15.1 + 14.4 * sin(t * PI / 2)))
+	for i in range(1, 9):
+		var t := i / 8.0
+		sh.append(P.call(16 - 11 * t, 29.5 - 14.4 * (1 - cos(t * PI / 2))))
+	sh.append(P.call(5, 6.5))
+	c.draw_colored_polygon(sh, Color(col, 0x22 / 255.0))
+	sh.append(sh[0])
+	c.draw_polyline(sh, col, 1.8 * k, true)
+	var chev := func(y: float) -> void:
+		c.draw_polyline(PackedVector2Array([P.call(10, y), P.call(16, y - 3.4), P.call(22, y)]), col, 2.2 * k, true)
+	if g == 0:
+		c.draw_circle(P.call(16, 15.5), 2.6 * k, col)
+	elif g < 4:
+		for i in g:
+			chev.call(20 - i * 4.4)
+	else:
+		var st := PackedVector2Array()
+		for i in 10:
+			var a := -PI / 2 + i * PI / 5
+			var r := 4.4 if i % 2 == 0 else 1.9
+			st.append(P.call(16 + cos(a) * r, 10.9 + sin(a) * r))
+		c.draw_colored_polygon(st, col)
+		for i in g - 4:
+			chev.call(21.5 - i * 3.6)
+
+
+## grTip: the grade, the experience to the next one and the ladder
+func _grade_tip() -> String:
+	var sim := session.sim
+	var g := sim.co_grade()
+	var x := int(floor(sim.CO.get("xp", 0)))
+	var G0: Dictionary = GameData.GRADES[g]
+	var nx: Variant = GameData.GRADES[g + 1] if g + 1 < GameData.GRADES.size() else null
+	var t := "Грейд: %s\nДосвід %s%s\n" % [G0.n, Ui.grp(x), (" · до «%s» ще %s" % [nx.n, Ui.grp(nx.xp - x)]) if nx != null else " · найвищий грейд"]
+	for i in GameData.GRADES.size():
+		var q: Dictionary = GameData.GRADES[i]
+		t += "\n%s %s — %s" % ["●" if i == g else ("✓" if i < g else "○"), q.n, Ui.grp(q.xp)]
+		if i == g + 1:
+			t += "\n      " + " · ".join(q.u)
+	return t + "\n\nДосвід дають успішні доставки: за маршрут, прокладений вручну, — повний, за маршрут диспетчера-логіста — 8%."
 
 
 ## coLogo: the company colour, a darker wedge, an arrow and the initials
@@ -219,6 +276,7 @@ func _build_bar() -> void:
 	_ticker_dot = ColorRect.new()
 	_ticker_dot.custom_minimum_size = Vector2(7, 7)
 	_ticker_dot.size = Vector2(7, 7)
+	_ticker_dot.color = Color.TRANSPARENT
 	_ticker_clip.add_child(_ticker_dot)
 	_ticker = Ui.label("", 13, Ui.FG2)
 	_ticker_clip.add_child(_ticker)
@@ -242,21 +300,47 @@ func _put(box: HBoxContainer, parts: Array) -> void:
 		l.visible = i < parts.size()
 		if i < parts.size():
 			var p: Array = parts[i]
-			l.text = p[0]
-			l.add_theme_color_override("font_color", p[1] if p.size() > 1 else Ui.FG)
-			l.add_theme_font_size_override("font_size", p[2] if p.size() > 2 else 15)
-			l.size_flags_vertical = Control.SIZE_SHRINK_END
+			if l.text != p[0]:
+				l.text = p[0]
+			# a theme override re-lays out the whole bar: only when it changes
+			var col: Color = p[1] if p.size() > 1 else Ui.FG
+			var fs: int = p[2] if p.size() > 2 else 15
+			if l.get_meta("col", Color.TRANSPARENT) != col:
+				l.set_meta("col", col)
+				l.add_theme_color_override("font_color", col)
+			if l.get_meta("fs", 0) != fs:
+				l.set_meta("fs", fs)
+				l.add_theme_font_size_override("font_size", fs)
+				l.size_flags_vertical = Control.SIZE_SHRINK_END
 
 
 func _process(delta: float) -> void:
+	Perf.begin("hud._process")
+	_process_t(delta)
+	Perf.end("hud._process")
+
+
+func _process_t(delta: float) -> void:
 	if session == null or session.sim == null or session.sim.CO.is_empty() or not session.sim.CO.has("hubs"):
 		return
+	_ticker_step(delta)
+	# the numbers: 8 times a second is enough, and nothing is touched that did not change
+	_refresh_t -= delta
+	if _refresh_t > 0:
+		return
+	_refresh_t = .125
 	var sim := session.sim
 	var CO := sim.CO
-	_name.text = CO.name
-	var hq: Dictionary = sim.PL[CO.hq]
-	_sub.text = "%s · штаб: %s" % [GameData.LIC[CO.tier].n, hq.name]
-	_logo.queue_redraw()
+	var sub := "%s · штаб: %s" % [GameData.LIC[CO.tier].n, sim.PL[CO.hq].name]
+	if _name.text != CO.name or _sub.text != sub:
+		_name.text = CO.name
+		_sub.text = sub
+		_logo.queue_redraw()
+	var gk := "%d:%d" % [sim.co_grade(), int(CO.get("xp", 0))]
+	if gk != _grade_key:
+		_grade_key = gk
+		_grade.queue_redraw()
+		_grade_box.tooltip_text = _grade_tip()
 	var lm: Variant = CO.lm
 	var pr: float = sim.co_rev(lm) - sim.co_cost(lm) if lm != null else 0.0
 	var busy := 0
@@ -278,8 +362,10 @@ func _process(delta: float) -> void:
 	for i in _speed_btns.size():
 		var on := i == session.speed
 		var b: Button = _speed_btns[i]
-		b.icon = Icons.tex(SPEED[i][0], Ui.ACCENT_INK if on else Ui.FG2, 18, 1.7, SPEED[i][0] != "pause")
-		b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Color.TRANSPARENT))
+		if not b.has_meta("on") or b.get_meta("on") != on:
+			b.set_meta("on", on)
+			b.icon = Icons.tex(SPEED[i][0], Ui.ACCENT_INK if on else Ui.FG2, 18, 1.7, SPEED[i][0] != "pause")
+			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Color.TRANSPARENT))
 	var fr := session.fraction()
 	var h := int(fr * 24)
 	var mm := int((fr * 24 - h) * 6) * 10
@@ -304,15 +390,21 @@ func _process(delta: float) -> void:
 	for id in _rail_btns:
 		var on: bool = id == open_window
 		var b: Button = _rail_btns[id][0]
-		b.icon = Icons.tex(_rail_btns[id][1], Ui.ACCENT_INK if on else Ui.FG2, 20)
-		b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else StyleBoxEmpty.new())
+		if not b.has_meta("on") or b.get_meta("on") != on:
+			b.set_meta("on", on)
+			b.icon = Icons.tex(_rail_btns[id][1], Ui.ACCENT_INK if on else Ui.FG2, 20)
+			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else StyleBoxEmpty.new())
 	_badge("coJobs", CO.board.size() if CO.tier >= 1 else 0)
 	var trips := 0
 	for j in CO.jobs:
 		if not j.get("ret"):
 			trips += 1
 	_badge("coTrips", trips)
-	# ticker: the latest news, scrolling
+
+
+## the ticker: the latest news, scrolling (every frame)
+func _ticker_step(delta: float) -> void:
+	var sim := session.sim
 	var n: Variant = sim.news.back() if sim.news.size() else null
 	var txt: String = n[2] if n != null else ""
 	if txt != _ticker_text:
@@ -334,5 +426,7 @@ func _process(delta: float) -> void:
 
 func _badge(id: String, n: int) -> void:
 	var b: Label = _badges[id]
-	b.visible = n > 0
-	b.text = str(n)
+	if b.visible != (n > 0):
+		b.visible = n > 0
+	if b.text != str(n):
+		b.text = str(n)

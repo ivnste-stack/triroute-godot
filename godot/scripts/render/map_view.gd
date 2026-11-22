@@ -24,6 +24,9 @@ var _mw := 1800
 var _mh := 1200
 var _n_states := 26
 var overlay: MapOverlay
+var _ov_vp: SubViewport
+var _ov_rect: TextureRect
+var _tw_vp: SubViewport
 var towns: TownLayer
 var inc_base: IncidentLayer
 var inc_top: IncidentLayer
@@ -53,15 +56,34 @@ func _ready() -> void:
 	var cl := CanvasLayer.new()
 	cl.layer = 0
 	add_child(cl)
+	# the vector layers are drawn into their own buffer, and only when the view changes (the HTML version also
+	# redraws its canvas only then): a still map costs one texture per frame instead of ~16 offscreen passes
+	_ov_vp = SubViewport.new()
+	_ov_vp.transparent_bg = true
+	_ov_vp.disable_3d = true
+	_ov_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(_ov_vp)
 	overlay = MapOverlay.new()
 	overlay.camera = camera
-	cl.add_child(overlay)
+	overlay.host = _ov_vp
+	_ov_vp.add_child(overlay)
+	_ov_rect = TextureRect.new()
+	_ov_rect.texture = _ov_vp.get_texture()
+	_ov_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ov_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ov_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_ov_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	var pm := CanvasItemMaterial.new()
+	pm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA   # the buffer holds premultiplied colour
+	_ov_rect.material = pm
+	cl.add_child(_ov_rect)
 	inc_base = IncidentLayer.new()
 	inc_base.camera = camera
 	cl.add_child(inc_base)
 	towns = TownLayer.new()
 	towns.camera = camera
-	cl.add_child(towns)
+	_tw_vp = _cached(towns, cl)
+	towns.host = _tw_vp
 	inc_top = IncidentLayer.new()
 	inc_top.camera = camera
 	inc_top.top = true
@@ -97,6 +119,47 @@ func _generate_in_thread() -> void:
 
 
 func _process(_delta: float) -> void:
+	Perf.begin("map_view._process")
+	_process_t(_delta)
+	Perf.end("map_view._process")
+
+
+## a layer drawn into its own buffer, shown as one texture; the layer refreshes it when it changes
+func _cached(layer: Node, parent: Node) -> SubViewport:
+	var vp := SubViewport.new()
+	vp.transparent_bg = true
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(vp)
+	vp.add_child(layer)
+	var r := TextureRect.new()
+	r.texture = vp.get_texture()
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	var pm := CanvasItemMaterial.new()
+	pm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	r.material = pm
+	parent.add_child(r)
+	return vp
+
+
+func _process_t(_delta: float) -> void:
+	# the overlay buffer: the size of the screen in real pixels
+	var phys := Vector2i(get_viewport().get_visible_rect().size * get_window().content_scale_factor) if get_window() != null else Vector2i(1600, 900)
+	if _ov_vp.size != phys and phys.x > 0:
+		_ov_vp.size = phys
+		overlay.dpr = phys.x / maxf(1.0, get_viewport().get_visible_rect().size.x)
+		overlay.dirty()
+	if _tw_vp.size != phys and phys.x > 0:
+		_tw_vp.size = phys
+		towns.dpr = phys.x / maxf(1.0, get_viewport().get_visible_rect().size.x)
+		towns._key = ""
+	if Perf.off("msaa"):
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	if Perf.off("map"):
+		_plane.visible = false
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1

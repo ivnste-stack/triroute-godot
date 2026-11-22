@@ -31,7 +31,21 @@ var _size_key := "m"
 var _pending: Variant = null     # a saved game waiting for its world
 
 
+## the interface in CSS pixels, like the browser: the system scale (Windows display scaling), or the setting
+func apply_ui_scale() -> void:
+	var sc := float(Settings.get_value("ui_scale"))
+	if sc <= 0:
+		sc = DisplayServer.screen_get_scale()
+		if OS.get_name() == "Windows":
+			sc = DisplayServer.screen_get_dpi() / 96.0
+		sc = clampf(snappedf(sc, .25), 1.0, 3.0)
+	if _args.has("scale"):
+		sc = float(_args.scale)
+	get_window().content_scale_factor = sc
+
+
 func _ready() -> void:
+	apply_ui_scale()
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else ""
@@ -143,6 +157,11 @@ func _settings() -> void:
 	var c := Ui.vbox(12)
 	var wfx_on: bool = float(Settings.get_value("wfx")) > 0
 	c.add_child(Ui.hbox(12, [Ui.note("Відблиски й хвилі на воді"), Ui.spacer(), Ui.seg([[true, "Увімкнено"], [false, "Вимкнено"]], wfx_on, func(v): Settings.set_value("wfx", 1.0 if v else 0.0))]))
+	var auto_sc: float = float(Settings.get_value("ui_scale"))
+	c.add_child(Ui.hbox(12, [Ui.note("Масштаб інтерфейсу"), Ui.spacer(), Ui.seg([[0.0, "Авто"], [1.0, "100%"], [1.25, "125%"], [1.5, "150%"], [2.0, "200%"]], auto_sc, func(v):
+		Settings.set_value("ui_scale", v)
+		apply_ui_scale())]))
+	c.add_child(Ui.note("«Авто» — як масштаб у налаштуваннях екрана Windows."))
 	c.add_child(Ui.btn("Перевірки (F9)", "", "check", func():
 		modals.clear()
 		_toggle_checks()))
@@ -188,7 +207,25 @@ func _create_world() -> void:
 	map.generate(_ng.seed, _size_key)
 
 
+var _perf_t := 0.0
+var _perf_n := 0
+
+
 func _process(delta: float) -> void:
+	if _args.has("perf"):
+		_perf_n += 1
+		_perf_t += delta
+		if _perf_t >= 2.0:
+			print("PERF fps %.0f · process %.2f ms · draw calls %d · %s" % [_perf_n / _perf_t, Performance.get_monitor(Performance.TIME_PROCESS) * 1000,
+				Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Perf.report(_perf_n)])
+			_perf_t = 0
+			_perf_n = 0
+	Perf.begin("main._process")
+	_process_t(delta)
+	Perf.end("main._process")
+
+
+func _process_t(delta: float) -> void:
 	if _loading.visible:
 		var bar: ProgressBar = _loading.find_child("bar", true, false)
 		bar.value = fmod(bar.value + delta * 40, 100)
@@ -339,6 +376,8 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 		if win.visible:
 			_toggle_window("")
 		map_ui.move_start(v))
+	session.day_passed.connect(func(_d): _grade_check())
+	_grade_check()
 	if not session.speed_refused.is_connected(_speed_refused):
 		session.speed_refused.connect(_speed_refused)
 	map_ui.visible = true
@@ -383,12 +422,22 @@ func _win_tick(force: bool = false) -> void:
 	var sim := session.sim
 	if not force and sim.day == _win_day:
 		return
+	# a new day: the window changes in small steps over a few frames; opening it or an action: at once
+	var smooth := not force and _win_day >= 0 and hud.open_window == _win_id
 	_win_day = sim.day
 	var id := hud.open_window
+	_win_id = id
+	if smooth and _args.has("perf"):
+		print("PERF day %.1f ms" % (Perf.acc.get("co_day", 0) / 1000.0))
 	var h: Array = WIN_HEAD.get(id, ["info", id])
 	win.set_head(h[0], "%s · %s" % [sim.CO.name, Ui.date_str(sim.date)], h[1])
+	if smooth:
+		await get_tree().process_frame   # not in the frame the day was computed in
+		if hud.open_window != id:
+			return
 	var keep := win.scroll.scroll_vertical
-	win.clear_body()
+	var t0 := Time.get_ticks_usec()
+	var off := VBoxContainer.new()
 	if id == "news":
 		for i in range(sim.news.size() - 1, maxi(-1, sim.news.size() - 60), -1):
 			var n: Array = sim.news[i]
@@ -398,14 +447,69 @@ func _win_tick(force: bool = false) -> void:
 			dot.color = {"good": Ui.GOOD, "bad": Ui.BAD, "warn": Ui.WARN}.get(n[0], Ui.ACCENT)
 			var t := Ui.note(n[2])
 			t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			win.body.add_child(Ui.hbox(10, [dot, t]))
+			off.add_child(Ui.hbox(10, [dot, t]))
 		if sim.news.is_empty():
-			win.body.add_child(Ui.note("Поки що новин немає.", Ui.MUTED))
+			off.add_child(Ui.note("Поки що новин немає.", Ui.MUTED))
 	else:
-		wins.build(id, win.body)
-	# the same place in the window after a rebuild
-	if not force:
-		_restore_scroll(keep)
+		wins.build(id, off)
+	_swap_gen += 1
+	if smooth:
+		var gen := _swap_gen
+		await get_tree().process_frame   # the build and the swap in different frames too
+		if gen != _swap_gen:
+			off.free()
+			return
+		_swap_t = Time.get_ticks_usec()
+		await _swap(win.body, off, gen)
+	else:
+		win.clear_body()
+		for ch in off.get_children():
+			off.remove_child(ch)
+			win.body.add_child(ch)
+		if not force:
+			_restore_scroll(keep)
+	off.free()
+	if _args.has("perf"):
+		print("PERF window %s %s in %.1f ms" % [id, "swapped" if smooth else "built", (Time.get_ticks_usec() - t0) / 1000.0])
+
+
+var _win_id := ""
+var _swap_gen := 0
+var _swap_t := 0
+
+
+## replaces the children of dst by those of src a few at a time (≈4 ms a frame); a big column of the same
+## kind is swapped inside, so a long list never lands in one frame. A newer build (gen) stops an older one.
+func _swap(dst: Container, src: Container, gen: int) -> void:
+	var i := 0
+	while src.get_child_count() > 0:
+		if gen != _swap_gen or not is_instance_valid(dst):
+			return
+		var n: Node = src.get_child(0)
+		src.remove_child(n)
+		if i < dst.get_child_count():
+			var o: Node = dst.get_child(i)
+			if o is VBoxContainer and n is VBoxContainer and o.get_script() == null and n.get_script() == null and n.get_child_count() > 3:
+				await _swap(o, n, gen)
+				n.free()
+				i += 1
+				continue
+			dst.remove_child(o)
+			o.queue_free()
+			dst.add_child(n)
+			dst.move_child(n, i)
+		else:
+			dst.add_child(n)
+		i += 1
+		if Time.get_ticks_usec() - _swap_t > 4000:
+			await get_tree().process_frame
+			_swap_t = Time.get_ticks_usec()
+	if gen != _swap_gen or not is_instance_valid(dst):
+		return
+	while dst.get_child_count() > i:
+		var o: Node = dst.get_child(i)
+		dst.remove_child(o)
+		o.queue_free()
 
 
 func _restore_scroll(v: int) -> void:
@@ -437,6 +541,19 @@ func _plan(k: Dictionary) -> void:
 	map_ui.close_insp()
 	map_ui.close_card()
 	hud.set_planning(true)
+
+
+## grBox: a new grade of experience — news and a toast (CO.grd remembers the last one)
+func _grade_check() -> void:
+	var sim := session.sim
+	var g := sim.co_grade()
+	if sim.CO.get("grd") == null:
+		sim.CO.grd = g
+	elif g > sim.CO.grd:
+		sim.CO.grd = g
+		var q: Dictionary = GameData.GRADES[g]
+		sim.co_news("good", "star", "%s отримала грейд «%s»" % [sim.CO.name, q.n])
+		toasts.push("good", "Новий грейд: " + q.n, " · ".join(q.u))
 
 
 ## srOpen: a new course for a trip under way
@@ -578,6 +695,10 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				return
 			if win.visible:
 				_toggle_window("")
+			elif map_ui.insp_open():
+				map_ui.close_insp()
+			elif session != null and hud.visible and not modals.is_open():
+				_game_menu()
 
 
 func _toggle_checks() -> void:

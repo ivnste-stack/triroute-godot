@@ -23,6 +23,12 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	Perf.begin("incident_layer._process")
+	_process_t(_delta)
+	Perf.end("incident_layer._process")
+
+
+func _process_t(_delta: float) -> void:
 	if session != null and session.sim != null:
 		queue_redraw()
 
@@ -61,6 +67,14 @@ func _text(s: String, pos: Vector2, fs: int, col: Color) -> void:
 
 
 func _draw() -> void:
+	Perf.begin("incident_layer._draw")
+	_draw_t()
+	Perf.end("incident_layer._draw")
+
+
+func _draw_t() -> void:
+	if Perf.off("inc"):
+		return
 	hits = []
 	if camera == null or session == null or session.sim == null or session.sim.CO.is_empty():
 		return

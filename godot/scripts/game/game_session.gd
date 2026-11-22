@@ -95,6 +95,12 @@ func run_days(n: int) -> void:
 
 
 func _process(delta: float) -> void:
+	Perf.begin("game_session._process")
+	_process_t(delta)
+	Perf.end("game_session._process")
+
+
+func _process_t(delta: float) -> void:
 	if sim == null:
 		return
 	var dt := minf(delta * 1000.0, 250.0)
@@ -105,6 +111,9 @@ func _process(delta: float) -> void:
 		while acc >= DUR[speed] and n < 4:
 			acc -= DUR[speed]
 			n += 1
+			Perf.acc.erase("co_day")
+			Perf.begin("co_day")
 			sim.co_day()
+			Perf.end("co_day")
 			day_passed.emit(int(sim.day))
 	sim.co_frame(fraction())

@@ -27,14 +27,16 @@ func _init() -> void:
 	var ic := PanelContainer.new()
 	ic.custom_minimum_size = Vector2(54, 0)
 	ic.add_theme_stylebox_override("panel", Ui.box(Ui.ACCENT))
-	_icon = Ui.icon("box", 20, Ui.ACCENT_INK)
+	_icon = Ui.icon("box", 22, Ui.ACCENT_INK)
 	ic.add_child(_icon)
 	head.add_child(ic)
 	_eyebrow = Ui.lbl("")
 	_title = Ui.heading("", 18)
 	var tt := Ui.vbox(6, [_eyebrow, _title])
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(Ui.margin(tt, 16, 14))
+	var tm := Ui.margin(tt, 16, 14)
+	tm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tm)
 	var x := Button.new()
 	x.flat = true
 	x.icon = Icons.tex("close", Ui.MUTED, 18)
@@ -61,7 +63,7 @@ func _init() -> void:
 
 
 func set_head(icon: String, eyebrow: String, title: String) -> void:
-	_icon.texture = Icons.tex(icon, Ui.ACCENT_INK, 20)
+	_icon.texture = Icons.tex(icon, Ui.ACCENT_INK, 22)
 	_eyebrow.text = eyebrow.to_upper()
 	_title.text = title
 

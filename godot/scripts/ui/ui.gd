@@ -118,6 +118,9 @@ static func glass(tint: Color = GLASS, border: Color = LINE) -> PanelContainer:
 	m.shader = _glass
 	m.set_shader_parameter("tint", tint)
 	bg.material = m
+	if Perf.off("glass"):
+		bg.material = null
+		bg.color = tint
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.show_behind_parent = true
@@ -176,6 +179,9 @@ static func icon(name: String, size: float = 18, col: Color = FG, stroke: float 
 	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# the icon keeps its size: a container must not stretch it (the textures are drawn at twice the size)
+	t.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return t
 
 
