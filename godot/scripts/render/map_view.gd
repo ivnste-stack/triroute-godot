@@ -22,6 +22,9 @@ var _seed := 0
 var _result: Dictionary = {}
 var overlay: MapOverlay
 var towns: TownLayer
+var inc_base: IncidentLayer
+var inc_top: IncidentLayer
+var vehicles: VehicleLayer
 
 
 func _ready() -> void:
@@ -50,9 +53,19 @@ func _ready() -> void:
 	overlay = MapOverlay.new()
 	overlay.camera = camera
 	cl.add_child(overlay)
+	inc_base = IncidentLayer.new()
+	inc_base.camera = camera
+	cl.add_child(inc_base)
 	towns = TownLayer.new()
 	towns.camera = camera
 	cl.add_child(towns)
+	inc_top = IncidentLayer.new()
+	inc_top.camera = camera
+	inc_top.top = true
+	cl.add_child(inc_top)
+	vehicles = VehicleLayer.new()
+	vehicles.camera = camera
+	cl.add_child(vehicles)
 	EventBus.settings_changed.connect(func(k, v): if k == "wfx": _mat.set_shader_parameter("wfx", float(v)))
 
 
@@ -104,6 +117,8 @@ func _show(w: Dictionary) -> void:
 	_plane.visible = true
 	overlay.build(w.lines, w.board, size, w.own, Vector2i(mw, mh))
 	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
+	inc_base.lines = w.lines
+	inc_top.lines = w.lines
 	world_ready.emit(w)
 
 
@@ -157,3 +172,54 @@ func state_at(p: Vector3) -> int:
 
 func _on_hover(p: Vector3) -> void:
 	_mat.set_shader_parameter("hov", state_at(p))
+
+
+## the generator of the world on screen (routes, blocks for the simulation)
+func generator() -> Object:
+	return _gen
+
+
+## shows a running game on the map
+func attach_session(session: GameSession) -> void:
+	towns.sim = session.sim
+	for L in [inc_base, inc_top]:
+		L.session = session
+	vehicles.session = session
+	_session = session
+	session.day_passed.connect(func(_d): company_colors())
+	company_colors()
+
+
+var _session: GameSession
+
+
+## the map colours of the company mode (coColors + the closed-country tint of 08f): states with a hub are tinted
+## orange, states within the licence are muted, the rest darkened, closed countries reddened
+func company_colors() -> void:
+	if _session == null or _session.sim == null:
+		return
+	var sim := _session.sim
+	var hub_c := {}
+	for h in sim.CO.hubs:
+		hub_c[sim.PL[h.pid].cid] = true
+	var mix := func(a: Color, b: Color, t: float) -> Color: return a.lerp(b, t)
+	var cols := []
+	for c in world.states:
+		var col := Color(c.color)
+		var cap: Variant = null
+		for p in sim.PL:
+			if p.cid == c.id and p.type == "cap":
+				cap = p
+				break
+		if hub_c.has(c.id):
+			col = mix.call(col, Color(1, .7, .28), .35)
+		elif cap != null and sim.co_scope(cap):
+			col = mix.call(col, Color(.3, .34, .38), .35)
+		else:
+			col = mix.call(col, Color(.17, .2, .24), .78)
+		cols.append(col)
+	for cl in sim.CO.get("cls", []):
+		if cl.kind == "cty" and cl.a < cols.size():
+			cols[cl.a] = mix.call(cols[cl.a], Color(.86, .22, .2), .55)
+	set_colors(cols)
+
