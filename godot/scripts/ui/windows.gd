@@ -1297,7 +1297,7 @@ func _staff(body: VBoxContainer) -> void:
 			var c: Dictionary = cs[i]
 			var ci: int = i
 			var who := Ui.rich("[b]%s[/b], %d [color=#b3c2cf]· %s · навичка %s[/color]" % [c.name, c.age, c.trait, _stars(c.skill)], 13, Ui.FG)
-			var row := _tr([who, Ui.hbox(8, [Ui.num(Ui.usd(c.sal) + "/міс", 13), _btn("Найняти", "pri sm" if CO.cash >= c.sal else "sm", "", func(): _do(sim.act_hire_mgr(sid, ci)), CO.cash >= c.sal)])],
+			var row := _tr([who, Ui.hbox(8, [Ui.num(Ui.usd(c.sal) + "/міс", 13), _btn("Найняти", "pri sm" if CO.cash >= c.sal else "sm", "", func(): if sid != "cto" or gr_ok("cto"): _do(sim.act_hire_mgr(sid, ci)), CO.cash >= c.sal)])],
 				[["", 0, false], ["", 0, true]], 6)
 			var sb: StyleBoxFlat = row.get_theme_stylebox("panel").duplicate()
 			sb.border_width_bottom = 0

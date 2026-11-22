@@ -11,6 +11,7 @@ extends Control
 signal acted(res: Dictionary)
 signal open_window(id: String)
 signal ask(spec: Dictionary)      # a dialog of ModalLayer
+signal reroute(j: Dictionary)     # «Змінити курс» in the trip card
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const W = preload("res://scripts/ui/windows.gd")
@@ -20,6 +21,7 @@ const LP_N := {"road": "авто", "rail": "залізниця", "sea": "мор�
 
 var map: MapView
 var planner: Planner   # while it is open, the clicks place the points of the route
+var course: Course     # the same for a new course of a trip under way
 var session: GameSession
 var sim: Sim
 var follow := false             # CO.follow: the camera follows the selected vehicle
@@ -224,7 +226,7 @@ func _hover() -> void:
 	if best != null:
 		_show_tip("inc:%s:%d" % [best.kind, int(best.x * 7 + best.y)], func(): return _inc_tip(best), mp, 340)
 		return
-	if planner != null and planner.on:
+	if (planner != null and planner.on) or (course != null and course.on):
 		_show_tip("", null, mp)
 		return
 	# vehicles grouped in a city
@@ -443,6 +445,9 @@ func _on_click(mp: Vector2) -> void:
 		return
 	if planner != null and planner.on:
 		planner.click(mp)
+		return
+	if course != null and course.on:
+		course.click(mp)
 		return
 	# a vehicle
 	var jh: Variant = null
@@ -671,6 +676,12 @@ func _build_card() -> void:
 		var evn := W._note("\n".join(j.ev.slice(-3)), Ui.FG2, 12)
 		evn.custom_minimum_size.x = 266
 		body.add_child(evn)
+	# a new course (08r-multi.js): highlighted when danger lies ahead
+	if sim.sr_ok(j):
+		var hz: Variant = sim.sr_hit(j)
+		var rb := W._btn("Змінити курс" + (" — небезпека на шляху" if hz != null else ""), "pri sm" if hz != null else "sm", Planner.LP_T[j.mode], func(): reroute.emit(j))
+		rb.size_flags_horizontal = Control.SIZE_FILL
+		body.add_child(rb)
 	# cancel the trip (08v-cons.js coCancel): a dialog first
 	if not ret:
 		var ci := sim.cancel_info(j)

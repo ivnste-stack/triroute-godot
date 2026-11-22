@@ -783,10 +783,14 @@ func _draw_route() -> void:
 func _draw() -> void:
 	if not on:
 		return
+	draw_tags(self, _tags)
+
+
+func draw_tags(n: CanvasItem, tags: Array) -> void:
 	var placed := []
 	var f1 := Ui.font("mono", 700)
 	var f2 := Ui.font("body", 700)
-	for t in _tags:
+	for t in tags:
 		var p: Dictionary = sim.PL[t.pid]
 		var q: Variant = _scr(p.x, 0, p.z)
 		if q == null:
@@ -805,19 +809,19 @@ func _draw() -> void:
 			by -= h + 6
 		placed.append([bx, by, bx + w, by + h])
 		var col: Color = t.col
-		draw_line(Vector2(q.x, by + h), Vector2(q.x, q.y - 9), Color(col, .9), 1.6, true)
-		draw_circle(q, 9, Color(col, .22))
-		draw_arc(q, 9, 0, TAU, 32, Color(col, .9), 2.4, true)
+		n.draw_line(Vector2(q.x, by + h), Vector2(q.x, q.y - 9), Color(col, .9), 1.6, true)
+		n.draw_circle(q, 9, Color(col, .22))
+		n.draw_arc(q, 9, 0, TAU, 32, Color(col, .9), 2.4, true)
 		for k in 3:
-			draw_rect(Rect2(bx, by + 6, w, h).grow(3 + k * 4), Color(0, 0, 0, .1))
-		draw_rect(Rect2(bx, by, w, h), Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .95))
-		draw_rect(Rect2(bx, by, w, 3), col)
-		draw_rect(Rect2(bx + .75, by + .75, w - 1.5, h - 1.5), col, false, 1.5)
+			n.draw_rect(Rect2(bx, by + 6, w, h).grow(3 + k * 4), Color(0, 0, 0, .1))
+		n.draw_rect(Rect2(bx, by, w, h), Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .95))
+		n.draw_rect(Rect2(bx, by, w, 3), col)
+		n.draw_rect(Rect2(bx + .75, by + .75, w - 1.5, h - 1.5), col, false, 1.5)
 		var x := bx + 10
-		draw_string(f1, Vector2(x, by + 3 + 4 + 9), top, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, col)
+		n.draw_string(f1, Vector2(x, by + 3 + 4 + 9), top, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, col)
 		var y2 := by + 3 + 4 + 13 + 13
-		draw_rect(Rect2(x, y2 - 10, 18, 12), Color(sim.states[p.cid].color))
-		draw_rect(Rect2(x, y2 - 10, 18, 12), Color(1, 1, 1, .35), false, 1)
-		draw_string(f2, Vector2(x + 24, y2), p.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
+		n.draw_rect(Rect2(x, y2 - 10, 18, 12), Color(sim.states[p.cid].color))
+		n.draw_rect(Rect2(x, y2 - 10, 18, 12), Color(1, 1, 1, .35), false, 1)
+		n.draw_string(f2, Vector2(x + 24, y2), p.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
 		if ex != "":
-			draw_string(f1, Vector2(x + 24 + f2.get_string_size(p.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 8, y2), ex, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
+			n.draw_string(f1, Vector2(x + 24 + f2.get_string_size(p.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 8, y2), ex, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)

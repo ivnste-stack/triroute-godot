@@ -20,6 +20,7 @@ var wins: Windows
 var toasts: Toasts
 var map_ui: MapUi
 var planner: Planner
+var course: Course
 var menu: StartMenu
 var _args := {}
 var _ng := {"size": "m", "diff": 1, "seed": 0}
@@ -64,6 +65,10 @@ func _ready() -> void:
 	planner.acted.connect(_on_act)
 	planner.closed.connect(_planner_closed)
 	_ui.add_child(planner)
+	course = Course.new()
+	course.acted.connect(_on_act)
+	course.closed.connect(func(): hud.set_planning(false))
+	_ui.add_child(course)
 	modals = ModalLayer.new()
 	modals.theme = Ui.theme()
 	modals.opened.connect(func(): if session != null: session.hold = true)
@@ -187,6 +192,9 @@ func _process(delta: float) -> void:
 			modals.push(_decision(sim.modals.pop_front()))
 		if win.visible:
 			_win_tick()
+		while sim.toasts.size():
+			var t: Dictionary = sim.toasts.pop_front()
+			toasts.push(t.tone, t.t, t.d)
 		# #toasts moves left of the card on the right
 		toasts.offset_right = -358 if map_ui.insp_open() else -14
 		toasts.offset_left = toasts.offset_right - 320
@@ -226,6 +234,11 @@ func _on_world(w: Dictionary) -> void:
 				_plan(ks[0])
 				if _args.plan == "auto":
 					planner.auto_use()
+		if _args.has("reroute"):
+			session.sim.CO.xp = 1e6
+			var js: Array = session.sim.CO.jobs.filter(func(x): return session.sim.sr_ok(x) and x.mode == _args.reroute)
+			if js.size():
+				_reroute(js[0])
 		if _args.has("place"):
 			map_ui.show_place(int(_args.place))
 		if _args.has("country"):
@@ -292,6 +305,9 @@ func _play(hq: int, auto_decisions: bool) -> void:
 	map_ui.attach(session, map)
 	map_ui.planner = planner
 	planner.attach(session, map)
+	course.attach(session, map, planner)
+	map_ui.course = course
+	map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
 	if not session.speed_refused.is_connected(_speed_refused):
 		session.speed_refused.connect(_speed_refused)
@@ -393,6 +409,20 @@ func _plan(k: Dictionary) -> void:
 	hud.set_planning(true)
 
 
+## srOpen: a new course for a trip under way
+func _reroute(j: Dictionary) -> void:
+	if wins.gr_ok("reroute"):
+		var why := course.open(j)
+		if why != "":
+			toasts.push("warn", "Курс змінити не можна", why)
+			return
+		if win.visible:
+			_toggle_window("")
+		map_ui.close_insp()
+		map_ui.close_card()
+		hud.set_planning(true)
+
+
 func _planner_closed(reopen: String) -> void:
 	hud.set_planning(false)
 	if reopen != "" and hud.open_window != reopen:
@@ -421,7 +451,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			if session != null and session.sim != null and hud.visible:
 				session.set_speed(e.keycode - KEY_0)
 		KEY_ESCAPE:
-			if planner.on:
+			if planner.on or course.on:
 				return
 			if win.visible:
 				_toggle_window("")

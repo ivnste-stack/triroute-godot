@@ -788,3 +788,50 @@ func cons_go_plan(LP: Dictionary, C: Dictionary, by_mgr: bool = false) -> void:
 			break
 	CO.board = CO.board.filter(func(x): return not k.cons.any(func(o): return o.id == x.id))
 	lp_run_leg(k, plan, 0, day + k.dlDays)
+
+
+## danger ahead: the first zone the rest of the course crosses (srHit)
+func sr_hit(j: Dictionary) -> Variant:
+	var p: Array = sr_now(j).rem
+	for z in sr_danger(j.mode):
+		for i in range(0, p.size(), 2):
+			if JS.hypot(p[i] - z.x, p[i + 1] - z.z) < z.r:
+				return z
+		for i in range(2, p.size(), 2):
+			var ax: float = p[i - 2]
+			var az: float = p[i - 1]
+			var bx: float = p[i]
+			var bz: float = p[i + 1]
+			var L: float = JS.hypot(bx - ax, bz - az)
+			if L == 0:
+				L = 1e-9
+			var t := JS.clamp_js(((z.x - ax) * (bx - ax) + (z.z - az) * (bz - az)) / (L * L), 0, 1)
+			if JS.hypot(ax + (bx - ax) * t - z.x, az + (bz - az) * t - z.z) < z.r:
+				return z
+	return null
+
+
+var toasts: Array = []          # what the interface should pop up: {tone, t, d}
+
+const SR_T := {"road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
+
+
+## every day: a trip whose course crosses a danger zone warns once per zone (08r-multi.js coJobsDay)
+func _jobs_day() -> void:
+	super._jobs_day()
+	for j in CO.jobs:
+		if not sr_ok(j):
+			continue
+		var z: Variant = sr_hit(j)
+		if z == null:
+			continue
+		if not j.get("srWarn"):
+			j.srWarn = {}
+		var key := "%s%d:%d" % [z.k, int(JS.round_js(z.x * 10)), int(JS.round_js(z.z * 10))]
+		if j.srWarn.has(key):
+			continue
+		j.srWarn[key] = 1
+		var w: String = "піратська зона" if z.k == "pir" else ("зона бандитів" if z.k == "band" else String(z.n).to_lower())
+		var who: String = D.VT[j.t].n
+		co_news("warn", SR_T[j.mode], "%s → %s: на курсі %s — можна змінити курс у картці рейсу" % [who, PL[j.k.to].name, w])
+		toasts.append({"tone": "warn", "t": "%s на курсі" % ("Пірати" if z.k == "pir" else ("Бандити" if z.k == "band" else z.n)), "d": "%s → %s. Відкрийте рейс і натисніть «Змінити курс»" % [who, PL[j.k.to].name]})
