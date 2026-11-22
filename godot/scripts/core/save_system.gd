@@ -1,13 +1,15 @@
 extends Node
-## Save slots (legacy: saveWrite / ACT.doLoad in 08d-settings.js, localStorage "pon_save_N").
-## Slots: "auto" plus "1".."3", stored as JSON in user://saves/. Autosave every 15 minutes of play.
+## Save slots (saveWrite / ACT.doSave / loadGame of legacy/src/08d-settings.js): "auto" and "1".."3".
+## A slot is two files in user://saves: slot_N.sav — the game (Godot binary variants: floats and packed
+## arrays come back bit for bit, so a loaded game goes on exactly like the saved one) — and slot_N.json, the
+## line shown in the list (company, date, when saved). The world itself is made again from its seed.
+## Autosave: every 15 minutes of play, through `provider` (returns {data, meta} or {} when it should not save).
 
 const DIR := "user://saves"
 const SLOTS := ["auto", "1", "2", "3"]
 const AUTOSAVE_SEC := 15 * 60
 
-## Modules register what they save: name -> {"save": Callable() -> Variant, "load": Callable(Variant)}
-var _parts := {}
+var provider: Callable = Callable()
 var _timer: Timer
 
 
@@ -18,51 +20,59 @@ func _ready() -> void:
 	_timer.timeout.connect(_on_autosave)
 	add_child(_timer)
 	_timer.start()
-	register("game", GameState.to_dict, GameState.from_dict)
 
 
-func register(part: String, save_fn: Callable, load_fn: Callable) -> void:
-	_parts[part] = {"save": save_fn, "load": load_fn}
+func _path(slot: String, ext: String) -> String:
+	return "%s/slot_%s.%s" % [DIR, slot, ext]
 
 
-func save(slot: String, meta := {}) -> bool:
-	var data := {"v": 3, "meta": meta, "parts": {}}
-	for k in _parts.keys():
-		data.parts[k] = _parts[k].save.call()
-	var f := FileAccess.open(_path(slot), FileAccess.WRITE)
+func write(slot: String, data: Dictionary, meta: Dictionary) -> bool:
+	DirAccess.make_dir_recursive_absolute(DIR)
+	var f := FileAccess.open(_path(slot, "sav"), FileAccess.WRITE)
 	if f == null:
 		return false
-	f.store_string(JSON.stringify(data))
+	f.store_var(data)
+	f.close()
+	var m := FileAccess.open(_path(slot, "json"), FileAccess.WRITE)
+	if m == null:
+		return false
+	m.store_string(JSON.stringify(meta))
+	m.close()
 	EventBus.game_saved.emit(slot)
 	return true
 
 
-func load_slot(slot: String) -> bool:
-	if not FileAccess.file_exists(_path(slot)):
-		return false
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(_path(slot)))
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return false
-	var parts: Dictionary = parsed.get("parts", {})
-	for k in parts.keys():
-		if _parts.has(k):
-			_parts[k].load.call(parts[k])
-	EventBus.game_loaded.emit(slot)
-	return true
+## the saved game, or null when the slot is empty or broken
+func read(slot: String) -> Variant:
+	if not FileAccess.file_exists(_path(slot, "sav")):
+		return null
+	var f := FileAccess.open(_path(slot, "sav"), FileAccess.READ)
+	if f == null:
+		return null
+	var d: Variant = f.get_var()
+	return d if d is Dictionary else null
 
 
 func meta(slot: String) -> Dictionary:
-	if not FileAccess.file_exists(_path(slot)):
+	if not FileAccess.file_exists(_path(slot, "json")) or not FileAccess.file_exists(_path(slot, "sav")):
 		return {}
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(_path(slot)))
-	return parsed.get("meta", {}) if typeof(parsed) == TYPE_DICTIONARY else {}
+	var p: Variant = JSON.parse_string(FileAccess.get_file_as_string(_path(slot, "json")))
+	return p if p is Dictionary else {}
 
 
-func _path(slot: String) -> String:
-	return "%s/slot_%s.json" % [DIR, slot]
+func remove(slot: String) -> void:
+	for e in ["sav", "json"]:
+		if FileAccess.file_exists(_path(slot, e)):
+			DirAccess.remove_absolute(_path(slot, e))
+
+
+func any() -> bool:
+	return SLOTS.any(func(s): return not meta(s).is_empty())
 
 
 func _on_autosave() -> void:
-	# only while a game is running (a world exists)
-	if GameState.world_seed != 0:
-		save("auto", {"auto": true})
+	if not provider.is_valid():
+		return
+	var s: Variant = provider.call()
+	if s is Dictionary and s.has("data"):
+		write("auto", s.data, s.meta)

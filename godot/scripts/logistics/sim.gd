@@ -835,3 +835,33 @@ func _jobs_day() -> void:
 		var who: String = D.VT[j.t].n
 		co_news("warn", SR_T[j.mode], "%s → %s: на курсі %s — можна змінити курс у картці рейсу" % [who, PL[j.k.to].name, w])
 		toasts.append({"tone": "warn", "t": "%s на курсі" % ("Пірати" if z.k == "pir" else ("Бандити" if z.k == "band" else z.n)), "d": "%s → %s. Відкрийте рейс і натисніть «Змінити курс»" % [who, PL[j.k.to].name]})
+
+
+# =====================================================================================================
+# Saving (saveWrite / loadGame of 08d-settings.js): everything that changes while playing. The world, the
+# board and the caches come back from the seed; the random generators continue from where they were.
+# =====================================================================================================
+const SAVE_VARS := ["states", "PL", "CO", "firms", "nspec", "day", "date", "diff", "me", "sky", "blk", "over", "news", "jam", "jamn", "inc_f", "_maxp"]
+
+
+func save_state() -> Dictionary:
+	var d := {"R": R._a, "RX": RX._a}
+	for k in SAVE_VARS:
+		d[k] = get(k)
+	return d.duplicate(true)
+
+
+## on a sim made by setup() with the same world: the saved game replaces the new one
+func load_state(d: Dictionary) -> void:
+	var c: Dictionary = d.duplicate(true)
+	for k in SAVE_VARS:
+		if c.has(k):
+			set(k, c[k])
+	R._a = c.R
+	RX._a = c.RX
+	routes.clear()
+	_lp_rc = {}
+	_lp_rc_v = -2
+	modals = []
+	toasts = []
+	inc_blk()          # the closed borders, ports and the weather go back into the route finder

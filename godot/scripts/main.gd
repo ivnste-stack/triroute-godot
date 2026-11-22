@@ -27,6 +27,8 @@ var _ng := {"size": "m", "diff": 1, "seed": 0}
 var _loading: Control
 var _checks: PanelContainer
 var _ui: CanvasLayer
+var _size_key := "m"
+var _pending: Variant = null     # a saved game waiting for its world
 
 
 func _ready() -> void:
@@ -69,6 +71,7 @@ func _ready() -> void:
 	course.acted.connect(_on_act)
 	course.closed.connect(func(): hud.set_planning(false))
 	_ui.add_child(course)
+	SaveSystem.provider = _autosave
 	modals = ModalLayer.new()
 	modals.theme = Ui.theme()
 	modals.opened.connect(func(): if session != null: session.hold = true)
@@ -85,7 +88,9 @@ func _ready() -> void:
 			"body": "Бібліотека [b]godot/bin/libtriroute[/b] не знайдена або не підходить до цієї системи. Натисни F9, щоб побачити перевірки.", "choices": []})
 		return
 	_ng.seed = int(_args.get("seed", str(randi() % 1000000000)))
-	if _args.has("company") or _args.has("pick") or (_args.has("shot") and not _args.has("menu")):
+	if _args.has("load"):
+		_load_slot(_args.load)
+	elif _args.has("company") or _args.has("pick") or (_args.has("shot") and not _args.has("menu")):
 		_create_world()
 	else:
 		_show_menu()
@@ -103,6 +108,7 @@ func _show_menu() -> void:
 		menu = StartMenu.new()
 		menu.new_game.connect(_new_game_dialog)
 		menu.settings.connect(_settings)
+		menu.load_game.connect(func(): _slots(false))
 		menu.quit.connect(func(): get_tree().quit())
 		_ui.add_child(menu)
 		_ui.move_child(menu, 0)
@@ -146,11 +152,11 @@ func _settings() -> void:
 func _game_menu() -> void:
 	modals.push({"icon": "shield", "eyebrow": "Пауза", "title": "Меню гри", "close": true, "choices": [
 		{"t": "Продовжити", "d": "Повернутися до гри", "f": func(): pass},
+		{"t": "Зберегти гру", "d": "Три слоти; автозбереження — кожні 15 хвилин гри", "f": func(): _slots(true)},
+		{"t": "Завантажити гру", "d": "Поточний незбережений прогрес буде втрачено", "f": func(): _slots(false)},
 		{"t": "Налаштування", "d": "Вода, перевірки", "f": _settings},
-		{"t": "Головне меню", "d": "Поточна гра не зберігається (збереження — у наступних частинах переносу)", "f": func():
-			if session != null:
-				session.queue_free()
-				session = null
+		{"t": "Головне меню", "d": "Незбережений прогрес буде втрачено", "f": func():
+			_end_game()
 			_show_menu()},
 		{"t": "Вихід", "d": "Закрити гру", "f": func(): get_tree().quit()}]})
 
@@ -178,7 +184,8 @@ func _create_world() -> void:
 		menu.visible = false
 	_loading.visible = true
 	GameState.reset(_ng.seed)
-	map.generate(_ng.seed, _args.get("size", _ng.size))
+	_size_key = _args.get("size", _ng.size)
+	map.generate(_ng.seed, _size_key)
 
 
 func _process(delta: float) -> void:
@@ -216,7 +223,21 @@ func _on_world(w: Dictionary) -> void:
 	add_child(session)
 	session.begin(map.generator(), GameState.world_seed, w.states, w.board, w, _ng.diff)
 	hud.session = session
-	if _args.has("company"):
+	var loaded := _pending != null
+	if loaded:
+		var d: Dictionary = _pending
+		_pending = null
+		session.sim.load_state(d.sim)
+		session.sim.auto_choice = -1
+		_play(session.sim.CO.hq, false, true)
+		var hp: Dictionary = session.sim.PL[session.sim.CO.hq]
+		map.camera.look_at_point(Vector2(hp.x, hp.z + .3), 6.0)
+		map.company_colors()
+		toasts.push("good", "Гру завантажено", "%s · %s" % [session.sim.CO.name, Ui.date_str(session.sim.date)])
+	if loaded:
+		if _args.has("win"):
+			_toggle_window(_args.win)
+	elif _args.has("company"):
 		var hq := int(_args.get("hq", str(session.choices[0].id)))
 		_play(hq, true)
 		if _args.has("demo"):
@@ -245,6 +266,9 @@ func _on_world(w: Dictionary) -> void:
 			map_ui.show_country(int(_args.country))
 		if _args.has("win"):
 			_toggle_window(_args.win)
+		if _args.has("save"):   # test: save into a slot
+			var sd := _save_data()
+			SaveSystem.write(_args.save, sd.data, sd.meta)
 		map.camera.tx = map.camera.ttx   # no glide for a screenshot
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
@@ -294,8 +318,9 @@ static func _risk_word(r: float) -> String:
 	return "дуже високий" if r > .75 else ("високий" if r > .5 else ("середній" if r > .3 else "низький"))
 
 
-func _play(hq: int, auto_decisions: bool) -> void:
-	session.choose_hq(hq, auto_decisions)
+func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
+	if not loaded:
+		session.choose_hq(hq, auto_decisions)
 	session.set_speed(0)
 	map.attach_session(session)
 	wins = Windows.new(session.sim)
@@ -307,7 +332,8 @@ func _play(hq: int, auto_decisions: bool) -> void:
 	planner.attach(session, map)
 	course.attach(session, map, planner)
 	map_ui.course = course
-	map_ui.reroute.connect(_reroute)
+	if not map_ui.reroute.is_connected(_reroute):
+		map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
 	wins.move_vehicle.connect(func(v):
 		if win.visible:
@@ -439,6 +465,99 @@ func _speed_refused(why: String) -> void:
 
 func _goto_place(pid: int) -> void:
 	map_ui.fly(pid)
+
+
+# ---------- saving ----------
+## the game as a save: the world comes back from the seed and the size
+func _save_data() -> Dictionary:
+	var sim := session.sim
+	return {"data": {"v": 1, "seed": GameState.world_seed, "size": _size_key, "diff": sim.diff, "sim": sim.save_state()},
+		"meta": {"name": sim.CO.name, "col": sim.CO.get("col", "#ffb347"), "date": Ui.date_str(sim.date), "mode": "Логістична компанія",
+			"when": Time.get_datetime_string_from_system(false, true).substr(5, 11).replace("T", " ")}}
+
+
+## autosave: not while planning, in a dialog or before the headquarters
+func _autosave() -> Variant:
+	if session == null or session.sim == null or not hud.visible or planner.on or course.on or modals.is_open():
+		return {}
+	var s := _save_data()
+	toasts.push("", "Автозбереження", s.meta.date)
+	return s
+
+
+func _slots(save: bool) -> void:
+	var c := Ui.vbox(8)
+	var slots: Array = ["1", "2", "3"] if save else SaveSystem.SLOTS.filter(func(i): return i != "auto" or not SaveSystem.meta(i).is_empty())
+	for i in slots:
+		var m := SaveSystem.meta(i)
+		var sw := ColorRect.new()
+		sw.custom_minimum_size = Vector2(30, 20)
+		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		sw.color = Color(m.get("col", "#ffb347")) if m.size() else Color(1, 1, 1, .06)
+		var t: String = ("Автозбереження · " if i == "auto" else "") + (m.name if m.size() else "Порожній слот " + i)
+		var info := Ui.vbox(2, [Ui.label(t, 14, Ui.FG, Ui.font("body", 600)), Ui.note(("%s · %s · збережено %s" % [m.get("mode", ""), m.get("date", ""), m.get("when", "")]) if m.size() else "Немає збереження")])
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var row := Ui.hbox(10, [sw, info])
+		var slot: String = i
+		if save:
+			row.add_child(Ui.btn("Перезаписати" if m.size() else "Зберегти", "pri sm", "", func():
+				var s := _save_data()
+				if SaveSystem.write(slot, s.data, s.meta):
+					toasts.push("good", "Гру збережено", "Слот %s · %s" % [slot, s.meta.date])
+				else:
+					toasts.push("bad", "Не вдалося зберегти", "Немає доступу до папки збережень")
+				modals.clear()))
+		else:
+			var b := Ui.btn("Завантажити", "pri sm", "", func():
+				modals.clear()
+				_load_slot(slot))
+			b.disabled = m.is_empty()
+			row.add_child(b)
+		if m.size():
+			row.add_child(Ui.btn("", "sm", "trash", func():
+				SaveSystem.remove(slot)
+				modals.clear()
+				_slots(save)))
+		c.add_child(Ui.blk(row))
+	if save:
+		c.add_child(Ui.note("Світ відтворюється із зерна, тому збереження компактні. Файли лежать у папці користувача гри."))
+	elif session != null:
+		c.add_child(Ui.note("Поточний незбережений прогрес буде втрачено."))
+	if slots.is_empty():
+		c.add_child(Ui.note("Збережених ігор ще немає."))
+	modals.push({"icon": "doc" if save else "refresh", "eyebrow": "Збереження" if save else "Завантаження", "title": "Зберегти гру" if save else "Завантажити гру", "content": c, "close": true})
+
+
+func _end_game() -> void:
+	if planner.on:
+		planner.close()
+	if course.on:
+		course.close()
+	if map_ui.sim != null:
+		map_ui.close_insp()
+		map_ui.close_card()
+		map_ui.move_cancel(false)
+	map_ui.visible = false
+	if win.visible:
+		_toggle_window("")
+	if session != null:
+		session.queue_free()
+		session = null
+
+
+func _load_slot(slot: String) -> void:
+	var d: Variant = SaveSystem.read(slot)
+	if d == null or not d.has("sim"):
+		toasts.push("bad", "Збереження не знайдено", "Слот порожній або пошкоджений")
+		return
+	_end_game()
+	_pending = d
+	_ng.seed = int(d.seed)
+	_ng.size = d.get("size", "m")
+	_ng.diff = int(d.get("diff", 1))
+	_args.erase("size")
+	hud.visible = false
+	_create_world()
 
 
 # ---------- checks ----------

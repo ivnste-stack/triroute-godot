@@ -4,6 +4,7 @@ extends Control
 
 signal new_game
 signal settings
+signal load_game
 signal quit
 
 const BG := preload("res://assets/img/menu_bg.webp")
@@ -57,7 +58,7 @@ func _ready() -> void:
 	logo.custom_minimum_size = Vector2(400, 108)
 	lg.add_child(Ui.margin(logo, 24, 24, 24, 22))
 	col.add_child(lg)
-	for b in [["Створити гру", "pri", func(): new_game.emit()], ["Завантажити гру", "", Callable()], ["Налаштування", "", func(): settings.emit()], ["Вихід", "", func(): quit.emit()]]:
+	for b in [["Створити гру", "pri", func(): new_game.emit()], ["Завантажити гру", "", func(): load_game.emit()], ["Налаштування", "", func(): settings.emit()], ["Вихід", "", func(): quit.emit()]]:
 		var bt := Ui.btn(b[0], b[1], "", b[2])
 		bt.custom_minimum_size.y = 46
 		bt.add_theme_font_override("font", Ui.font("body", 600))
