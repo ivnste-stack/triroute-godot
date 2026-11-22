@@ -66,6 +66,8 @@ func _process(delta: float) -> void:
 
 
 func _process_t(delta: float) -> void:
+	if Perf.off("still"):   # --off=still: the camera keeps gliding (to measure redraws while the map moves)
+		ttx += sin(Time.get_ticks_msec() / 700.0) * .02
 	var dt := clampf(delta * 1000.0, 1.0, 50.0)
 	var k := 1.0 - pow(.85, dt / 16.7)
 	dist += (tdist - dist) * k
