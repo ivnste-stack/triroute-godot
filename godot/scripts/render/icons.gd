@@ -19,13 +19,15 @@ static func has(name: String) -> bool:
 
 
 ## a texture of the icon; size_px is the size it is drawn at (the texture is twice that)
-static func tex(name: String, color: Color, size_px: float, stroke: float = 1.8) -> Texture2D:
+## fill: a filled icon (class "fill" in the original: the play buttons)
+static func tex(name: String, color: Color, size_px: float, stroke: float = 1.8, fill: bool = false) -> Texture2D:
 	_load()
-	var key := "%s|%s|%d|%.2f" % [name, color.to_html(), int(size_px * 2), stroke]
+	var key := "%s|%s|%d|%.2f|%s" % [name, color.to_html(), int(size_px * 2), stroke, fill]
 	if _cache.has(key):
 		return _cache[key]
 	var frag: String = _src.get(name, "")
-	var svg := "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"#%s\" stroke-opacity=\"%.3f\" stroke-width=\"%.2f\" stroke-linecap=\"round\" stroke-linejoin=\"round\">%s</svg>" % [color.to_html(false), color.a, stroke, frag]
+	var fl := "#%s" % color.to_html(false) if fill else "none"
+	var svg := "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"" + fl + "\" stroke=\"#%s\" stroke-opacity=\"%.3f\" stroke-width=\"%.2f\" stroke-linecap=\"round\" stroke-linejoin=\"round\">%s</svg>" % [color.to_html(false), color.a, stroke, frag]
 	var img := Image.new()
 	img.load_svg_from_string(svg, size_px * 2 / 24.0)
 	var t := ImageTexture.create_from_image(img)

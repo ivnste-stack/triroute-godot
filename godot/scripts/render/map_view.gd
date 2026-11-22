@@ -20,6 +20,9 @@ var _gen: Object
 var _task := -1
 var _seed := 0
 var _result: Dictionary = {}
+var _mw := 1800
+var _mh := 1200
+var _n_states := 26
 var overlay: MapOverlay
 var towns: TownLayer
 var inc_base: IncidentLayer
@@ -70,16 +73,22 @@ func _ready() -> void:
 
 
 ## Starts generating a world; world_ready fires when the map is on screen.
-func generate(seed_value: int) -> void:
+## size: "s" 2×1, "m" 3×2, "l" 4×3 sectors (a sector is 7.5 world units, 600 texture pixels)
+func generate(seed_value: int, size_key: String = "m") -> void:
 	if _task >= 0:
 		return
 	_seed = seed_value
+	var sec: Vector2i = {"s": Vector2i(2, 1), "m": Vector2i(3, 2), "l": Vector2i(4, 3)}.get(size_key, Vector2i(3, 2))
+	_mw = sec.x * 600
+	_mh = sec.y * 600
+	# G.genN: the number of states grows with the area
+	_n_states = maxi(12, int(JS.round_js(30.0 * (_mw / 80.0) * (_mh / 80.0) / 384.0)))
 	_gen = ClassDB.instantiate("TRWorldGen")
 	_task = WorkerThreadPool.add_task(_generate_in_thread, true, "world generation")
 
 
 func _generate_in_thread() -> void:
-	var w: Dictionary = _gen.generate(_seed)
+	var w: Dictionary = _gen.generate(_seed, _n_states, _mw, _mh)
 	w["states"] = _gen.generate_states()
 	w["board"] = _gen.generate_board()
 	w["textures"] = _gen.build_textures()

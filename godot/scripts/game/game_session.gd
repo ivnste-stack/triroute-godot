@@ -13,19 +13,32 @@ var speed := 0
 var acc := 0.0          # ms into the current day
 var anim_t := 0.0       # animation time (ANIM_T): runs while the game runs
 var paused_fr := 0.0    # the part of the day shown while paused (G.pfr)
+var hold := false       # a dialog is open: time stands still (modalOpen)
 
 
 ## a new company on the world made by gen (states, board and the world dictionary of the same seed);
 ## hq: a place id, or -1 for the first suggested capital
 func start(gen: Object, seed_value: int, states: Array, board: Dictionary, world: Dictionary, hq: int = -1) -> void:
+	begin(gen, seed_value, states, board, world)
+	choose_hq(hq if hq >= 0 else choices[0].id)
+
+
+var choices: Array = []
+
+
+## a new company before the headquarters is chosen (coInit with the first suggested capital, as the original)
+func begin(gen: Object, seed_value: int, states: Array, board: Dictionary, world: Dictionary, diff: int = 1) -> void:
 	sim = Sim.new()
 	sim.setup(gen, seed_value, states, board, world)
-	var choices := sim.start_choices()
-	if hq < 0:
-		hq = choices[0].id
-	sim.co_init(hq)
-	sim.co_set_hq(hq)
-	sim.auto_choice = 0   # decisions are taken at once until the interface shows them (stage 6)
+	sim.diff = diff
+	choices = sim.start_choices()
+	sim.co_init(choices[0].id)
+
+
+## the headquarters (coSetHQ); decisions wait for the interface unless auto_choice is set
+func choose_hq(pid: int, auto_decisions: bool = true) -> void:
+	sim.co_set_hq(pid)
+	sim.auto_choice = 0 if auto_decisions else -1
 	acc = 0.0
 	sim.co_frame(0.0)
 
@@ -77,7 +90,7 @@ func _process(delta: float) -> void:
 	if sim == null:
 		return
 	var dt := minf(delta * 1000.0, 250.0)
-	if speed > 0 and not sim.over:
+	if speed > 0 and not sim.over and not hold:
 		anim_t += dt / 1000.0
 		acc += dt
 		var n := 0
