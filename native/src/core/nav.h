@@ -4,7 +4,9 @@
 #include "board.h"
 #include "worldgen.h"
 
+#include <array>
 #include <cstdint>
+#include <functional>
 #include <set>
 #include <vector>
 
@@ -26,6 +28,13 @@ public:
 	int own_at(double x, double z) const;   // bOwn
 	// shortest path on the road (rail=false) or rail graph between two lattice nodes; empty if none
 	std::vector<float> path(int a, int b, bool rail, const Blocks *blk) const;
+	// the same, but nodes for which bad(node) is true are not entered (except b): the "avoid danger" road
+	// search of the course change (srRoad)
+	std::vector<float> path(int a, int b, bool rail, const Blocks *blk, const std::function<bool(int)> &bad) const;
+	// A* over the cells of the board (srGrid): water only for ships (sea), everything but a closed sky for
+	// planes; cells inside the zones {x, z, r} cost 30 more (avoid). Doubles, as in the original; empty if none.
+	std::vector<double> grid(bool sea, double x0, double z0, double x1, double z1, const std::vector<std::array<double, 3>> &zones,
+			const std::set<int> &sky) const;
 	// sea route between two port towns (index into board towns); empty if none
 	std::vector<float> sea(int ta, int tb) const;
 	// flight path; straight unless it crosses a closed sky

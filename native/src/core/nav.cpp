@@ -94,6 +94,10 @@ bool Nav::blocked(int n, int m, bool rail, const Blocks &blk) const {
 }
 
 std::vector<float> Nav::path(int a, int b, bool rail, const Blocks *blk) const {
+	return path(a, b, rail, blk, nullptr);
+}
+
+std::vector<float> Nav::path(int a, int b, bool rail, const Blocks *blk, const std::function<bool(int)> &bad) const {
 	const int N = b_.nx * b_.nz;
 	const auto &bits = rail ? b_.rbits : b_.bits;
 	const bool useBlk = blk && blk->any();
@@ -110,6 +114,7 @@ std::vector<float> Nav::path(int a, int b, bool rail, const Blocks *blk) const {
 			if (!(bits[n] & (1 << d))) continue;
 			int m = (y + D8[d][1]) * b_.nx + x + D8[d][0];
 			if (useBlk && blocked(n, m, rail, *blk)) continue;
+			if (bad && m != b && bad(m)) continue;
 			double ng = double(g[n]) + ((d & 1) ? 1.4142 : 1) * b_.st;
 			if (ng < double(g[m])) {
 				g[m] = float(ng);
@@ -275,6 +280,111 @@ std::vector<float> Nav::air(double x0, double z0, double x1, double z1, const Bl
 		i = k;
 	}
 	return out;
+}
+
+std::vector<double> Nav::grid(bool sea, double x0, double z0, double x1, double z1, const std::vector<std::array<double, 3>> &zones,
+		const std::set<int> &sky) const {
+	const int W = b_.nx - 1, H = b_.nz - 1, N = W * H;
+	const double ST = b_.st;
+	auto cell = [&](double x, double z) {
+		int i = int(std::floor((x + b_.wx / 2) / ST)), j = int(std::floor((z + b_.wz / 2) / ST));
+		return (i < 0 || j < 0 || i >= W || j >= H) ? -1 : j * W + i;
+	};
+	auto cxy = [&](int c, double &x, double &z) {
+		x = -b_.wx / 2 + (c % W + .5) * ST;
+		z = -b_.wz / 2 + (c / W + .5) * ST;
+	};
+	std::vector<uint8_t> blk;
+	if (!sea && !sky.empty()) {
+		blk.assign(N, 0);
+		for (int c = 0; c < N; c++) {
+			double x, z;
+			cxy(c, x, z);
+			int o = own_at(x, z);
+			if (o >= 0 && sky.count(o)) blk[c] = 1;
+		}
+	}
+	auto pass = [&](int c) { return sea ? water_[c] != 0 : (blk.empty() || !blk[c]); };
+	auto near_w = [&](int c, int rad) {
+		if (c >= 0 && pass(c)) return c;
+		if (c < 0) return -1;
+		int x0_ = c % W, y0_ = c / W, best = -1, bd = 1000000000;
+		for (int dy = -rad; dy <= rad; dy++)
+			for (int dx = -rad; dx <= rad; dx++) {
+				int x = x0_ + dx, y = y0_ + dy;
+				if (x < 0 || y < 0 || x >= W || y >= H) continue;
+				int m = y * W + x;
+				if (pass(m) && dx * dx + dy * dy < bd) {
+					bd = dx * dx + dy * dy;
+					best = m;
+				}
+			}
+		return best;
+	};
+	const int s0 = near_w(cell(x0, z0), 3), e0 = near_w(cell(x1, z1), 3);
+	if (s0 < 0 || e0 < 0) return {};
+	std::vector<float> pen;
+	if (!zones.empty()) {
+		pen.assign(N, 0.f);
+		for (auto &zn : zones) {
+			const int r = int(std::ceil(zn[2] / ST)) + 1, c = cell(zn[0], zn[1]);
+			if (c < 0) continue;
+			const int cx = c % W, cy = c / W;
+			for (int dy = -r; dy <= r; dy++)
+				for (int dx = -r; dx <= r; dx++) {
+					int x = cx + dx, y = cy + dy;
+					if (x < 0 || y < 0 || x >= W || y >= H) continue;
+					double px, pz;
+					cxy(y * W + x, px, pz);
+					if (js_hypot(px - zn[0], pz - zn[1]) < zn[2]) pen[size_t(y * W + x)] = 30;
+				}
+		}
+	}
+	std::vector<float> g(N, 1e9f);
+	std::vector<int> prev(N, -1);
+	const int ex = e0 % W, ey = e0 / W;
+	Heap h;
+	g[s0] = 0;
+	h.push(0, s0);
+	while (!h.empty()) {
+		int n = h.pop();
+		if (n == e0) break;
+		int x = n % W, y = n / W;
+		for (int dy = -1; dy <= 1; dy++)
+			for (int dx = -1; dx <= 1; dx++) {
+				if (!dx && !dy) continue;
+				int nx = x + dx, ny = y + dy;
+				if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+				int c = ny * W + nx;
+				if (!pass(c)) continue;
+				if (dx && dy && (!pass(y * W + nx) || !pass(ny * W + x))) continue;
+				double ng = double(g[n]) + ((dx && dy) ? 1.4142 : 1) + (pen.empty() ? 0.0 : double(pen[c]));
+				if (ng < double(g[c])) {
+					g[c] = float(ng);
+					prev[c] = n;
+					h.push(ng + js_hypot(nx - ex, ny - ey), c);
+				}
+			}
+	}
+	if (!(g[e0] < 1e9f)) return {};
+	std::vector<int> cells;
+	for (int n = e0; n >= 0; n = prev[n]) {
+		cells.push_back(n);
+		if (n == s0) break;
+	}
+	std::reverse(cells.begin(), cells.end());
+	std::vector<double> pts = {x0, z0};
+	for (size_t k = 0; k < cells.size(); k++) {
+		const int c = cells[k];
+		if (k > 0 && k < cells.size() - 1 && c - cells[k - 1] == cells[k + 1] - c) continue;
+		double x, z;
+		cxy(c, x, z);
+		pts.push_back(x);
+		pts.push_back(z);
+	}
+	pts.push_back(x1);
+	pts.push_back(z1);
+	return pts;
 }
 
 } // namespace tr

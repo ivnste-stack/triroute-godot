@@ -79,8 +79,11 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_blocks", "blocks"), &TRWorldGen::set_blocks);
 	ClassDB::bind_method(D_METHOD("state_at", "x", "z"), &TRWorldGen::state_at);
 	ClassDB::bind_method(D_METHOD("sky_hit", "x0", "z0", "x1", "z1"), &TRWorldGen::sky_hit);
+	ClassDB::bind_method(D_METHOD("sr_grid", "mode", "x0", "z0", "x1", "z1", "zones"), &TRWorldGen::sr_grid);
+	ClassDB::bind_method(D_METHOD("node_path_avoid", "a", "b", "jam_nodes", "zones"), &TRWorldGen::node_path_avoid);
 	ClassDB::bind_method(D_METHOD("continents"), &TRWorldGen::continents);
 	ClassDB::bind_method(D_METHOD("crossings", "p", "eco"), &TRWorldGen::crossings);
+	ClassDB::bind_method(D_METHOD("crossings64", "p", "eco"), &TRWorldGen::crossings64);
 	ClassDB::bind_method(D_METHOD("states_rng_state"), &TRWorldGen::states_rng_state);
 	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
@@ -380,6 +383,35 @@ void TRWorldGen::set_blocks(const Dictionary &d) {
 	blocks_ = b;
 }
 
+PackedFloat64Array TRWorldGen::sr_grid(const String &mode, double x0, double z0, double x1, double z1, const PackedFloat64Array &zones) const {
+	PackedFloat64Array out;
+	if (!nav_) return out;
+	std::vector<std::array<double, 3>> zs;
+	for (int64_t i = 0; i + 2 < zones.size(); i += 3) zs.push_back({zones[i], zones[i + 1], zones[i + 2]});
+	static const std::set<int> none;
+	auto p = nav_->grid(mode == "sea", x0, z0, x1, z1, zs, blocks_ ? blocks_->sky : none);
+	out.resize(int64_t(p.size()));
+	for (size_t i = 0; i < p.size(); i++) out[int64_t(i)] = p[i];
+	return out;
+}
+
+PackedFloat32Array TRWorldGen::node_path_avoid(int64_t a, int64_t b, const PackedInt32Array &jam_nodes, const PackedFloat64Array &zones) const {
+	if (!nav_ || !board_) return PackedFloat32Array();
+	std::set<int> jn;
+	for (int64_t i = 0; i < jam_nodes.size(); i++) jn.insert(jam_nodes[i]);
+	std::vector<std::array<double, 3>> zs;
+	for (int64_t i = 0; i + 2 < zones.size(); i += 3) zs.push_back({zones[i], zones[i + 1], zones[i + 2]});
+	const tr::Board &B = *board_;
+	auto bad = [&](int n) {
+		if (jn.count(n)) return true;
+		const double x = -B.wx / 2 + (n % B.nx) * B.st, z = -B.wz / 2 + (n / B.nx) * B.st;
+		for (auto &q : zs)
+			if (tr::js_hypot(x - q[0], z - q[1]) < q[2]) return true;
+		return false;
+	};
+	return to_packed(nav_->path(int(a), int(b), false, blocks_.get(), bad));
+}
+
 bool TRWorldGen::sky_hit(double x0, double z0, double x1, double z1) const {
 	if (!nav_ || !blocks_ || blocks_->sky.empty()) return false;
 	return nav_->sky_hit(x0, z0, x1, z1, blocks_->sky);
@@ -423,6 +455,24 @@ Array TRWorldGen::crossings(const PackedFloat32Array &p, double eco) const {
 	Array out;
 	if (!board_) return out;
 	std::vector<float> v(size_t(p.size()));
+	for (int64_t i = 0; i < p.size(); i++) v[size_t(i)] = p[i];
+	for (const auto &c : tr::board_crossings(*world_, *board_, v, eco)) {
+		Dictionary d;
+		d["ws"] = c.ws;
+		d["s"] = c.s;
+		d["x"] = c.x;
+		d["z"] = c.z;
+		d["a"] = c.a;
+		d["b"] = c.b;
+		out.push_back(d);
+	}
+	return out;
+}
+
+Array TRWorldGen::crossings64(const PackedFloat64Array &p, double eco) const {
+	Array out;
+	if (!board_) return out;
+	std::vector<double> v(size_t(p.size()));
 	for (int64_t i = 0; i < p.size(); i++) v[size_t(i)] = p[i];
 	for (const auto &c : tr::board_crossings(*world_, *board_, v, eco)) {
 		Dictionary d;

@@ -12,12 +12,14 @@
 // dispatcher (CTO), so returns, the dispatcher, wages and managers are covered too; "abroad" — tier 4:
 // orders across the continent (border checkpoints, customs) and trains; "staff" — "fleet" with low wages, an
 // honest finance director and a dishonest, underpaid operations director (strikes, embezzlement, pay rises),
-// and every decision takes the second choice; "ocean" — tier 5 with a hub and ships in the nearest port.
+// and every decision takes the second choice; "ocean" — tier 5 with a hub and ships in the nearest port; "air" —
+// tier 6 with planes (multi-drop flights). Also: a consolidated road trip in "fleet", and once a week a course
+// change around danger in "fleet", "ocean" and "air".
 const {chromium}=require('playwright');const fs=require('fs');const path=require('path');const D=__dirname;
 const out=process.argv[2]||path.join(D,'ref','sim.json'),days=+(process.argv[3]||150),seeds=process.argv.slice(4).map(Number);if(!seeds.length)seeds.push(777,303);
 const cr=fs.readFileSync(path.join(D,'crmath.js'),'utf8');
 (async()=>{const b=await chromium.launch();const res={days,runs:[]};
-for(const seed of seeds)for(const sc of ["start","fleet","abroad","staff","ocean"]){
+for(const seed of seeds)for(const sc of ["start","fleet","abroad","staff","ocean","air"]){
 const p=await b.newPage();p.setDefaultTimeout(1200000);const errs=[];p.on('pageerror',e=>errs.push(e.message));
 await p.goto('file://'+D+'/t.html');await p.waitForTimeout(500);
 await p.addScriptTag({content:cr});
@@ -42,7 +44,8 @@ const r=await p.evaluate(([sc,days])=>{
   const SC={fleet:{cash:250000,tier:2,staff:{driver:8},veh:["ltruck","ltruck","van","van","van","truck","truck"]},
     abroad:{cash:2e6,tier:4,staff:{driver:12,rail:6},veh:["truck","truck","truck","rtrain","reefer","ltruck","van","train","train"]},
     staff:{cash:250000,tier:2,staff:{driver:8},veh:["ltruck","ltruck","van","van","van","truck","truck"]},
-    ocean:{cash:5e7,tier:5,staff:{driver:16,rail:8,sailor:40},veh:["truck","truck","truck","truck","train","train"]}}[sc];
+    ocean:{cash:5e7,tier:5,staff:{driver:16,rail:8,sailor:40},veh:["truck","truck","truck","truck","train","train"]},
+    air:{cash:2e8,tier:6,staff:{driver:16,pilot:30},veh:["plane","plane","turbo","truck","truck","truck"]}}[sc];
   if(SC){CO.cash=SC.cash;CO.tier=SC.tier;Object.assign(CO.staff,SC.staff);
     for(const t of SC.veh)CO.veh.push({id:CO.uid++,t,loc:CO.hq,st:"idle",cond:100,km:0});
     CO.mgr.cto={...CO.cand.cto[0]};delete CO.cand.cto;CO.auto=true}
@@ -54,7 +57,18 @@ const r=await p.evaluate(([sc,days])=>{
   const policy=()=>{let n=0;if(sc==="fleet"&&!CO.tenders.length&&(CO.toff||[]).length)ACT.coTd(CO.toff[0].id);for(const k of CO.board.slice().sort((a,b)=>b.pay-a.pay)){const P=coPlan(k);if(P.ok&&!P.late){coDispatch(k,P,true);n++}}
     /* the route planner: the best-paying chain order left is sent along its legs when that pays */
     if(sc==="abroad"||sc==="ocean"){const k=CO.board.filter(k=>k.legs).sort((a,b)=>b.pay-a.pay)[0];
-      if(k){Object.assign(LP,{k,pts:[k.from,...k.legs.map(L=>L.b)],modes:k.legs.map(L=>L.m),veh0:null,post:false,byMgr:false,tn:null});const C=lpCalc();if(C.done&&!lpBlock(C)&&C.net>0){ACT.lpGo();n+=100}}}
+      if(k){Object.assign(LP,{k,pts:[k.from,...k.legs.map(L=>L.b)],modes:k.legs.map(L=>L.m),veh0:null,post:false,byMgr:false,tn:null});const C=lpCalc();if(C.done&&!lpGroups().bad&&C.legs.length&&C.legs.length===lpGroups().G.length&&!lpBlock(C)&&C.net>0){ACT.lpGo();n+=100}}}
+    /* multi-drop flights: the most urgent landing first */
+    if(sc==="air")for(const k of CO.board.filter(k=>k.multi).sort((a,b)=>b.pay-a.pay).slice(0,1)){const ord=k.multi.map(d=>PL[d.to]).sort((a,b)=>k.multi.find(d=>d.to===a.id).dl-k.multi.find(d=>d.to===b.id).dl);
+      Object.assign(LP,{k,pts:[k.from,...ord.map(p=>p.id)],modes:ord.map(()=>"air"),veh0:null,post:false,byMgr:false,tn:null});const C=lpCalc();if(C.done&&!lpGroups().bad&&C.legs.length&&C.legs.length===lpGroups().G.length&&!lpBlock(C)&&C.net>0){ACT.lpGo();n+=1000}}
+    /* a consolidated road trip of the three best-paying small road orders (up to 6 t, no special permits) */
+    if(sc==="fleet"){const ks=CO.board.filter(k=>consOK(k)&&k.mode==="road"&&k.tons<=6&&permNeed(CARGO_I[k.cg],"road").every(permOK)).sort((a,b)=>b.pay-a.pay).slice(0,3);
+      if(ks.length>=2){UI.cons=ks.map(k=>k.id);let kC=null;const _lo=lpOpen;lpOpen=k=>{kC=k};ACT.consRoute();lpOpen=_lo;
+        Object.assign(LP,{k:kC,pts:consAutoSeq(kC),veh0:null,consVeh:undefined,post:false,byMgr:false,tn:null});LP.modes=LP.pts.slice(1).map(()=>"road");
+        const C=lpCalc();if(C.done&&!lpBlock(C)&&C.net>0){ACT.lpGo();n+=10000}UI.cons=[]}}
+    /* once a week the first trip that can turns its course around danger */
+    if((sc==="fleet"||sc==="ocean"||sc==="air")&&G.day%7===3){const j=CO.jobs.find(j=>srOK(j));
+      if(j){Object.assign(SR,{j,m:j.mode,pts:[],avoid:true,ck:null});const C=srCalc();if(!C.bad){ACT.srGo();n+=100000}}}
     return n};
   const lpRec=()=>CO.board.slice(0,4).map(k=>{Object.assign(LP,{k,pts:k.legs?[k.from,...k.legs.map(L=>L.b)]:[k.from,k.to],modes:k.legs?k.legs.map(L=>L.m):[k.mode],veh0:null,post:false,tn:null});
     const C=lpCalc(),b=lpBlock(C);return k.id+":"+H(C.t)+":"+H(C.c)+":"+H(C.risk)+":"+H(C.net)+":"+(C.done?1:0)+":"+C.legs.map(L=>L.own?"o":"p").join("")+":"+(b?1:0)}).join(" ");

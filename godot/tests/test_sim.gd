@@ -165,9 +165,42 @@ func _policy(sim: Sim, scenario: String = "") -> int:
 			var k: Dictionary = ks[0]
 			var LP := {"k": k, "pts": [k.from] + k.legs.map(func(L): return L.b), "modes": k.legs.map(func(L): return L.m), "veh0": null}
 			var C: Dictionary = sim.lp_calc(LP)
-			if C.done and sim.lp_block(LP, C) == null and C.net > 0:
+			if C.done and C.get("bad") == null and C.legs.size() and C.legs.size() == C.get("groups", C.legs.size()) and sim.lp_block(LP, C) == null and C.net > 0:
 				sim.lp_go(LP)
 				n += 100
+	# multi-drop flights: the most urgent landing first
+	if scenario == "air":
+		var ms: Array = sim.CO.board.filter(func(x): return x.get("multi") != null)
+		Sim._stable_sort(ms, func(a, b): return b.pay - a.pay)
+		if ms.size():
+			var k: Dictionary = ms[0]
+			var pts: Array = sim.lp_order(k, "urg")
+			var LP := {"k": k, "pts": pts, "modes": pts.slice(1).map(func(_p): return "air"), "veh0": null}
+			var C: Dictionary = sim.lp_calc(LP)
+			if C.done and C.get("bad") == null and C.legs.size() and C.legs.size() == C.get("groups", C.legs.size()) and sim.lp_block(LP, C) == null and C.net > 0:
+				sim.lp_go(LP)
+				n += 1000
+	# a consolidated road trip of the three best-paying small road orders (up to 6 t, no special permits)
+	if scenario == "fleet":
+		var ks: Array = sim.CO.board.filter(func(x): return sim.cons_ok(x) and x.mode == "road" and x.tons <= 6 and sim.perm_need(sim.cargo_i[x.cg], "road").all(func(id): return sim.perm_ok(id)))
+		Sim._stable_sort(ks, func(a, b): return b.pay - a.pay)
+		ks = ks.slice(0, 3)
+		if ks.size() >= 2:
+			var kC: Dictionary = sim.cons_make(ks)
+			var pts: Array = sim.cons_auto_seq(kC)
+			var LP := {"k": kC, "pts": pts, "modes": pts.slice(1).map(func(_p): return "road"), "veh0": null}
+			var C: Dictionary = sim.lp_calc(LP)
+			if C.done and C.get("bad") == null and C.legs.size() and C.legs.size() == C.get("groups", C.legs.size()) and sim.lp_block(LP, C) == null and C.net > 0:
+				sim.lp_go(LP)
+				n += 10000
+	# once a week the first trip that can turns its course around danger
+	if (scenario == "fleet" or scenario == "ocean" or scenario == "air") and int(sim.day) % 7 == 3:
+		for j in sim.CO.jobs:
+			if sim.sr_ok(j):
+				if not sim.sr_calc(j, [], true).bad:
+					sim.sr_go(j, [], true)
+					n += 100000
+				break
 	return n
 
 
@@ -201,7 +234,8 @@ func test_simulation_days_match_html() -> String:
 		var SC: Dictionary = {"fleet": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
 			"abroad": {"cash": 2e6, "tier": 4, "staff": {"driver": 12, "rail": 6}, "veh": ["truck", "truck", "truck", "rtrain", "reefer", "ltruck", "van", "train", "train"]},
 			"staff": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
-			"ocean": {"cash": 5e7, "tier": 5, "staff": {"driver": 16, "rail": 8, "sailor": 40}, "veh": ["truck", "truck", "truck", "truck", "train", "train"]}}.get(run.scenario, {})
+			"ocean": {"cash": 5e7, "tier": 5, "staff": {"driver": 16, "rail": 8, "sailor": 40}, "veh": ["truck", "truck", "truck", "truck", "train", "train"]},
+			"air": {"cash": 2e8, "tier": 6, "staff": {"driver": 16, "pilot": 30}, "veh": ["plane", "plane", "turbo", "truck", "truck", "truck"]}}.get(run.scenario, {})
 		if SC:
 			sim.CO.cash = SC.cash
 			sim.CO.tier = SC.tier

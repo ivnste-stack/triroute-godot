@@ -54,6 +54,7 @@ static const int TINY_ISL = 40;
 // border crossings along a polyline (bCrossings): {ws, s = ws*eco, x, z, a = from state, b = to state}
 struct Crossing { double ws, s, x, z; int a, b; };
 std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<float> &pts, double eco);
+std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<double> &pts, double eco);
 
 // state_pop: population of every state (G.C[i].pop in the HTML version, millions).
 Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop);

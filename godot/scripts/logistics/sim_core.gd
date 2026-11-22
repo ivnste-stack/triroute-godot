@@ -522,7 +522,16 @@ static func _msort(a: Array, tmp: Array, lo: int, hi: int, cmp: Callable) -> voi
 
 
 # ---------- the order board (coGen + the permit / firm wrapper of 08g) ----------
+## coGen with the wrappers of 08g (permits, firms) and 08r (a flight becomes a multi-drop one)
 func co_gen() -> Variant:
+	var k: Variant = _co_gen_perm()
+	if k == null or k.mode != "air" or k.get("legs") != null or not chance(.4):
+		return k
+	var mk: Variant = lp_make_multi(k)
+	return mk if mk != null else k
+
+
+func _co_gen_perm() -> Variant:
 	var k: Variant = _co_gen()
 	if k == null:
 		return null
@@ -1340,7 +1349,11 @@ func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
 	kk.multi = null
 	kk.legs = null
 	kk.cons = null
-	if i == 0 and plan.get("veh0") != null:
+	if plan.get("cons"):   # a consolidated trip: one pinned vehicle carries everything
+		kk._veh = plan.veh
+		kk._one = true
+		kk._vol = L.vol
+	elif i == 0 and plan.get("veh0") != null:
 		kk._veh = plan.veh0
 	kk.from = L.a
 	kk.to = L.b
@@ -1368,7 +1381,7 @@ func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
 		var fee := lp_fee(k, r, L.m, L.tons if L.get("tons") else k.tons, PL[L.a].cid)
 		P = {"ok": true, "t": t, "n": 1, "vids": [], "lead": 0.0, "leadR": {"p": PackedFloat32Array([r.p[0], r.p[1]]), "len": 0.0}, "main": r, "tl": 0.0, "tm": tm,
 			"hs": hs, "cust": 0.0, "tot": hs + tm + hs, "fuel": fee, "profit": 0.0, "late": false}
-	if i > 0:
+	if i > 0 and not plan.get("cons"):
 		var f := JS.round_js((250 + k.tons * 1.5) * price_k(PL[L.a].cid))
 		CO.cash -= f
 		CO.m.other += f
@@ -1380,6 +1393,184 @@ func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
 			if i > 0:
 				j.cont = false
 			return
+
+
+# ---------- multi-drop flights: one plane, drops in several countries, each with its own deadline (08r) ----------
+## all orderings of a (perms of 08r-multi.js, in the same order)
+static func _perms(a: Array) -> Array:
+	if a.size() < 2:
+		return [a]
+	var out := []
+	for i in a.size():
+		var rest := []
+		for j in a.size():
+			if j != i:
+				rest.append(a[j])
+		for r in _perms(rest):
+			out.append([a[i]] + r)
+	return out
+
+
+func lp_make_multi(k: Dictionary) -> Variant:
+	var A: Dictionary = PL[k.from]
+	if not A.air:
+		return null
+	var Ts := []
+	for t in D.VT:
+		var T: Dictionary = D.VT[t]
+		if T.mode == "air" and T.tier <= CO.tier and not T.get("loc", 0):
+			Ts.append(T)
+	_stable_sort(Ts, func(a, b): return b.cap - a.cap)
+	if Ts.is_empty():
+		return null
+	var T: Dictionary = Ts[0]
+	var used := {A.cid: true}
+	var drops := []
+	var B: Dictionary = PL[k.to]
+	if B.air and not used.has(B.cid):
+		drops.append(B)
+		used[B.cid] = true
+	var cand: Array = PL.filter(func(p): return p.air and p.id != A.id and not used.has(p.cid) and co_scope(p) and not in_conf(p.cid) and JS.hypot(p.x - A.x, p.z - A.z) * CO_DU > .35)
+	var want := 4 if chance(.5) else 3
+	while drops.size() < want and cand.size():
+		var p: Dictionary = cand.pop_at(int(floor(R.next() * cand.size())))
+		if used.has(p.cid):
+			continue
+		if co_route("air", A.id, p.id) == null:
+			continue
+		drops.append(p)
+		used[p.cid] = true
+	if drops.size() < 3:
+		return null
+	var PT: Dictionary = T
+	for t in D.VT:
+		if D.VT[t].mode == "air" and D.VT[t].tier <= 7 and not D.VT[t].get("loc", 0):
+			PT = D.VT[t]
+			break
+	var sp: float = minf(T.spd, PT.spd) * spd_k()
+	var hd: float = D.HAND.air * hand_k()
+	var ul := hd * .5
+	var lt := func(a: Dictionary, b: Dictionary) -> float:
+		var r: Variant = co_route("air", a.id, b.id)
+		return r.len / sp if r != null else 1e9
+	var eta := func(ord: Array) -> Array:
+		var t := 0.0
+		var prev: Dictionary = A
+		var out := []
+		for i in ord.size():
+			t += lt.call(prev, ord[i]) + hd * (1 if i else 2)
+			out.append(t)
+			t += ul
+			prev = ord[i]
+		return out
+	var all := _perms(drops)
+	var best: Array = all[0]
+	var bt := 1e9
+	for o in all:
+		var e: Array = eta.call(o)
+		if e.back() < bt:
+			bt = e.back()
+			best = o
+	var eB: Array = eta.call(best)
+	var dl := {}
+	for i in best.size():
+		dl[best[i].id] = JS.fixed1(eB[i] * rnd(1.06, 1.25) + .08)
+	# one drop is critical: it must go early, even if it is not the nearest
+	var crit_id := -1
+	if chance(.75):
+		var c: Dictionary = best[rint(1, best.size() - 1)]
+		dl[c.id] = JS.fixed1((2 * hd + lt.call(A, c)) * rnd(1.08, 1.2) + .05)
+		crit_id = c.id
+		var b2: Variant = null
+		var t2 := 1e9
+		for o in all:
+			if not is_same(o[0], c):
+				continue
+			var e: Array = eta.call(o)
+			if e.back() < t2:
+				t2 = e.back()
+				b2 = o
+		var e2: Array = eta.call(b2)
+		for i in b2.size():
+			if not is_same(b2[i], c):
+				dl[b2[i].id] = maxf(dl[b2[i].id], JS.fixed1(e2[i] * rnd(1.04, 1.15) + .05))
+	var cg: Dictionary = cargo_i[k.cg]
+	var tons := minf(k.tons, T.cap * .9)
+	var sh := []
+	for d in drops:
+		sh.append(.5 + R.next())
+	var ss := 0.0
+	for x in sh:
+		ss += x
+	var multi := []
+	for i in drops.size():
+		var d: Dictionary = drops[i]
+		var tn := maxf(.2, JS.fixed1(tons * sh[i] / ss))
+		var r: Dictionary = co_route("air", A.id, d.id)
+		var crit: bool = d.id == crit_id
+		multi.append({"to": d.id, "tons": tn, "dl": dl[d.id], "crit": crit,
+			"pay": JS.round_js((6000 + 260 * r.len * JS.pow(tn, .85)) * cg.k * price_k(d.cid) * (1.35 if crit else 1.0) * rnd(.95, 1.1) * 1.15)})
+	var mk := k.duplicate()
+	mk.to = best.back().id
+	var tt := 0.0
+	var pp := 0.0
+	var dm := 0.0
+	for d in multi:
+		tt += d.tons
+		pp += d.pay
+		dm = maxf(dm, d.dl)
+	mk.tons = JS.fixed1(tt)
+	mk.pay = pp
+	mk.dlDays = dm
+	mk.multi = multi
+	mk.minR = 0
+	return mk
+
+
+## an order of a consolidated trip is paid at its own drop, against its own deadline (consPay)
+func cons_pay(j: Dictionary, o: Dictionary) -> void:
+	if o.get("done"):
+		return
+	o.done = 1
+	var cg: Dictionary = cargo_i[o.cg]
+	var late := maxf(0, co_now() - o.dlA)
+	if j.lost or j.get("back"):
+		CO.rating = JS.clamp_js(CO.rating - .08, 1, 5)
+		co_news("bad", "truck", "%s: «%s» до %s не доставлено" % [CO.name, cg.n.to_lower(), PL[o.to].name])
+		return
+	var pay := JS.round_js(o.pay * (j.payK if j.get("payK") else 1.0) * (maxf(.35, 1 - late * .12) if late > 0 else 1.0) * (1 - minf(.8, j.get("dmg", 0))))
+	CO.cash += pay
+	CO.m[rev_key(o)] += pay
+	CO.cdel += 1
+	CO.deliv += 1
+	CO.tons += o.tons
+	var s := 2.0 if late > 2 else (3.2 if late > 0 else (3.8 if j.dmg > .05 else 5.0))
+	var w := minf(.05, .01 + JS.log10(1 + pay) * .005)
+	CO.rating = JS.clamp_js(CO.rating + (s - CO.rating) * w, 1, 5)
+	var xp := int(JS.round_js(co_xp(j, o, late) * 1.25))   # planning a shared trip teaches more
+	CO.xp = CO.get("xp", 0) + xp
+	var tone := "warn" if late > 0 else "good"
+	co_news(tone, "truck", "%s: %s доставлено в %s (збірний рейс)" % [CO.name, cg.n.to_lower(), PL[o.to].name])
+	_last({"d": date.duplicate(), "from": o.from, "to": o.to, "cg": o.cg, "pay": pay, "tone": tone, "mode": "road"})
+	j.ev.append("Доставлено в %s: %d" % [PL[o.to].name, int(pay)])
+
+
+## the pay for one drop of a multi-drop flight, on its own deadline (lpDropPay)
+func lp_drop_pay(j: Dictionary, d: Dictionary) -> void:
+	var late := maxf(0, day - d.dlA)
+	var pay: float = 0.0 if j.lost else d.pay * (maxf(.35, 1 - late * .12) if late > 0 else 1.0) * (1 - minf(.8, j.get("dmg", 0)))
+	pay = JS.round_js(pay)
+	CO.cash += pay
+	CO.m.contract += pay
+	if not j.lost:
+		CO.cdel += 1
+		CO.deliv += 1
+		CO.tons += d.tons
+	var s := 2.0 if late > 2 else (3.2 if late > 0 else 5.0)
+	CO.rating = JS.clamp_js(CO.rating + (s - CO.rating) * .012, 1, 5)
+	var tone := "warn" if late > 0 else "good"
+	co_news(tone, "plane", "%s: збірний рейс — %s т доставлено в %s" % [CO.name, d.tons, PL[d.to].name])
+	_last({"d": date.duplicate(), "from": j.lp.k0.from, "to": d.to, "cg": j.k.cg, "pay": pay, "tone": tone, "mode": "air"})
 
 
 # ---------- the dispatcher (coAuto) ----------
@@ -1529,14 +1720,50 @@ func _last(e: Dictionary) -> void:
 
 
 func co_complete(j: Dictionary) -> void:
-	if j.get("cons") or (j.get("lp") and j.lp.plan.get("cons")):
-		push_error("Sim: consolidated trips are not ported yet")
+	if j.get("cons"):
+		push_error("Sim: the old single-trip consolidated orders are not used any more")
+	# a consolidated trip (the wrapper of 08v-cons.js): the last leg pays its drops and frees the pinned vehicle;
+	# an aborted trip settles every drop left
+	var pl: Variant = j.lp.plan if j.get("lp") else null
+	if pl != null and pl.get("cons") and not j.get("ret"):
+		var last: bool = j.lp.i == pl.legs.size() - 1
+		if j.get("back") or j.get("cx0") or j.lost:
+			for v in CO.veh:
+				if v.get("resv") == j.lp.k0.id:
+					v.resv = null
+			for L in pl.legs.slice(j.lp.i):
+				for d in L.get("drops", []):
+					cons_pay(j, d)
+		if last or j.get("back") or j.get("cx0"):
+			var L: Dictionary = pl.legs[j.lp.i]
+			if not L.get("paid"):
+				L.paid = 1
+				for d in L.get("drops", []):
+					cons_pay(j, d)
+			_drop(CO.jobs, j)
+			for v in CO.veh:
+				if j.vids.has(v.id):
+					v.st = "idle"
+					v.job = null
+					v.loc = j.k.from if j.get("back") else L.b
+					v.idle0 = null if hub_at(v.loc) != null else co_now()
+					v.km += (j.lead + j.len) * D.KM
+					v.resv = null
+			for v in CO.veh:
+				if v.get("resv") == j.lp.k0.id:
+					v.resv = null
+			return
 	# a leg of a chain: the cargo is handed over and the next leg starts (the wrapper of 08q-planner.js)
 	if j.get("lp") and j.lp.i < j.lp.plan.legs.size() - 1 and not j.get("back") and not j.get("cx0"):
 		_drop(CO.jobs, j)
 		var L: Dictionary = j.lp.plan.legs[j.lp.i]
-		if (L.get("drop") or L.get("drops")) and not L.get("paid"):
-			push_error("Sim: multi-drop legs are not ported yet")
+		if L.get("drop") and not L.get("paid"):
+			L.paid = 1
+			lp_drop_pay(j, L.drop)
+		if L.get("drops") and not L.get("paid"):
+			L.paid = 1
+			for dd in L.drops:
+				cons_pay(j, dd)
 		for v in CO.veh:
 			if j.vids.has(v.id):
 				v.st = "idle"

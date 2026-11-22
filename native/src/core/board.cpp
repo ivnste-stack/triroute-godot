@@ -283,7 +283,8 @@ void gen_towns(Ctx &C, uint32_t seed, const std::vector<double> &state_pop) {
 
 // ---------- bCrossings ----------
 struct Cross { double ws, s, x, z; int a, b; };
-std::vector<Cross> b_crossings(const Ctx &C, const std::vector<float> &pts, double eco) {
+template <typename F>
+std::vector<Cross> b_crossings(const Ctx &C, const std::vector<F> &pts, double eco) {
 	std::vector<Cross> out;
 	const double step = C.B.st * .12;
 	double s = 0;
@@ -442,13 +443,22 @@ std::vector<std::pair<WebPt, WebPt>> road_web(const Ctx &C, uint32_t seed, doubl
 
 } // namespace
 
-std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<float> &pts, double eco) {
+template <typename F>
+std::vector<Crossing> board_crossings_t(const World &w, const Board &b, const std::vector<F> &pts, double eco) {
 	Board &bb = const_cast<Board &>(b);
 	Ctx C(w, bb);
 	std::vector<Crossing> out;
 	if (pts.size() < 4) return out;
 	for (auto &c : b_crossings(C, pts, eco)) out.push_back({c.ws, c.s, c.x, c.z, c.a, c.b});
 	return out;
+}
+
+std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<float> &pts, double eco) {
+	return board_crossings_t(w, b, pts, eco);
+}
+
+std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<double> &pts, double eco) {
+	return board_crossings_t(w, b, pts, eco);
 }
 
 Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop) {

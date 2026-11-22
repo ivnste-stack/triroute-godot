@@ -52,6 +52,9 @@ public:
 	//   closed_pairs: PackedInt32Array of a,b pairs, closed_cps: PackedFloat32Array of x,z, sky: PackedInt32Array, ignore_wx: bool}
 	void set_blocks(const Dictionary &blocks);
 	// state at a world point (bOwn), -1 water / neutral
+	// the course change (08r-multi.js): srGrid for "sea"/"air" and srRoad with avoid; zones are x, z, r triples
+	PackedFloat64Array sr_grid(const String &mode, double x0, double z0, double x1, double z1, const PackedFloat64Array &zones) const;
+	PackedFloat32Array node_path_avoid(int64_t a, int64_t b, const PackedInt32Array &jam_nodes, const PackedFloat64Array &zones) const;
 	// does a straight flight cross a closed sky (skyHit)
 	bool sky_hit(double x0, double z0, double x1, double z1) const;
 	int64_t state_at(double x, double z) const;
@@ -59,6 +62,8 @@ public:
 	PackedInt32Array continents() const;
 	// border crossings along a path (bCrossings): Array of {ws, s, x, z, a, b}; s = ws * eco
 	Array crossings(const PackedFloat32Array &p, double eco) const;
+	// the same along a path of doubles (a course drawn by the player)
+	Array crossings64(const PackedFloat64Array &p, double eco) const;
 	// position of the game RNG after the states were made (mulberry(seed^0x5bd1e995) state), for the game logic
 	int64_t states_rng_state() const { return int64_t(states_rng_); }
 
