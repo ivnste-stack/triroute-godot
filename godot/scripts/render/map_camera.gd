@@ -6,6 +6,8 @@ extends Camera3D
 ## at the same speed per second whatever the frame rate.
 
 signal hover_changed(world_point: Vector3)
+signal clicked(screen: Vector2)   # a left click that did not drag the map
+signal dragged                    # the map was dragged
 
 var tx := 0.0
 var tz := 0.4
@@ -91,6 +93,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			var f := 1.12 if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else .89
 			tdist = clampf(tdist * f, min_dist, world_size.x * 1.25)
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			if not mb.pressed and _down and not _moved:
+				clicked.emit(mb.position)
 			_down = mb.pressed
 			_moved = false
 			_down_pos = mb.position
@@ -99,6 +103,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		var mm := ev as InputEventMouseMotion
 		if _down:
 			if mm.position.distance_to(_down_pos) > 4.0:
+				if not _moved:
+					dragged.emit()
 				_moved = true
 			if _moved:
 				var p0: Variant = pick_plane(_last_pos)

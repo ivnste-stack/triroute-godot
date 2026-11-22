@@ -22,6 +22,7 @@ var cps: Array = []            # border checkpoints
 var mwh := Vector2(1800, 1200)
 var sim: Sim = null            # the company (hubs on the labels), optional
 var dpr := 1.0
+var lbl: Array = []             # {pid, r}: the labels and country chips on screen (BOARD.lbl, CITY_EL)
 
 var _order: Array = []
 var _key := ""
@@ -83,6 +84,7 @@ func _hub(pid: int) -> Variant:
 
 
 func _draw() -> void:
+	lbl = []
 	if camera == null or towns.is_empty():
 		return
 	var W := size.x
@@ -160,6 +162,7 @@ func _draw() -> void:
 		if hit:
 			continue
 		boxes.append([lx, ly, lx + tw, ly + th])
+		lbl.append({"pid": pid, "r": Rect2(lx, ly, tw, th)})
 		draw_rect(Rect2(lx, ly, tw, th), Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .86))
 		var bc := (Color(170 / 255.0, 182 / 255.0, 194 / 255.0, .85) if hb.get("rent") else Color(1, 179 / 255.0, 71 / 255.0, .8)) if tag else Color(160 / 255.0, 180 / 255.0, 198 / 255.0, .28)
 		draw_rect(Rect2(lx + .5 * dpr, ly + .5 * dpr, tw - dpr, th - dpr), bc, false, 1 * dpr)
@@ -179,6 +182,15 @@ func _text(font: Font, s: String, pos: Vector2, fsize: int, col: Color) -> void:
 	var asc := font.get_ascent(fsize)
 	var desc := font.get_descent(fsize)
 	draw_string(font, Vector2(pos.x, pos.y + (asc - desc) / 2), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, col)
+
+
+## the settlement under a point of the screen (coPlaceAt): a label, a country chip
+func place_at(pos: Vector2) -> int:
+	for i in range(lbl.size() - 1, -1, -1):
+		var r: Rect2 = lbl[i].r
+		if r.grow_side(SIDE_LEFT, 4).has_point(pos * dpr):
+			return lbl[i].pid
+	return -1
 
 
 # ---------- country chips at the capitals (logcities.js and its CSS, company mode) ----------
@@ -231,6 +243,8 @@ func _draw_chips() -> void:
 		var lx: float = q.x - 5.5 * dpr + (half * 2 + 6) * dpr
 		var ly: float = q.y - h / 2
 		var r := Rect2(lx, ly, w, h)
+		if cap_pid.has(c.idx):
+			lbl.append({"pid": cap_pid[c.idx], "r": Rect2(q.x - 10 * dpr, ly, lx + w - q.x + 10 * dpr, h), "cap": true})
 		for k in 4:   # box-shadow: 0 3px 10px rgba(0,0,0,.35)
 			draw_rect(Rect2(r.position + Vector2(0, 3 * dpr), r.size).grow((1.5 + k * 2.0) * dpr), Color(0, 0, 0, .07))
 		draw_rect(r, Color(10 / 255.0, 16 / 255.0, 24 / 255.0, .86))

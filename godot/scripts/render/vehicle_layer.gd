@@ -231,7 +231,7 @@ func _draw() -> void:
 			_text("×%d" % j.n, Vector2(sp.x + r + 3 * dpr, sp.y - r - 3 * dpr), int(round(9 * dpr)), Color(rgb, gv))
 		if gv < 1 and camera.dist < 18:
 			_text("GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
-		hits.append({"j": j, "x": sp.x, "y": sp.y, "r": 14})
+		hits.append({"j": j, "x": sp.x, "y": sp.y, "r": 14, "wx": pos[0], "wz": pos[1]})
 	_marks()
 
 

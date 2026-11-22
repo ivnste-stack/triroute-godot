@@ -7,6 +7,7 @@ extends RefCounted
 
 signal acted(res: Dictionary)
 signal goto_place(pid: int)
+signal select_job(j: Dictionary)
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -785,7 +786,12 @@ func _job_row(j: Dictionary) -> PanelContainer:
 	elif j.get("dmg", 0) > .02:
 		parts.append("[color=#f1c453]пошкоджено %.0f%%[/color]" % (j.dmg * 100))
 	var mid := Ui.vbox(5, [head, mt, Ui.rich(" · ".join(parts), 13)])
-	return _lrow(T.ic, mid, Ui.num(Ui.usd(j.k.pay), 14))
+	var row := _lrow(T.ic, mid, Ui.num(Ui.usd(j.k.pay), 14))
+	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	row.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: select_job.emit(j))
+	row.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE_HI, 1, Vector4(12, 10, 12, 10))))
+	row.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(12, 10, 12, 10))))
+	return row
 
 
 func _trips(body: VBoxContainer) -> void:

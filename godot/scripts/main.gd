@@ -4,6 +4,7 @@ extends Node
 ## Command line (automatic screenshots): godot --path godot -- [--seed=777] [--shot=path.png] [--cam=x,z,dist]
 ##   [--company [--demo: a fleet with a dispatcher] [--hq=place id]] [--days=N] [--speed=0…3] [--select]
 ##   [--win=coJobs] [--pick: stop at the choice of the headquarters] [--menu: the main menu]
+##   [--place=pid | --country=cid: the card on the right] [--mouse=x,y: hover] [--click=x,y]
 
 const DIFF_N := [[0, "Навчальна"], [1, "Звичайна"], [2, "Жорстка"]]
 const SIZE_N := [["s", "Мала · 2×1"], ["m", "Середня · 3×2"], ["l", "Велика · 4×3"]]
@@ -17,6 +18,7 @@ var modals: ModalLayer
 var win: WindowPanel
 var wins: Windows
 var toasts: Toasts
+var map_ui: MapUi
 var menu: StartMenu
 var _args := {}
 var _ng := {"size": "m", "diff": 1, "seed": 0}
@@ -39,6 +41,12 @@ func _ready() -> void:
 	var bb := BackBufferCopy.new()
 	bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
 	_ui.add_child(bb)
+	map_ui = MapUi.new()
+	map_ui.visible = false
+	map_ui.acted.connect(_on_act)
+	map_ui.open_window.connect(func(id): if hud.open_window != id: _toggle_window(id))
+	map_ui.ask.connect(func(spec): modals.push(spec))
+	_ui.add_child(map_ui)
 	hud = Hud.new()
 	hud.visible = false
 	hud.window_requested.connect(_toggle_window)
@@ -174,6 +182,9 @@ func _process(delta: float) -> void:
 			modals.push(_decision(sim.modals.pop_front()))
 		if win.visible:
 			_win_tick()
+		# #toasts moves left of the card on the right
+		toasts.offset_right = -358 if map_ui.insp_open() else -14
+		toasts.offset_left = toasts.offset_right - 320
 
 
 # ---------- the world is ready: the headquarters ----------
@@ -202,7 +213,12 @@ func _on_world(w: Dictionary) -> void:
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
 		if _args.has("select") and session.sim.CO.jobs.size():
-			map.vehicles.selected = session.sim.CO.jobs[0]
+			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret"))
+			map_ui.select_job(js[0] if js.size() else session.sim.CO.jobs[0], true)
+		if _args.has("place"):
+			map_ui.show_place(int(_args.place))
+		if _args.has("country"):
+			map_ui.show_country(int(_args.country))
 		if _args.has("win"):
 			_toggle_window(_args.win)
 		map.camera.tx = map.camera.ttx   # no glide for a screenshot
@@ -219,6 +235,16 @@ func _on_world(w: Dictionary) -> void:
 	if _args.has("shot"):
 		for i in 12:
 			await get_tree().process_frame
+		if _args.has("mouse"):   # test: the hover card at a point of the screen
+			var c: PackedStringArray = String(_args.mouse).split(",")
+			get_viewport().warp_mouse(Vector2(float(c[0]), float(c[1])))
+			for i in 4:
+				await get_tree().process_frame
+		if _args.has("click"):   # test: a click on the map
+			var c: PackedStringArray = String(_args.click).split(",")
+			map.camera.clicked.emit(Vector2(float(c[0]), float(c[1])))
+			for i in 4:
+				await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(_args.shot)
 		get_tree().quit()
@@ -251,6 +277,9 @@ func _play(hq: int, auto_decisions: bool) -> void:
 	wins = Windows.new(session.sim)
 	wins.acted.connect(_on_act)
 	wins.goto_place.connect(_goto_place)
+	wins.select_job.connect(func(j): map_ui.select_job(j, true))
+	map_ui.attach(session, map)
+	map_ui.visible = true
 	hud.visible = true
 	var p: Dictionary = session.sim.PL[hq]
 	map.camera.look_at_point(Vector2(p.x, p.z + .3), 6.0)
@@ -330,12 +359,13 @@ func _on_act(res: Dictionary) -> void:
 	elif res.get("t", "") != "":
 		toasts.push(res.get("tone", ""), res.t, res.get("d", ""))
 	_win_day = -1
-	_win_tick()
+	if win.visible:
+		_win_tick()
+	map_ui.refresh()
 
 
 func _goto_place(pid: int) -> void:
-	var p: Dictionary = session.sim.PL[pid]
-	map.camera.look_at_point(Vector2(p.x, p.z + .3), 6.0)
+	map_ui.fly(pid)
 
 
 # ---------- checks ----------
