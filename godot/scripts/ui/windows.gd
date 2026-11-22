@@ -31,7 +31,9 @@ const CO_MYTH := [
 
 var sim: Sim
 ## the state of the interface (UI.jfl, UI.ffl, UI.bmore… of the HTML version)
-var st := {"jfl": "all", "ffl": "all", "bmore": 15, "jmore": 15, "fmore": 120}
+var st := {"jfl": "all", "ffl": "all", "bmore": 15, "jmore": 15, "fmore": 120, "cons": []}
+const GR_FEAT := {"cons": 1, "move": 1, "reroute": 2, "cto": 2}
+const CONS_TIP := "Збірний рейс\nПозначте кілька замовлень одного виду транспорту цією кнопкою — одна машина, потяг, судно чи літак забере й розвезе їх за маршрутом, який ви прокладете. Головне — щоб вага й об'єм усіх вантажів разом вмістилися в кузов і встигнути в дедлайни."
 
 
 func _init(sim_: Sim) -> void:
@@ -584,6 +586,125 @@ func _perm_sect(body: VBoxContainer) -> void:
 	body.add_child(v)
 
 
+## grOK: some features open with a grade of experience; a toast says how far it is
+func gr_ok(f: String) -> bool:
+	var need: int = GR_FEAT.get(f, 0)
+	if sim.co_grade() >= need:
+		return true
+	var G: Dictionary = D.GRADES[need]
+	_do({"tone": "warn", "t": "Потрібен грейд «%s»" % G.n, "d": "Ще %s досвіду. Досвід дають успішні доставки, особливо з маршрутом, прокладеним вручну." % Ui.grp(maxf(0, G.xp - floor(sim.CO.get("xp", 0))))})
+	return false
+
+
+## consOrders: the chosen orders still on the board
+func cons_orders() -> Array:
+	var out := []
+	for id in st.cons:
+		for k in sim.CO.board:
+			if k.id == id:
+				out.append(k)
+	st.cons = out.map(func(k): return k.id)
+	return out
+
+
+## ACT.consAdd: an order in or out of the consolidated trip
+func cons_add(id: int) -> void:
+	var k: Variant = null
+	for x in sim.CO.board:
+		if x.id == id:
+			k = x
+	if not sim.cons_ok(k):
+		return
+	if st.cons.has(id):
+		st.cons.erase(id)
+		_do({})
+		return
+	if not gr_ok("cons"):
+		return
+	var ks := cons_orders()
+	if ks.size() and ks[0].mode != k.mode:
+		_do({"tone": "warn", "t": "Інший вид транспорту", "d": "У збірному рейсі — лише %s: одна техніка везе всі замовлення" % String(Planner.LP_N[ks[0].mode]).to_lower()})
+		return
+	if st.cons.size() >= 6:
+		_do({"tone": "warn", "t": "Забагато замовлень", "d": "У збірний рейс — до 6 замовлень"})
+		return
+	st.cons.append(id)
+	_do({})
+
+
+func _cons_btn(k: Dictionary, no_veh: bool, why: String) -> Button:
+	var inn: bool = st.cons.has(k.id)
+	var id: int = k.id
+	if no_veh and not inn:
+		var b := _btn("До збірного рейсу", "sm", "plus", func(): pass, true, "Збірний рейс недоступний\n%s. Дочекайтеся, поки техніка звільниться, або купіть ще в «Автопарку»." % why)
+		b.modulate.a = .45
+		b.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN
+		return b
+	return _btn("У збірному" if inn else "До збірного рейсу", "pri sm" if inn else "sm", "check" if inn else "plus", func(): cons_add(id), true, CONS_TIP)
+
+
+## consPanel: the chosen orders on top of the board
+func _cons_panel() -> Control:
+	var ks := cons_orders()
+	if ks.is_empty():
+		return null
+	var m: String = ks[0].mode
+	var tons := 0.0
+	var vol := 0.0
+	for k in ks:
+		tons += k.tons
+		vol += sim.k_vol(k)
+	var why := ""
+	for k in ks:
+		if k.get("minR", 0) and sim.CO.rating < k.minR:
+			why = "Замовник хоче рейтинг %.1f+" % k.minR
+			break
+		var nd: Array = sim.perm_need(sim.cargo_i[k.cg], m).filter(func(x): return not sim.perm_ok(x))
+		if nd.size():
+			why = "Потрібна ліцензія «%s»" % sim.perm_i[nd[0]].n
+			break
+	var own: Array = sim.CO.veh.filter(func(v): return D.VT[v.t].mode == m and (v.st == "idle" or sim.is_ret_v(v)) and not v.get("resv"))
+	if why == "" and own.is_empty():
+		why = "Немає вільної техніки: " + String(D.MODE_N[m]).to_lower()
+	var by_city := {}
+	for k in ks:
+		var c: Array = by_city.get(k.from, [0.0, 0.0])
+		by_city[k.from] = [c[0] + k.tons, c[1] + sim.k_vol(k)]
+	var need_t := 0.0
+	var need_v := 0.0
+	for c in by_city.values():
+		need_t = maxf(need_t, c[0])
+		need_v = maxf(need_v, c[1])
+	if why == "" and own.size() and not own.any(func(v): return D.VT[v.t].cap >= need_t and D.VT[v.t].get("vol", 1e9) >= need_v):
+		why = "Немає вільної техніки, що вмістить %s т і %s м³ разом — %s" % [Ui.loc(need_t, 1), Ui.loc(need_v, 1), "усі замовлення завантажуються в одному місті" if by_city.size() == 1 else "стільки забирається в одному місті"]
+	var big := {"cap": 0, "vol": 0, "n": ""}
+	for v in own:
+		if D.VT[v.t].cap > big.cap:
+			big = D.VT[v.t]
+	var t := Ui.hbox(6, [Ui.icon(MODE_IC[m], 16), _b("Збірний рейс · %s · %d замовлення" % [Planner.LP_N[m], ks.size()])])
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := Ui.vbox(8, [Ui.hbox(8, [t, _btn("Скасувати", "sm", "close", func():
+		st.cons = []
+		_do({}))])])
+	for k in ks:
+		var cg: Dictionary = sim.cargo_i[k.cg]
+		var id: int = k.id
+		var row := _lrow(cg.ic, Ui.vbox(2, [_b("%s → %s" % [_pl(k.from), _pl(k.to)], 13), _note("%s · %s т · %s м³ · дедлайн %s · %s" % [cg.n, Ui.loc(k.tons), Ui.loc(sim.k_vol(k), 1), Ui.days(k.dlDays), Ui.usd(k.pay)], Ui.FG2, 12)]),
+			_btn("", "sm", "close", func(): cons_add(id), true, "Прибрати"))
+		row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(8, 5, 8, 5)))
+		v.add_child(row)
+	var tx := "Разом %s т · %s м³" % [Ui.loc(tons, 1), Ui.loc(vol, 1)]
+	if big.cap:
+		tx += " · найбільша вільна: %s (%s т, %s м³)" % [big.n, Ui.loc(big.cap), Ui.loc(big.get("vol", 0))]
+	v.add_child(_note(tx + ". Порядок зупинок і дорогу ви прокладаєте самі: забрати можна в будь-якому порядку, але доставити — лише те, що вже в кузові."))
+	if why != "":
+		v.add_child(_icl("alert", why, Ui.BAD))
+	var go := _btn("Додайте ще замовлення" if ks.size() < 2 else "Прокласти маршрут збірного рейсу", "pri", "road", func(): plan_order.emit(sim.cons_make(cons_orders())), why == "" and ks.size() >= 2)
+	go.size_flags_horizontal = Control.SIZE_FILL
+	v.add_child(go)
+	return _blk(v, Color(Ui.ACCENT, .55))
+
+
 # ====================================================================== coJobs
 func _plan_line(k: Dictionary, P: Dictionary) -> RichTextLabel:
 	var what: String
@@ -664,14 +785,22 @@ func _board_card(k: Dictionary) -> PanelContainer:
 	if P.ok:
 		var pl := _plan_line(k, P)
 		v.add_child(pl)
-		v.add_child(Ui.hbox(8, [_btn("Прокласти маршрут", "pri sm", "road", func(): plan_order.emit(k))]))
+		var bs := Ui.hbox(8)
+		if sim.cons_ok(k):
+			bs.add_child(_cons_btn(k, false, ""))
+		bs.add_child(_btn("Прокласти маршрут", "pri sm", "road", func(): plan_order.emit(k)))
+		v.add_child(bs)
 	else:
 		var why: String = P.why
 		var quiet: bool = why.begins_with("Замовник хоче рейтинг") or why.begins_with("Немає вільної техніки") \
 			or (sim.perm_need(cg, k.mode).any(func(x): return not sim.perm_ok(x)) and why.begins_with("Потрібна ліцензія «"))
 		if not quiet:
 			v.add_child(_icl("alert", why, Ui.WARN))
-		v.add_child(Ui.hbox(8, [_btn("Прокласти маршрут", "sm", "road", func(): pass, false, _tip("Маршрут не прокласти", why + "."))]))
+		var bs := Ui.hbox(8)
+		if sim.cons_ok(k):
+			bs.add_child(_cons_btn(k, why.begins_with("Немає вільної техніки"), why))
+		bs.add_child(_btn("Прокласти маршрут", "sm", "road", func(): pass, false, _tip("Маршрут не прокласти", why + ".")))
+		v.add_child(bs)
 	return _blk(v)
 
 
@@ -733,6 +862,9 @@ func _jobs(body: VBoxContainer) -> void:
 	body.add_child(_mode_seg("jfl", func(m): return CO.jobs.size() + CO.board.size() if m == "all" else CO.jobs.filter(func(j): return j.mode == m).size() + CO.board.filter(func(k): return k.mode == m).size()))
 	body.add_child(_sect("Біржа вантажів"))
 	body.add_child(_tg_row("Автодиспетчеризація", "Диспетчер-логіст сам бере замовлення й прокладає маршрути. Досвіду компанії за такі рейси майже немає." if CO.mgr.has("cto") else "Потрібен диспетчер-логіст (вікно «Персонал»).", CO.auto, func(): _do(sim.act_auto())))
+	var cp := _cons_panel()
+	if cp != null:
+		body.add_child(cp)
 	if bd.size():
 		bd.sort_custom(func(a, b): return a.id > b.id)
 		var n: int = maxi(st.bmore, 15)
