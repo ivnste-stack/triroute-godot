@@ -16,7 +16,8 @@ const DEFAULTS := {
 	"no_ticker": false,
 	"fastprog": false,    # test switch: progress x5
 	"road_gab": false,    # test road generator
-	"ui_scale": 0.0,      # interface scale: 0 = the system scale (Windows display scaling), else 1…2
+	"ui_scale": 0.0,
+	"blur": true,         # the glass of the panels blurs the map behind (heavier for the video card)      # interface scale: 0 = the system scale (Windows display scaling), else 1…2
 }
 
 var _values := {}

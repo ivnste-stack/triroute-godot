@@ -19,6 +19,8 @@ var win: WindowPanel
 var wins: Windows
 var toasts: Toasts
 var map_ui: MapUi
+var perf_panel: PerfPanel
+var _bb: BackBufferCopy
 var planner: Planner
 var course: Course
 var menu: StartMenu
@@ -33,6 +35,7 @@ var _pending: Variant = null     # a saved game waiting for its world
 
 ## the interface in CSS pixels, like the browser: the system scale (Windows display scaling), or the setting
 func apply_ui_scale() -> void:
+	Ui.set_blur(bool(Settings.get_value("blur")))
 	var sc := float(Settings.get_value("ui_scale"))
 	if sc <= 0:
 		sc = DisplayServer.screen_get_scale()
@@ -56,9 +59,9 @@ func _ready() -> void:
 	_ui.layer = 5
 	add_child(_ui)
 	# the glass panels blur what is under them: copy the screen (map and overlays) before the interface
-	var bb := BackBufferCopy.new()
-	bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
-	_ui.add_child(bb)
+	_bb = BackBufferCopy.new()
+	_bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT if Ui.blur else BackBufferCopy.COPY_MODE_DISABLED
+	_ui.add_child(_bb)
 	map_ui = MapUi.new()
 	map_ui.visible = false
 	map_ui.acted.connect(_on_act)
@@ -93,6 +96,10 @@ func _ready() -> void:
 	_ui.add_child(modals)
 	_loading = _build_loading()
 	_ui.add_child(_loading)
+	perf_panel = PerfPanel.new()
+	_ui.add_child(perf_panel)
+	if _args.has("f3"):
+		perf_panel.toggle.call_deferred()
 	_checks = PanelContainer.new()
 	_checks.position = Vector2(80, 80)
 	_checks.visible = false
@@ -162,6 +169,11 @@ func _settings() -> void:
 		Settings.set_value("ui_scale", v)
 		apply_ui_scale())]))
 	c.add_child(Ui.note("«Авто» — як масштаб у налаштуваннях екрана Windows."))
+	c.add_child(Ui.hbox(12, [Ui.note("Розмиття мапи під панелями"), Ui.spacer(), Ui.seg([[true, "Увімкнено"], [false, "Вимкнено"]], bool(Settings.get_value("blur")), func(v):
+		Settings.set_value("blur", v)
+		Ui.set_blur(v)
+		_bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT if v else BackBufferCopy.COPY_MODE_DISABLED)]))
+	c.add_child(Ui.note("Без розмиття панелі просто напівпрозорі — легше для слабкої відеокарти. F3 — панель продуктивності."))
 	c.add_child(Ui.btn("Перевірки (F9)", "", "check", func():
 		modals.clear()
 		_toggle_checks()))
@@ -216,7 +228,8 @@ func _process(delta: float) -> void:
 		_perf_n += 1
 		_perf_t += delta
 		if _perf_t >= 2.0:
-			print("PERF fps %.0f · process %.2f ms · draw calls %d · %s" % [_perf_n / _perf_t, Performance.get_monitor(Performance.TIME_PROCESS) * 1000,
+			RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+			print("PERF fps %.0f · gpu %.1f ms · process %.2f ms · draw calls %d · %s" % [_perf_n / _perf_t, RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()), Performance.get_monitor(Performance.TIME_PROCESS) * 1000,
 				Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Perf.report(_perf_n)])
 			_perf_t = 0
 			_perf_n = 0
@@ -684,6 +697,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	match e.keycode:
 		KEY_F9:
 			_toggle_checks()
+		KEY_F3:
+			perf_panel.toggle()
 		KEY_SPACE:
 			if session != null and session.sim != null and hud.visible:
 				session.set_speed(0 if session.speed else 1)

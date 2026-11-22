@@ -30,6 +30,28 @@ const F_MONO_B := preload("res://assets/fonts/JetBrainsMono-Bold.ttf")
 static var _fonts := {}
 static var _theme: Theme
 static var _glass: Shader
+static var blur := true
+static var _glass_rects: Array = []   # weak refs to the backgrounds, to switch the blur off and on
+
+
+## the blur of every glass panel on or off (off: a flat tint, no copy of the screen)
+static func set_blur(on: bool) -> void:
+	blur = on
+	var keep := []
+	for w in _glass_rects:
+		var r: Variant = w.get_ref()
+		if r == null:
+			continue
+		keep.append(w)
+		_glass_style(r)
+	_glass_rects = keep
+
+
+static func _glass_style(bg: ColorRect) -> void:
+	var m: ShaderMaterial = bg.get_meta("glass")
+	bg.material = m if blur else null
+	var t: Color = m.get_shader_parameter("tint")
+	bg.color = Color(t.r, t.g, t.b, minf(1.0, t.a + .22))
 
 
 ## a variable font at a weight, optionally letter-spaced (px)
@@ -117,10 +139,9 @@ static func glass(tint: Color = GLASS, border: Color = LINE) -> PanelContainer:
 	var m := ShaderMaterial.new()
 	m.shader = _glass
 	m.set_shader_parameter("tint", tint)
-	bg.material = m
-	if Perf.off("glass"):
-		bg.material = null
-		bg.color = tint
+	bg.set_meta("glass", m)
+	_glass_style(bg)
+	_glass_rects.append(weakref(bg))
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.show_behind_parent = true
