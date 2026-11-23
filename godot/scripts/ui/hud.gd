@@ -366,6 +366,7 @@ func _process_t(delta: float) -> void:
 			b.set_meta("on", on)
 			b.icon = Icons.tex(SPEED[i][0], Ui.ACCENT_INK if on else Ui.FG2, 18, 1.7, SPEED[i][0] != "pause")
 			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Color.TRANSPARENT))
+			b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Ui.LINE_HI))
 	var fr := session.fraction()
 	var h := int(fr * 24)
 	var mm := int((fr * 24 - h) * 6) * 10
@@ -394,6 +395,7 @@ func _process_t(delta: float) -> void:
 			b.set_meta("on", on)
 			b.icon = Icons.tex(_rail_btns[id][1], Ui.ACCENT_INK if on else Ui.FG2, 20)
 			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else StyleBoxEmpty.new())
+			b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT) if on else Ui.box(Ui.ACCENT_SOFT))   # .rbtn.on stays lit
 	_badge("coJobs", CO.board.size() if CO.tier >= 1 else 0)
 	var trips := 0
 	for j in CO.jobs:

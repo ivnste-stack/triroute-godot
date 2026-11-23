@@ -244,27 +244,8 @@ func _mode_seg(key: String, count: Callable) -> Control:
 
 
 ## a dropdown (dd() of the HTML version): options [[value, text, icon]]
-func _dd(options: Array, sel: Variant, cb: Callable) -> OptionButton:
-	var o := OptionButton.new()
-	o.focus_mode = Control.FOCUS_NONE
-	o.add_theme_font_size_override("font_size", 13)
-	var s := Ui.box(Color(1, 1, 1, .04), Ui.LINE_HI, 1, Vector4(10, 5, 10, 5))
-	o.add_theme_stylebox_override("normal", s)
-	o.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(10, 5, 10, 5)))
-	o.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(10, 5, 10, 5)))
-	o.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	Ui.style_popup(o.get_popup())
-	for i in options.size():
-		var x: Array = options[i]
-		if x.size() > 2 and x[2] != "":
-			o.add_icon_item(Icons.tex(x[2], Ui.ACCENT, 14), x[1], i)
-		else:
-			o.add_item(x[1], i)
-		if x[0] == sel:
-			o.select(i)
-	o.add_theme_constant_override("icon_max_width", 14)
-	o.item_selected.connect(func(i): cb.call(options[i][0]))
-	return o
+func _dd(options: Array, sel: Variant, cb: Callable) -> Dropdown:
+	return Dropdown.make(options, sel, cb)
 
 
 ## a table (.tb): heads [[text, min width, align right]], rows of controls

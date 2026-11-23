@@ -8,7 +8,7 @@ const PATH := "user://settings.cfg"
 const DEFAULTS := {
 	"res": 0,             # map render resolution (0 = by screen)
 	"eco": false,         # power saving: fewer frames, lower resolution
-	"vsync": false,       # tie the frame rate to the monitor
+	"fps": 0,             # the frame limit: 0 the monitor (VSync), 60…240, -1 none
 	"mus_vol": 0.6,       # music volume 0..1
 	"no_music": false,    # menu music off
 	"no_game_music": false,

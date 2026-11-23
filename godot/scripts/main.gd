@@ -34,10 +34,43 @@ var _pending: Variant = null     # a saved game waiting for its world
 
 
 ## the interface in CSS pixels, like the browser: the system scale (Windows display scaling), or the setting
-## VSync off by default: the frame rate is not tied to the monitor
+## the frame limit: the monitor's rate by default (VSync), or a number, or none; quieter when nothing happens
 func apply_video() -> void:
-	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(Settings.get_value("vsync")) else DisplayServer.VSYNC_DISABLED)
-	Engine.max_fps = 0
+	var f := int(Settings.get_value("fps"))
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if f == 0 else DisplayServer.VSYNC_DISABLED)
+	_fps_cap = f if f > 0 else 0
+	Engine.max_fps = _fps_cap
+
+
+var _fps_cap := 0
+var _last_input := 0.0
+var _focused := true
+
+
+func _input(e: InputEvent) -> void:
+	if e is InputEventMouse or e is InputEventKey:
+		_last_input = Time.get_ticks_msec() / 1000.0
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_focused = false
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		_focused = true
+
+
+## a 2D map does not need hundreds of frames when nothing moves: 15 in the background, 30 when the game is
+## paused and the player has not touched anything for a few seconds, the chosen limit otherwise
+func _pace_frames() -> void:
+	var cap := _fps_cap
+	if not _focused:
+		cap = 15
+	elif (session == null or session.speed == 0) and Time.get_ticks_msec() / 1000.0 - _last_input > 3.0 and not modals.is_open():
+		var c := map.camera
+		if absf(c.tx - c.ttx) + absf(c.tz - c.ttz) + absf(c.dist - c.tdist) < 1e-4:
+			cap = 30
+	if Engine.max_fps != cap:
+		Engine.max_fps = cap
 
 
 func apply_ui_scale() -> void:
@@ -96,6 +129,12 @@ func _ready() -> void:
 	course.closed.connect(func(): hud.set_planning(false))
 	_ui.add_child(course)
 	SaveSystem.provider = _autosave
+	var ddl := Control.new()   # dropdown lists open here, over the windows
+	ddl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ddl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ddl.theme = Ui.theme()
+	_ui.add_child(ddl)
+	Dropdown.layer = ddl
 	modals = ModalLayer.new()
 	modals.theme = Ui.theme()
 	modals.opened.connect(func(): if session != null: session.hold = true)
@@ -169,10 +208,10 @@ func _new_game_dialog() -> void:
 
 func _settings() -> void:
 	var c := Ui.vbox(12)
-	c.add_child(Ui.hbox(12, [Ui.note("Вертикальна синхронізація (VSync)"), Ui.spacer(), Ui.seg([[false, "Вимкнено"], [true, "Увімкнено"]], bool(Settings.get_value("vsync")), func(v):
-		Settings.set_value("vsync", v)
+	c.add_child(Ui.hbox(12, [Ui.note("Частота кадрів"), Ui.spacer(), Ui.seg([[0, "Монітор"], [60, "60"], [120, "120"], [144, "144"], [240, "240"], [-1, "Без обмежень"]], int(Settings.get_value("fps")), func(v):
+		Settings.set_value("fps", v)
 		apply_video())]))
-	c.add_child(Ui.note("VSync прибирає розриви кадру, але обмежує FPS частотою монітора."))
+	c.add_child(Ui.note("«Монітор» — як частота екрана (VSync), найменше навантаження. На паузі без дій гра сама знижує частоту до 30, у фоні — до 15."))
 	var auto_sc: float = float(Settings.get_value("ui_scale"))
 	c.add_child(Ui.hbox(12, [Ui.note("Масштаб інтерфейсу"), Ui.spacer(), Ui.seg([[0.0, "Авто"], [1.0, "100%"], [1.25, "125%"], [1.5, "150%"], [2.0, "200%"]], auto_sc, func(v):
 		Settings.set_value("ui_scale", v)
@@ -248,6 +287,7 @@ func _process(delta: float) -> void:
 
 
 func _process_t(delta: float) -> void:
+	_pace_frames()
 	if _loading.visible:
 		var bar: ProgressBar = _loading.find_child("bar", true, false)
 		bar.value = fmod(bar.value + delta * 40, 100)
@@ -351,9 +391,11 @@ func _on_world(w: Dictionary) -> void:
 			for i in 20:
 				await get_tree().process_frame
 		if _args.has("dd"):   # test: the first dropdown of the open window, opened
-			var ob: Array = win.body.find_children("*", "OptionButton", true, false)
+			var ob: Array = win.body.find_children("*", "Dropdown", true, false)
 			if ob.size():
-				ob[0].show_popup()
+				ob[0].pressed.emit()
+				await get_tree().process_frame
+				get_viewport().warp_mouse(ob[0].get_global_rect().position + Vector2(40, 56))
 			for i in 6:
 				await get_tree().process_frame
 		if _args.has("click"):   # test: a click on the map

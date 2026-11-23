@@ -27,20 +27,23 @@ func push(tone: String, title: String, text: String = "") -> void:
 	g.add_theme_stylebox_override("panel", sb)
 	# the coloured left edge (border-left: 3px), drawn by the panel under its content
 	g.draw.connect(func(): g.draw_rect(Rect2(0, 0, 3, g.size.y), col))
-	var ic := Ui.icon({"bad": "alert", "good": "check"}.get(tone, "info"), 18, col)
+	var ic := Ui.icon({"bad": "alert", "good": "check"}.get(tone, "info"), 16, col)
 	ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var tt := Ui.vbox(2, [Ui.label(title, 13, Ui.FG, Ui.font("body", 600))])
+	# .toast b: the title in the colour of the tone; span: 12 px in fg-2 with the browser's line height
+	var tt := Ui.vbox(3, [Ui.label(title, 13, col if tone != "" else Ui.FG, Ui.font("body", 600))])
 	if text != "":
 		var d := Ui.label(text, 12, Ui.FG2)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.add_theme_constant_override("line_spacing", 4)
 		tt.add_child(d)
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	g.add_child(Ui.hbox(10, [ic, tt]))
 	g.mouse_filter = Control.MOUSE_FILTER_PASS
 	g.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: g.queue_free())
 	add_child(g)
+	move_child(g, 0)   # the newest on top
 	while get_child_count() > 4:
-		get_child(0).free()
+		get_child(get_child_count() - 1).free()
 	g.modulate.a = 0
 	var tw := g.create_tween()
 	tw.tween_property(g, "modulate:a", 1.0, .25)
