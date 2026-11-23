@@ -302,15 +302,15 @@ func open_checks() -> void:
 
 
 func _game_menu() -> void:
-	modals.push({"icon": "shield", "eyebrow": "Пауза", "title": "Меню гри", "close": true, "choices": [
-		{"t": "Продовжити", "d": "Повернутися до гри", "f": func(): pass},
-		{"t": "Зберегти гру", "d": "Три слоти; автозбереження — кожні 15 хвилин гри", "f": func(): _slots(true)},
-		{"t": "Завантажити гру", "d": "Поточний незбережений прогрес буде втрачено", "f": func(): _slots(false)},
-		{"t": "Налаштування", "d": "Графіка, інтерфейс, звук, автозбереження", "f": _settings},
-		{"t": "Головне меню", "d": "Незбережений прогрес буде втрачено", "f": func():
+	modals.push({"icon": "shield", "eyebrow": "Пауза", "title": "Меню гри", "close": true, "width": 420, "choices": [
+		{"t": "Продовжити", "center": true, "f": func(): pass},
+		{"t": "Зберегти гру", "center": true, "f": func(): _slots(true)},
+		{"t": "Завантажити гру", "center": true, "disabled": not SaveSystem.any(), "f": func(): _slots(false)},
+		{"t": "Налаштування", "center": true, "f": _settings},
+		{"t": "Головне меню", "center": true, "f": func():
 			_end_game()
 			_show_menu()},
-		{"t": "Вихід", "d": "Закрити гру", "f": func(): get_tree().quit()}]})
+		{"t": "Вихід", "center": true, "f": func(): get_tree().quit()}]})
 
 
 func _build_loading() -> Control:
@@ -344,6 +344,9 @@ var _perf_t := 0.0
 var _perf_n := 0
 
 
+var _live_n := 0
+
+
 func _process(delta: float) -> void:
 	if _args.has("perf"):
 		_perf_n += 1
@@ -354,6 +357,12 @@ func _process(delta: float) -> void:
 				Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Perf.report(_perf_n)])
 			_perf_t = 0
 			_perf_n = 0
+	_live_n += 1
+	if map != null and map.camera != null:
+		var fo := get_viewport().gui_get_focus_owner()
+		map.camera.keys_on = hud != null and hud.visible and not modals.is_open() and not (fo is LineEdit or fo is TextEdit)
+	if _live_n % 6 == 0 and win.visible and session != null and session.sim != null:
+		Windows.tick_trips(session.sim, get_tree())
 	Perf.begin("main._process")
 	_process_t(delta)
 	Perf.end("main._process")
@@ -464,6 +473,18 @@ func _on_world(w: Dictionary) -> void:
 			_settings()
 			for i in 6:
 				await get_tree().process_frame
+		if _args.has("gmenu"):   # test: the game menu
+			_game_menu()
+			for i in 6:
+				await get_tree().process_frame
+		if _args.has("showk"):   # test: the first order of the board on the map
+			var ks: Array = session.sim.CO.board
+			if ks.size():
+				wins.st.prev = ks[0].id
+				map_ui.show_order(ks[0])
+				_win_tick(true)
+			for i in 40:
+				await get_tree().process_frame
 		if _args.has("hdd"):   # test: the map layer list, opened
 			hud.mode_dd.pressed.emit()
 		if _args.has("mouse"):   # test: the hover card at a point of the screen
@@ -569,6 +590,10 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 	if not map_ui.reroute.is_connected(_reroute):
 		map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
+	wins.show_order.connect(func(k):
+		map_ui.show_order(k)
+		_win_tick(true))
+	map_ui.prev_gone.connect(func(): wins.st.prev = -1)
 	wins.move_vehicle.connect(func(v):
 		if win.visible:
 			_toggle_window("")
@@ -733,6 +758,8 @@ func _on_act(res: Dictionary) -> void:
 
 ## ACT.lpPlan: the route planner over the map; the windows, the rail and the cards step aside
 func _plan(k: Dictionary) -> void:
+	map_ui.show_order(null)
+	wins.st.prev = -1
 	var why := planner.open(k)
 	if why != "":
 		toasts.push("warn", "Маршрут не прокласти", why)
@@ -884,17 +911,16 @@ func _load_slot(slot: String) -> void:
 func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey) or not e.pressed or e.echo:
 		return
+	var act := Keys.action_for(e)
+	if act != "" and session != null and session.sim != null and hud.visible and not modals.is_open():
+		get_viewport().set_input_as_handled()
+		_key_action(act)
+		return
 	match e.keycode:
 		KEY_F9:
 			_toggle_checks()
 		KEY_F3:
 			perf_panel.toggle()
-		KEY_SPACE:
-			if session != null and session.sim != null and hud.visible:
-				session.set_speed(0 if session.speed else 1)
-		KEY_1, KEY_2, KEY_3:
-			if session != null and session.sim != null and hud.visible:
-				session.set_speed(e.keycode - KEY_0)
 		KEY_ESCAPE:
 			if planner.on or course.on or map_ui.mv_v != null:
 				return
@@ -904,6 +930,46 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				map_ui.close_insp()
 			elif session != null and hud.visible and not modals.is_open():
 				_game_menu()
+
+
+var _last_speed := 1
+
+
+## a bound key (Keys): time, map layers, windows, a screenshot
+func _key_action(act: String) -> void:
+	if session.speed > 0:
+		_last_speed = session.speed
+	match act:
+		"pause":
+			session.set_speed(0 if session.speed else _last_speed)
+		"speed1", "speed2", "speed3":
+			session.set_speed(int(act.right(1)))
+		"slower":
+			session.set_speed(maxi(0, session.speed - 1))
+		"faster":
+			session.set_speed(mini(3, session.speed + 1))
+		"shot":
+			_screenshot()
+		_:
+			if act.begins_with("lay_"):
+				var m := act.substr(4)
+				hud.mode_dd.value = m
+				hud.mode_dd._show_value()
+				map.set_mode(m)
+			elif act.begins_with("w_"):
+				_toggle_window(act.substr(2))
+
+
+## F2: the screen into the screenshots folder of the game's data
+func _screenshot() -> void:
+	await RenderingServer.frame_post_draw
+	DirAccess.make_dir_recursive_absolute("user://screenshots")
+	var f := "user://screenshots/triroute-%s.png" % Time.get_datetime_string_from_system().replace(":", "-").replace("T", "_")
+	var err := get_viewport().get_texture().get_image().save_png(f)
+	if err == OK:
+		toasts.push("good", "Скріншот збережено", ProjectSettings.globalize_path(f))
+	else:
+		toasts.push("bad", "Скріншот не збережено", "Помилка %d" % err)
 
 
 func _toggle_checks() -> void:

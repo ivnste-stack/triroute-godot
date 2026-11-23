@@ -68,12 +68,50 @@ func _process(delta: float) -> void:
 func _process_t(delta: float) -> void:
 	if Perf.off("still"):   # --off=still: the camera keeps gliding (to measure redraws while the map moves)
 		ttx += sin(Time.get_ticks_msec() / 700.0) * .02
+	if keys_on:
+		_keys(minf(delta, .05))
 	var dt := clampf(delta * 1000.0, 1.0, 50.0)
 	var k := 1.0 - pow(.85, dt / 16.7)
 	dist += (tdist - dist) * k
 	tx += (ttx - tx) * k
 	tz += (ttz - tz) * k
 	_apply()
+
+
+## the keyboard (04-map.js): W A S D / arrows move the board along the screen, Q / E turn the camera
+var keys_on := false   # set by main: in the game, no dialog, no text field in focus
+
+
+func _keys(dt: float) -> void:
+	var mv := Vector2.ZERO
+	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
+		mv.x -= 1
+	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
+		mv.x += 1
+	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
+		mv.y -= 1
+	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
+		mv.y += 1
+	var rot := 0.0
+	if Input.is_physical_key_pressed(KEY_Q):
+		rot -= 1
+	if Input.is_physical_key_pressed(KEY_E):
+		rot += 1
+	if mv == Vector2.ZERO and rot == 0:
+		return
+	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_ALT) or Input.is_key_pressed(KEY_META):
+		return
+	yaw += rot * 1.4 * dt
+	if mv != Vector2.ZERO:
+		# along the screen: "up" goes away from the camera whatever its turn
+		var s := dist * 1.5 * dt
+		var fwd := Vector2(-sin(yaw), -cos(yaw))
+		var right := Vector2(cos(yaw), -sin(yaw))
+		var d := (right * mv.x - fwd * mv.y).normalized() * s
+		var mxx := minf(world_size.x / 2 - .5, dist * .28)
+		var mzz := minf(world_size.y / 2 - .4, dist * .2)
+		ttx = clampf(ttx + d.x, -world_size.x / 2 + mxx, world_size.x / 2 - mxx)
+		ttz = clampf(ttz + d.y, -world_size.y / 2 + mzz, world_size.y / 2 - mzz * .3)
 
 
 func _apply() -> void:

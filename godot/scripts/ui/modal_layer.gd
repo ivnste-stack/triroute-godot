@@ -130,7 +130,10 @@ func _choice(c: Dictionary) -> Control:
 	b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(13, 11, 13, 11)))
 	b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(13, 11, 13, 11)))
 	b.disabled = c.get("disabled", false)
-	var v := Ui.vbox(4, [Ui.label(c.get("t", ""), 14, Ui.FG, Ui.font("body", 600))])
+	var tl := Ui.label(c.get("t", ""), 14, Ui.FG, Ui.font("body", 600))
+	if c.get("center"):
+		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var v := Ui.vbox(4, [tl])
 	if c.get("d", "") != "":
 		var d := Ui.note(c.d, Ui.FG2)
 		d.add_theme_font_size_override("font_size", 12)
@@ -143,7 +146,7 @@ func _choice(c: Dictionary) -> Control:
 	b.add_child(m)
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	m.minimum_size_changed.connect(func(): b.custom_minimum_size.y = m.get_combined_minimum_size().y)
-	b.custom_minimum_size.y = 52
+	b.custom_minimum_size.y = 46 if c.get("center") else 52
 	b.pressed.connect(func():
 		var f: Variant = c.get("f")
 		_next()

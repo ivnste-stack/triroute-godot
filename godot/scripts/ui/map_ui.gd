@@ -195,6 +195,8 @@ func _process_t(_delta: float) -> void:
 		return
 	if mv_v != null:
 		_mv_node.queue_redraw()
+	if prev_k != null:
+		_pv_node.queue_redraw()
 	_follow()
 	_place_card()
 	if _card.visible and Time.get_ticks_msec() - _card_t > 700:
@@ -254,6 +256,9 @@ func _hover() -> void:
 	_show_tip("", null, mp)
 
 
+var _tip_settle := 0
+
+
 func _show_tip(key: String, build: Variant, mp: Vector2, width: float = 0) -> void:
 	if key == "":
 		_tip.visible = false
@@ -269,7 +274,14 @@ func _show_tip(key: String, build: Variant, mp: Vector2, width: float = 0) -> vo
 		var m := Ui.margin(content, 12, 10)
 		_tip.add_child(m)
 		_tip.custom_minimum_size.x = width if width > 0 else 280
+		# wrapped text knows its height only after a layout pass: show the card once its size has settled
+		_tip.modulate.a = 0
+		_tip_settle = 2
 	_tip.visible = true
+	if _tip_settle > 0:
+		_tip_settle -= 1
+		if _tip_settle == 0:
+			_tip.modulate.a = 1
 	_tip.size = _tip.get_combined_minimum_size()
 	var w := _tip.size.x
 	var h := _tip.size.y
@@ -522,6 +534,42 @@ func _screen(x: float, z: float) -> Variant:
 	if cam.is_position_behind(p):
 		return null
 	return cam.unproject_position(p)
+
+
+# ====================================================================== an order on the map (coShow, CO_PREV)
+var prev_k: Variant = null       # the board order whose A and B pulse on the map
+var _pv_node: Control
+signal prev_gone
+
+
+func show_order(k: Variant) -> void:
+	prev_k = k
+	if _pv_node == null:
+		_pv_node = Control.new()
+		_pv_node.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_pv_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_pv_node.draw.connect(_pv_draw)
+		map.vehicles.get_parent().add_child(_pv_node)
+	_pv_node.queue_redraw()
+	if k == null:
+		return
+	var A: Dictionary = sim.PL[k.from]
+	var B: Dictionary = sim.PL[k.to]
+	var cam := map.camera
+	cam.ttx = (A.x + B.x) / 2
+	cam.ttz = (A.z + B.z) / 2 + .3
+	cam.tdist = clampf(Vector2(A.x - B.x, A.z - B.z).length() * 1.5 + 3, 3, cam.world_size.x * 1.1)
+
+
+func _pv_draw() -> void:
+	if prev_k == null:
+		return
+	if not sim.CO.board.any(func(x): return is_same(x, prev_k)):
+		prev_k = null
+		prev_gone.emit()
+		return
+	planner._wave(_pv_node, sim.PL[prev_k.from], Planner.DEP)
+	planner._wave(_pv_node, sim.PL[prev_k.to], Planner.ARR)
 
 
 # ====================================================================== re-basing a vehicle (08w-move.js)

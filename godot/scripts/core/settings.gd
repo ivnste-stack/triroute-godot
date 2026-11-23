@@ -27,6 +27,8 @@ const DEFAULTS := {
 	"mus_vol": 0.6,       # music volume 0..1
 	"no_music": false,    # menu music off
 	"no_game_music": false,
+	# controls
+	"keys": {},           # key bindings changed by the player (Keys): {action: keycode}
 	# game
 	"autosave": true,
 }

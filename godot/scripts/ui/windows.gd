@@ -10,6 +10,7 @@ signal goto_place(pid: int)
 signal select_job(j: Dictionary)
 signal plan_order(k: Dictionary)    # ACT.lpPlan: open the route planner
 signal move_vehicle(v: Dictionary)  # ACT.coMove: pick a new home hub on the map
+signal show_order(k: Variant)       # ACT.coShow: the order's A and B on the map (null: hide)
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -32,7 +33,7 @@ const CO_MYTH := [
 
 var sim: Sim
 ## the state of the interface (UI.jfl, UI.ffl, UI.bmore… of the HTML version)
-var st := {"jfl": "all", "ffl": "all", "bmore": 15, "jmore": 15, "fmore": 120, "cons": []}
+var st := {"prev": -1, "jfl": "all", "ffl": "all", "bmore": 15, "jmore": 15, "fmore": 120, "cons": []}
 const GR_FEAT := {"cons": 1, "move": 1, "reroute": 2, "cto": 2}
 const CONS_TIP := "Збірний рейс\nПозначте кілька замовлень одного виду транспорту цією кнопкою — одна машина, потяг, судно чи літак забере й розвезе їх за маршрутом, який ви прокладете. Головне — щоб вага й об'єм усіх вантажів разом вмістилися в кузов і встигнути в дедлайни."
 
@@ -783,6 +784,7 @@ func _board_card(k: Dictionary) -> PanelContainer:
 		var bs := Ui.hbox(8)
 		if sim.cons_ok(k):
 			bs.add_child(_cons_btn(k, false, ""))
+		bs.add_child(_show_btn(k))
 		bs.add_child(_btn("Прокласти маршрут", "pri sm", "road", func(): plan_order.emit(k)))
 		v.add_child(bs)
 	else:
@@ -794,6 +796,7 @@ func _board_card(k: Dictionary) -> PanelContainer:
 		var bs := Ui.hbox(8)
 		if sim.cons_ok(k):
 			bs.add_child(_cons_btn(k, why.begins_with("Немає вільної техніки"), why))
+		bs.add_child(_show_btn(k))
 		bs.add_child(_btn("Прокласти маршрут", "sm", "road", func(): pass, false, _tip("Маршрут не прокласти", why + ".")))
 		v.add_child(bs)
 	return _blk(v)
@@ -917,6 +920,14 @@ func _more(left: int, key: String) -> Button:
 	return b
 
 
+## «На мапі» / «Сховати»: the departure and the arrival of the order pulse on the map (coShow)
+func _show_btn(k: Dictionary) -> Button:
+	var on: bool = st.prev == k.id
+	return _btn("Сховати" if on else "На мапі", "sm", "mapIc", func():
+		st.prev = -1 if on else k.id
+		show_order.emit(null if on else k))
+
+
 # ====================================================================== coTrips
 func _job_row(j: Dictionary) -> PanelContainer:
 	var e: float = sim.co_now() - j.t0
@@ -945,13 +956,43 @@ func _job_row(j: Dictionary) -> PanelContainer:
 		parts.append("[color=#f0625f]вантаж втрачено[/color]")
 	elif j.get("dmg", 0) > .02:
 		parts.append("[color=#f1c453]пошкоджено %.0f%%[/color]" % (j.dmg * 100))
-	var mid := Ui.vbox(5, [head, mt, Ui.rich(" · ".join(parts), 13)])
+	var rt := Ui.rich(" · ".join(parts), 13)
+	# the bar and the line under it move on between rebuilds of the window (tick_trips, as data-jp / data-jt)
+	if j.get("hold", 0) <= 0:
+		mt.set_meta("j", j)
+		mt.add_to_group("trip_live")
+		rt.set_meta("j", j)
+		rt.set_meta("tail", " · ".join(parts.slice(1)))
+		rt.add_to_group("trip_live")
+	var mid := Ui.vbox(5, [head, mt, rt])
 	var row := _lrow(T.ic, mid, Ui.num(Ui.usd(j.k.pay), 14))
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	row.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: select_job.emit(j))
 	row.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE_HI, 1, Vector4(12, 10, 12, 10))))
 	row.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(12, 10, 12, 10))))
 	return row
+
+
+## the bars and the phase lines of the trips in an open window, between its rebuilds (coFrame, every 6 frames)
+static func tick_trips(sim: Sim, tree: SceneTree) -> void:
+	var T := sim.co_now()
+	for n in tree.get_nodes_in_group("trip_live"):
+		var j: Dictionary = n.get_meta("j")
+		var e: float = T - j.t0
+		if n is RichTextLabel:
+			var stt := sim.co_job_state(j, e)
+			var t: String = "%s · залишилось %s" % [stt.ph, Ui.days(maxf(0, j.tot - e))]
+			if stt.get("inc") != null:
+				t = "[color=%s]%s[/color]" % ["#f0625f" if SimIncidents.INC_RED.has(stt.inc.k) else "#f1c453", t]
+			var tail: String = n.get_meta("tail")
+			var txt := t + (" · " + tail if tail != "" else "")
+			if n.text != txt:
+				n.text = txt
+		else:
+			var fg: ColorRect = n.get_child(0)
+			fg.anchor_right = clampf(e / j.tot, 0, 1)
+			var stt := sim.co_job_state(j, e)
+			fg.color = Ui.BAD if j.get("lost", false) or (stt.get("inc") != null and SimIncidents.INC_RED.has(stt.inc.k)) else Ui.ACCENT
 
 
 func _trips(body: VBoxContainer) -> void:

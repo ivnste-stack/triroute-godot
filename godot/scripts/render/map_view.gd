@@ -282,7 +282,6 @@ func set_glint(on: bool) -> void:
 
 func set_mode(m: String) -> void:
 	mode = m
-	_mat.set_shader_parameter("lgrid", .08 if m == "grid" else 0.0)
 	company_colors()
 	inc_base.mode = m
 	inc_top.mode = m

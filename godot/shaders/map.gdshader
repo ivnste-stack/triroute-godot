@@ -3,7 +3,7 @@
 // all come from the textures built by TRWorldGen.build_textures(). The shader works in sRGB like the
 // original (WebGL writes sRGB directly) and converts to linear only at the very end.
 // Not ported because the board never uses them: the coastal wall slab (wallOff=1 on the board),
-// the occupation hatching (hasOcc) and the fine logistics grid (lgrid).
+// the occupation hatching (hasOcc), the fine logistics grid (lgrid: only off the board).
 shader_type spatial;
 render_mode unshaded, cull_disabled, fog_disabled;
 
@@ -17,15 +17,6 @@ uniform vec3 col[120];
 uniform int hov = -1;
 uniform int sel = -1;
 uniform float glint = 1.0;   // slow glints on the water triangles (settings)
-uniform float lgrid = 0.0;   // the logistics layer: a fine grid of 0.08 world units and a coarse one of 5 cells
-
-float lgr(vec2 p, float s, float w) {
-	vec2 q = p / s;
-	vec2 fw = fwidth(q);
-	float fade = 1. - smoothstep(.12, .33, max(fw.x, fw.y));
-	vec2 g = abs(fract(q - .5) - .5) / max(fw, vec2(1e-5));
-	return (1. - min(min(g.x, g.y) / w, 1.)) * fade;
-}
 
 varying vec3 wp;
 
@@ -146,10 +137,6 @@ void fragment() {
 		L *= .95 + .1 * tH;
 		L += vec3(.06) * fh;
 		L = mix(L, L * 1.08 + vec3(.03, .05, .07) + vec3(.35, .7, .9) * (1. - smoothstep(1.2, 14., bd)) * (.35 + .12 * sin(TIME * 3.)), fs);
-		if (lgrid > 0.) {
-			float a1 = lgr(wp.xz, lgrid, 1.), a2 = lgr(wp.xz, lgrid * 5., 1.4);
-			L = mix(L, L * .66, clamp(a1 * .42 + a2 * .55, 0., .8));
-		}
 		c = mix(w, L, land);
 		// ---- state border: soft shade along the line (the line itself is drawn by the overlay)
 		float bl = max(bd - .78, 0.);

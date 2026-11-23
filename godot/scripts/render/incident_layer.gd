@@ -129,28 +129,6 @@ func _draw_base() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var W := size.x
 	var H := size.y
-	# the territory of the settlements on the logistics layer (drawCompany)
-	if mode == "grid":
-		var d := camera.dist
-		for p in sim.PL:
-			if p.type == "vil" and d > 2.3 or p.type == "town" and d > 4.2:
-				continue
-			var c: Variant = _P(p.x, p.z)
-			if c == null:
-				continue
-			var r := sim.co_rad(p)
-			var ex: Variant = _P(p.x + r, p.z)
-			if ex == null:
-				continue
-			var rx: float = (ex - c).length()
-			if rx < 4 * dpr or c.x < -rx * 2 or c.y < -rx * 2 or c.x > W + rx * 2 or c.y > H + rx * 2:
-				continue
-			var pts := _circle(p.x, p.z, r, 40)
-			if pts.size() < 41:
-				continue
-			var cap: bool = p.type == "cap"
-			draw_colored_polygon(pts, Color(92 / 255.0, 200 / 255.0, 242 / 255.0, .13 if cap else .09))
-			draw_polyline(pts, Color(40 / 255.0, 140 / 255.0, 200 / 255.0, .75 if cap else .5), (1.6 if cap else 1.1) * dpr, true)
 	# pirate and bandit zones
 	for e in [["pir", "240,98,95"], ["band", "255,140,60"]]:
 		for z in CO.get(e[0], []):

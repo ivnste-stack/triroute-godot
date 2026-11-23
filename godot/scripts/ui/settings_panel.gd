@@ -4,7 +4,7 @@ extends VBoxContainer
 ## interface, sound and game. Every row is a title with a note on the left and its control on the right;
 ## a change is saved and applied at once.
 
-const TABS := [["gfx", "Графіка", "eye"], ["ui", "Інтерфейс", "layers"], ["snd", "Звук", "mega"], ["game", "Гра", "gear"]]
+const TABS := [["gfx", "Графіка", "eye"], ["ui", "Інтерфейс", "layers"], ["snd", "Звук", "mega"], ["keys", "Керування", "target"], ["game", "Гра", "gear"]]
 const RES_OPTS := [[0, "Як вікно"], [1280, "HD · 1280×720"], [1600, "HD+ · 1600×900"], [1920, "Full HD · 1920×1080"],
 	[2560, "2K · 2560×1440"], [3840, "4K · 3840×2160"]]
 
@@ -72,6 +72,7 @@ func _paint_tabs() -> void:
 
 func _show(id: String) -> void:
 	tab = id
+	_wait = ""
 	_paint_tabs()
 	for c in _page.get_children():
 		c.queue_free()
@@ -79,6 +80,7 @@ func _show(id: String) -> void:
 		"gfx": _gfx()
 		"ui": _ui()
 		"snd": _snd()
+		"keys": _keys()
 		"game": _game()
 
 
@@ -252,3 +254,78 @@ func _snd() -> void:
 func _game() -> void:
 	_row("Автозбереження", "Кожні 15 хвилин гри в окремий слот — він перший у списку «Завантажити гру».", _toggle("autosave"))
 	_row("Перевірки", "Самоперевірка симуляції і рендеру (F9).", Ui.btn("Відкрити", "sm", "check", func(): host.open_checks()))
+
+
+# ---------- controls (08k-keys.js) ----------
+var _wait := ""      # the action waiting for its new key
+var _key_note: Label
+
+
+func _keys() -> void:
+	_key_note = Ui.note("Клік по клавіші, потім натисніть нову. Backspace — зняти призначення, Esc — скасувати.", Ui.MUTED)
+	_key_note.add_theme_font_size_override("font_size", 12)
+	_key_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_key_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_page.add_child(Ui.margin(Ui.hbox(12, [_key_note, Ui.btn("Скинути", "sm", "refresh", func():
+		Keys.reset()
+		_refresh())]), 2, 6, 2, 0))
+	for g in Keys.DEF:
+		_head(g[0])
+		for a in g[1]:
+			_page.add_child(_key_row(a[0], a[1]))
+	_head("Постійні клавіші")
+	for f in Keys.FIXED:
+		var pill := Ui.pill(f[1])
+		_page.add_child(_line(Ui.label(f[0], 13, Ui.FG2), pill))
+
+
+func _line(l: Control, r: Control) -> PanelContainer:
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var p := PanelContainer.new()
+	var st := Ui.box(Color.TRANSPARENT, Color.TRANSPARENT, 0, Vector4(2, 5, 2, 5))
+	st.border_color = Ui.LINE
+	st.border_width_bottom = 1
+	p.add_theme_stylebox_override("panel", st)
+	p.add_child(Ui.hbox(12, [l, r]))
+	return p
+
+
+func _key_row(id: String, n: String) -> Control:
+	var waiting := _wait == id
+	var k := Keys.key(id)
+	var b := Ui.btn("Натисніть клавішу…" if waiting else Keys.name_of(k), "pri sm" if waiting else "sm", "", func():
+		_wait = "" if _wait == id else id
+		_refresh())
+	b.custom_minimum_size.x = 150
+	if k != Keys.default_key(id) and not waiting:
+		b.tooltip_text = "Типово: " + Keys.name_of(Keys.default_key(id))
+	return _line(Ui.label(n, 13, Ui.FG), b)
+
+
+func _input(e: InputEvent) -> void:
+	if _wait == "" or not (e is InputEventKey) or not e.pressed or e.echo:
+		return
+	get_viewport().set_input_as_handled()
+	var k := int(e.physical_keycode) if e.physical_keycode != KEY_NONE else int(e.keycode)
+	var id := _wait
+	_wait = ""
+	if k == KEY_ESCAPE:
+		_refresh()
+		return
+	if k == KEY_BACKSPACE or k == KEY_DELETE:
+		Keys.set_key(id, 0)
+		_refresh()
+		return
+	if k in Keys.BUSY or e.ctrl_pressed or e.alt_pressed or e.meta_pressed:
+		_refresh()
+		_busy_note.call_deferred(Keys.name_of(k))
+		return
+	Keys.set_key(id, k)
+	_refresh()
+
+
+func _busy_note(k: String) -> void:
+	if _key_note != null and is_instance_valid(_key_note):
+		_key_note.text = "Клавіша %s зайнята: вона керує камерою, меню або панелями. Оберіть іншу." % k
+		_key_note.add_theme_color_override("font_color", Ui.WARN)
