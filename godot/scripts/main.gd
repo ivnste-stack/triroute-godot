@@ -434,8 +434,25 @@ var _perf_n := 0
 var _live_n := 0
 
 
+var _spike_prev := {}
+
+
 func _process(delta: float) -> void:
 	if _args.has("perf"):
+		# a frame whose code took long: what took it (the day change at a high speed, a window, the map)
+		var tot := 0.0
+		var diff := {}
+		for k in Perf.acc:
+			var pv: float = _spike_prev.get(k, 0.0)
+			var d: float = Perf.acc[k] - pv if Perf.acc[k] >= pv else Perf.acc[k]   # co_day starts over every day
+			if d > 0 and not k.begins_with("main"):
+				diff[k] = d
+				tot += d
+		if tot > 6000.0:
+			var ks := diff.keys()
+			ks.sort_custom(func(a, b): return diff[a] > diff[b])
+			print("PERF spike %.1f ms (day %s): %s" % [tot / 1000.0, session.sim.day if session != null and session.sim != null else -1, ", ".join(ks.slice(0, 6).map(func(k): return "%s %.1f" % [k, diff[k] / 1000.0]))])
+		_spike_prev = Perf.acc.duplicate()
 		_perf_n += 1
 		_perf_t += delta
 		if _perf_t >= 2.0:
@@ -478,7 +495,7 @@ func _process_t(delta: float) -> void:
 			var t: Dictionary = sim.toasts.pop_front()
 			toasts.push(t.tone, t.t, t.d)
 		# #toasts moves left of the card on the right
-		toasts.offset_right = -358 if map_ui.insp_open() else -14
+		toasts.offset_right = -(map_ui.insp_width() + 28) if map_ui.insp_open() else -14
 		toasts.offset_left = toasts.offset_right - 320
 
 
@@ -534,7 +551,7 @@ func _on_world(w: Dictionary) -> void:
 			if js.size():
 				_reroute(js[0])
 		if _args.has("place"):
-			map_ui.show_place(int(_args.place))
+			map_ui.show_place(session.sim.CO.hq if _args.place == "hq" else int(_args.place))
 		if _args.has("country"):
 			map_ui.show_country(int(_args.country))
 		if _args.has("win"):
@@ -559,6 +576,8 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("sandbox") and session != null:   # test: the sandbox of the settings
+		sandbox()
 	if _args.has("hide"):   # test: kinds hidden from the legend, --hide=roads,rail
 		for k in String(_args.hide).split(","):
 			MapVis.toggle(k)

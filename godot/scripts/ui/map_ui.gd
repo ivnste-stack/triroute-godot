@@ -85,7 +85,9 @@ func _ready() -> void:
 	sep.custom_minimum_size.y = 1
 	col.add_child(sep)
 	_insp_scroll = SmoothScroll.new()
-	_insp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER   # never wider than 330
+	# no sideways scrolling: the card is as wide as what it shows (at least 330) and stands at the right edge,
+	# so nothing is cut off on the right
+	_insp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_insp_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(_insp_scroll)
 	_insp_body = Ui.vbox(10)
@@ -947,6 +949,7 @@ func _build_insp(keep: bool = false) -> void:
 		_restore(scroll)
 	_insp.visible = true
 	_fit_insp.call_deferred()
+	get_tree().process_frame.connect(_fit_insp, CONNECT_ONE_SHOT)   # again once wrapped text has its size
 	get_viewport().update_mouse_cursor_state()
 
 
@@ -964,8 +967,14 @@ static func _clip_labels(n: Node) -> void:
 
 func _fit_insp() -> void:
 	var vs := get_viewport_rect().size
-	_insp.size = Vector2(330, vs.y - 170)
+	_insp.custom_minimum_size = Vector2(330, vs.y - 170)
+	_insp.size = Vector2(maxf(330, _insp.get_combined_minimum_size().x), vs.y - 170)
 	_insp.position = Vector2(vs.x - 14 - _insp.size.x, 84)
+
+
+## how much of the right side the card takes (the toasts move left of it)
+func insp_width() -> float:
+	return _insp.size.x if _insp.visible else 0.0
 
 
 func _restore(v: int) -> void:

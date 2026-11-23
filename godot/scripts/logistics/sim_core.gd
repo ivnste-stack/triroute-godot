@@ -399,6 +399,8 @@ func perm_ok(id: String) -> bool:
 
 # ---------- chains (chNear, chLand, roadLim) ----------
 func road_lim() -> float:
+	if _gen_pre.has("rlim"):
+		return _gen_pre.rlim
 	var own := []
 	for v in CO.veh:
 		if D.VT[v.t].mode == "road":
@@ -580,10 +582,7 @@ func _co_gen() -> Variant:
 	if pool.is_empty():
 		return null
 	var tw := 0.0
-	var waitAt := {}
-	for v in CO.veh:
-		if v.st == "idle" and v.get("idle0") != null and hub_at(v.loc) == null:
-			waitAt[v.loc] = true
+	var waitAt: Dictionary = _gen_pre.wait if _gen_pre.has("wait") else _gen_wait()
 	var ws := []
 	for p in pool:
 		var d := 1e9
@@ -643,10 +642,7 @@ func _co_gen() -> Variant:
 	if caps.is_empty():
 		return null
 	var cap_max: float = caps.max()
-	var own := 0.0
-	for v in CO.veh:
-		if D.VT[v.t].mode == "road":
-			own += D.VT[v.t].cap
+	var own: float = _gen_pre.own if _gen_pre.has("own") else _gen_sum("cap")
 	var rng_: Array = {"road": [.3, maxf(1.5, minf(cap_max * 2.4, own * 1.15))], "rail": [80, 5000 if CO.tier >= 7 else 2400],
 		"sea": [300, 40000 if CO.tier >= 7 else 16000], "air": [1, 400 if CO.tier >= 7 else 110]}[mode]
 	var main: Variant = null
@@ -704,10 +700,7 @@ func _co_gen() -> Variant:
 	var hi := minf(cg.t[1], rng_[1])
 	var tons := lo * JS.pow(hi / lo, JS.pow(R.next(), 1.6))
 	if mode == "road":
-		var ov := 0.0
-		for v in CO.veh:
-			if D.VT[v.t].mode == "road":
-				ov += D.VT[v.t].get("vol", 0)
+		var ov: float = _gen_pre.ov if _gen_pre.has("ov") else _gen_sum("vol")
 		if ov > 0:
 			tons = maxf(.3, minf(tons, ov * 1.1 / (cg.get("v", 3) if cg.get("v", 0) else 3)))
 	tons = JS.fixed1(tons) if tons < 5 else JS.round_js(tons)
@@ -1096,6 +1089,8 @@ func cp_wait(cid: int, mode: String) -> float:
 
 
 var _plan_batch := false
+var _plan_fleet := false
+var _plan_free_dirty := false
 var _plan_pre := {}
 
 
@@ -1145,8 +1140,15 @@ func co_plan1(k: Dictionary) -> Dictionary:
 	# the fleet by type in one pass and the hub cities as a set: the same vehicles in the same order as a
 	# scan of the whole fleet for every type, without it (a large fleet made a plan take milliseconds);
 	# while a window lists many orders (plan_batch) they are counted once for all of them
-	var pre: Dictionary = _plan_pre if _plan_batch and not _plan_pre.is_empty() else _plan_prepare()
-	if _plan_batch:
+	var pre: Dictionary
+	if (_plan_batch or _plan_fleet) and not _plan_pre.is_empty():
+		pre = _plan_pre
+		if not _plan_batch and _plan_free_dirty:   # the dispatcher sent a trip: who is on a trip has changed
+			pre.free = co_crew_free()
+			_plan_free_dirty = false
+	else:
+		pre = _plan_prepare()
+	if _plan_batch or _plan_fleet:
 		_plan_pre = pre
 	var free: Dictionary = pre.free.duplicate()
 	var by_t: Dictionary = pre.by_t
@@ -1630,6 +1632,7 @@ func co_auto() -> void:
 	var sk := msk("cto")
 	var L: Array = CO.board.duplicate()
 	_stable_sort(L, func(a, b): return b.pay - a.pay)
+	_plan_fleet = true   # the fleet by type once for every plan; the free crews counted again after a dispatch
 	for k in L:
 		if n >= lim:
 			break
@@ -1641,7 +1644,10 @@ func co_auto() -> void:
 			CO.m.fuel += extra
 			k.how = "mgr"
 			co_dispatch(k, P, true)
+			_plan_free_dirty = true
 			n += 1
+	_plan_fleet = false
+	_plan_pre = {}
 	if n:
 		co_news("", "cpu", "Диспетчерська %s відправила %d %s" % [CO.name, n, "рейс" if n == 1 else "рейси"])
 
@@ -1990,7 +1996,34 @@ func co_local() -> void:
 
 
 # ---------- the order board (coBoardDay) ----------
+## what an order's generation reads from the whole fleet, counted once for the day's new orders (the fleet
+## does not change while the board fills; the sums in the same order give the same numbers)
+var _gen_pre := {}
+
+
+func _gen_wait() -> Dictionary:
+	var waitAt := {}
+	for v in CO.veh:
+		if v.st == "idle" and v.get("idle0") != null and hub_at(v.loc) == null:
+			waitAt[v.loc] = true
+	return waitAt
+
+
+func _gen_sum(field: String) -> float:
+	var x := 0.0
+	for v in CO.veh:
+		if D.VT[v.t].mode == "road":
+			x += D.VT[v.t].get(field, 0)
+	return x
+
+
 func co_board_day() -> void:
+	_gen_pre = {"wait": _gen_wait(), "own": _gen_sum("cap"), "ov": _gen_sum("vol"), "rlim": road_lim()}
+	_co_board_day()
+	_gen_pre = {}
+
+
+func _co_board_day() -> void:
 	CO.board = CO.board.filter(func(k): return k.exp > day)
 	var mx := co_board_max()
 	var i := 0
