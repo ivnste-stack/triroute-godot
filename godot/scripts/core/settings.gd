@@ -6,18 +6,28 @@ const PATH := "user://settings.cfg"
 
 ## Defaults mirror the legacy keys that the logistics game still uses.
 const DEFAULTS := {
-	"res": 0,             # map render resolution (0 = by screen)
-	"eco": false,         # power saving: fewer frames, lower resolution
-	"fps": 0,             # the frame limit: 0 the monitor (VSync), 60…240, -1 none
+	# graphics
+	"window": "max",      # "max" a maximised window, "window" a window of win_size, "borderless" full screen, "exclusive" exclusive full screen
+	"win_size": "1600x900",
+	"res": 0,             # the width the map is rendered at (0 = the window's): 1280…3840 (RES_OPTS)
+	"upscale": "bilinear",  # how a smaller map render is stretched: "bilinear" or "fsr" (AMD FSR 1.0)
+	"aa": "off",          # anti-aliasing of the map: "off", "fxaa", "msaa2", "msaa4", "msaa8"
+	"aniso": 2,           # anisotropic filtering of the map textures: 0…4 = 1×, 2×, 4×, 8×, 16×
+	"vsync": true,        # wait for the monitor's refresh
+	"fps": 0,             # the frame limit: 0 none, else 30…240
+	"idle_fps": true,     # fewer frames when nothing happens (paused without input, in the background)
+	"blur": true,         # the glass of the panels blurs the map behind (heavier for the video card)
+	# interface
+	"ui_scale": 0.0,      # 0 = the system scale (Windows display scaling), else 1…2
+	"no_tips": false,
+	"no_ticker": false,
+	# sound
+	"master_vol": 0.8,    # general volume 0..1
 	"mus_vol": 0.6,       # music volume 0..1
 	"no_music": false,    # menu music off
 	"no_game_music": false,
-	"no_tips": false,
-	"no_ticker": false,
-	"fastprog": false,    # test switch: progress x5
-	"road_gab": false,    # test road generator
-	"ui_scale": 0.0,
-	"blur": true,         # the glass of the panels blurs the map behind (heavier for the video card)      # interface scale: 0 = the system scale (Windows display scaling), else 1…2
+	# game
+	"autosave": true,
 }
 
 var _values := {}

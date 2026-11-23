@@ -29,8 +29,9 @@ static func make(opts: Array, sel: Variant, cb: Callable, h: float = 34) -> Drop
 
 func _ready() -> void:
 	focus_mode = Control.FOCUS_NONE
-	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	mouse_default_cursor_shape = Control.CURSOR_ARROW if disabled else Control.CURSOR_POINTING_HAND
 	add_theme_stylebox_override("normal", Ui.box(Color(1, 1, 1, .04), Ui.LINE_HI))
+	add_theme_stylebox_override("disabled", Ui.box(Color(1, 1, 1, .04), Ui.LINE_HI))
 	add_theme_stylebox_override("hover", Ui.box(Color(1, 1, 1, .04), Ui.ACCENT))
 	add_theme_stylebox_override("pressed", Ui.box(Color(1, 1, 1, .04), Ui.ACCENT))
 	add_theme_stylebox_override("focus", StyleBoxEmpty.new())

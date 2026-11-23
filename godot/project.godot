@@ -17,6 +17,7 @@ EventBus="*res://scripts/core/event_bus.gd"
 Settings="*res://scripts/core/settings.gd"
 GameState="*res://scripts/core/game_state.gd"
 SaveSystem="*res://scripts/core/save_system.gd"
+Music="*res://scripts/core/music.gd"
 
 [display]
 

@@ -36,11 +36,60 @@ var _pending: Variant = null     # a saved game waiting for its world
 
 ## the interface in CSS pixels, like the browser: the system scale (Windows display scaling), or the setting
 ## the frame limit: the monitor's rate by default (VSync), or a number, or none; quieter when nothing happens
+## the window: maximised, a window of the chosen size (centred), borderless or exclusive full screen
+func apply_window() -> void:
+	if _args.has("shot") or DisplayServer.get_name() == "headless":
+		return
+	var w := get_window()
+	match String(Settings.get_value("window")):
+		"window":
+			w.mode = Window.MODE_WINDOWED
+			var p := String(Settings.get_value("win_size")).split("x")
+			var sz := Vector2i(int(p[0]), int(p[1])) if p.size() == 2 else Vector2i(1600, 900)
+			var scr := DisplayServer.screen_get_usable_rect(w.current_screen)
+			sz = sz.min(scr.size)
+			w.size = sz
+			w.position = scr.position + (scr.size - sz) / 2
+		"borderless":
+			w.mode = Window.MODE_FULLSCREEN
+		"exclusive":
+			w.mode = Window.MODE_EXCLUSIVE_FULLSCREEN
+		_:
+			w.mode = Window.MODE_MAXIMIZED
+
+
+## VSync, the frame limit, anti-aliasing, anisotropic filtering and the render resolution of the map
 func apply_video() -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if Settings.get_value("vsync") else DisplayServer.VSYNC_DISABLED)
 	var f := int(Settings.get_value("fps"))
-	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if f == 0 else DisplayServer.VSYNC_DISABLED)
 	_fps_cap = f if f > 0 else 0
 	Engine.max_fps = _fps_cap
+	var vp := get_viewport()
+	var aa := String(Settings.get_value("aa"))
+	vp.msaa_3d = {"msaa2": Viewport.MSAA_2X, "msaa4": Viewport.MSAA_4X, "msaa8": Viewport.MSAA_8X}.get(aa, Viewport.MSAA_DISABLED)
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
+	if _args.has("off") and Perf.off("msaa"):
+		vp.msaa_3d = Viewport.MSAA_DISABLED
+	vp.anisotropic_filtering_level = clampi(int(Settings.get_value("aniso")), 0, 4) as Viewport.AnisotropicFiltering
+	apply_render_scale()
+
+
+## the map's render resolution (RES_OPTS): the width it is drawn at against the window's real pixels
+func apply_render_scale() -> void:
+	var vp := get_viewport()
+	var res := int(Settings.get_value("res"))
+	var phys_w := float(get_window().size.x) if get_window() != null else 1600.0
+	var k := clampf(res / maxf(320.0, phys_w), .5, 2.0) if res > 0 else 1.0
+	vp.scaling_3d_scale = k
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if String(Settings.get_value("upscale")) == "fsr" and k < 1 else Viewport.SCALING_3D_MODE_BILINEAR
+	if map != null:
+		map.render_k = k
+
+
+## the size the map is rendered at now (for the settings)
+func render_size() -> Vector2i:
+	var k := map.render_k if map != null else 1.0
+	return Vector2i((Vector2(get_window().size) * k).round())
 
 
 var _fps_cap := 0
@@ -64,8 +113,10 @@ func _notification(what: int) -> void:
 ## paused and the player has not touched anything for a few seconds, the chosen limit otherwise
 func _pace_frames() -> void:
 	var cap := _fps_cap
-	if not _focused:
+	if not _focused and Settings.get_value("idle_fps"):
 		cap = 15
+	elif not Settings.get_value("idle_fps"):
+		pass
 	elif (session == null or session.speed == 0) and Time.get_ticks_msec() / 1000.0 - _last_input > 3.0 and not modals.is_open():
 		var c := map.camera
 		if absf(c.tx - c.ttx) + absf(c.tz - c.ttz) + absf(c.dist - c.tdist) < 1e-4:
@@ -88,13 +139,20 @@ func apply_ui_scale() -> void:
 
 
 func _ready() -> void:
-	apply_ui_scale()
-	apply_video()
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else ""
+	if _args.has("set"):   # test: settings for this run only, --set=res:1280,aa:msaa4
+		for kv in String(_args.set).split(","):
+			var p := kv.split(":")
+			var d: Variant = Settings.DEFAULTS.get(p[0])
+			Settings._values[p[0]] = int(p[1]) if d is int else (float(p[1]) if d is float else (p[1] == "true" if d is bool else p[1]))
+	apply_ui_scale()
 	map = MapView.new()
 	add_child(map)
+	apply_window()
+	apply_video()
+	get_window().size_changed.connect(apply_render_scale)
 	map.world_ready.connect(_on_world)
 	_ui = CanvasLayer.new()
 	_ui.layer = 5
@@ -131,17 +189,17 @@ func _ready() -> void:
 	course.closed.connect(func(): hud.set_planning(false))
 	_ui.add_child(course)
 	SaveSystem.provider = _autosave
-	var ddl := Control.new()   # dropdown lists open here, over the windows
-	ddl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	ddl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ddl.theme = Ui.theme()
-	_ui.add_child(ddl)
-	Dropdown.layer = ddl
 	modals = ModalLayer.new()
 	modals.theme = Ui.theme()
 	modals.opened.connect(func(): if session != null: session.hold = true)
 	modals.closed.connect(func(): if session != null: session.hold = false)
 	_ui.add_child(modals)
+	var ddl := Control.new()   # dropdown lists open here, over the windows and the dialogs
+	ddl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ddl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ddl.theme = Ui.theme()
+	_ui.add_child(ddl)
+	Dropdown.layer = ddl
 	_loading = _build_loading()
 	_ui.add_child(_loading)
 	perf_panel = PerfPanel.new()
@@ -184,6 +242,7 @@ func _show_menu() -> void:
 		_ui.add_child(menu)
 		_ui.move_child(menu, 0)
 	menu.visible = true
+	Music.menu()
 	hud.visible = false
 	win.visible = false
 
@@ -211,25 +270,20 @@ func _new_game_dialog() -> void:
 
 
 func _settings() -> void:
-	var c := Ui.vbox(12)
-	c.add_child(Ui.hbox(12, [Ui.note("Частота кадрів"), Ui.spacer(), Ui.seg([[0, "Монітор"], [60, "60"], [120, "120"], [144, "144"], [240, "240"], [-1, "Без обмежень"]], int(Settings.get_value("fps")), func(v):
-		Settings.set_value("fps", v)
-		apply_video())]))
-	c.add_child(Ui.note("«Монітор» — як частота екрана (VSync), найменше навантаження. На паузі без дій гра сама знижує частоту до 30, у фоні — до 15."))
-	var auto_sc: float = float(Settings.get_value("ui_scale"))
-	c.add_child(Ui.hbox(12, [Ui.note("Масштаб інтерфейсу"), Ui.spacer(), Ui.seg([[0.0, "Авто"], [1.0, "100%"], [1.25, "125%"], [1.5, "150%"], [2.0, "200%"]], auto_sc, func(v):
-		Settings.set_value("ui_scale", v)
-		apply_ui_scale())]))
-	c.add_child(Ui.note("«Авто» — як масштаб у налаштуваннях екрана Windows."))
-	c.add_child(Ui.hbox(12, [Ui.note("Розмиття мапи під панелями"), Ui.spacer(), Ui.seg([[true, "Увімкнено"], [false, "Вимкнено"]], bool(Settings.get_value("blur")), func(v):
-		Settings.set_value("blur", v)
-		Ui.set_blur(v)
-		_bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT if v else BackBufferCopy.COPY_MODE_DISABLED)]))
-	c.add_child(Ui.note("Без розмиття панелі просто напівпрозорі — легше для слабкої відеокарти. F3 — панель продуктивності."))
-	c.add_child(Ui.btn("Перевірки (F9)", "", "check", func():
-		modals.clear()
-		_toggle_checks()))
-	modals.push({"icon": "gear", "eyebrow": "Гра", "title": "Налаштування", "content": c, "close": true})
+	var c := SettingsPanel.new()
+	c.host = self
+	modals.push({"icon": "gear", "eyebrow": "Гра", "title": "Налаштування", "content": c, "close": true, "width": 760})
+
+
+func apply_blur() -> void:
+	var v: bool = Settings.get_value("blur")
+	Ui.set_blur(v)
+	_bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT if v else BackBufferCopy.COPY_MODE_DISABLED
+
+
+func open_checks() -> void:
+	modals.clear()
+	_toggle_checks()
 
 
 func _game_menu() -> void:
@@ -237,7 +291,7 @@ func _game_menu() -> void:
 		{"t": "Продовжити", "d": "Повернутися до гри", "f": func(): pass},
 		{"t": "Зберегти гру", "d": "Три слоти; автозбереження — кожні 15 хвилин гри", "f": func(): _slots(true)},
 		{"t": "Завантажити гру", "d": "Поточний незбережений прогрес буде втрачено", "f": func(): _slots(false)},
-		{"t": "Налаштування", "d": "Вода, перевірки", "f": _settings},
+		{"t": "Налаштування", "d": "Графіка, інтерфейс, звук, автозбереження", "f": _settings},
 		{"t": "Головне меню", "d": "Незбережений прогрес буде втрачено", "f": func():
 			_end_game()
 			_show_menu()},
@@ -388,6 +442,11 @@ func _on_world(w: Dictionary) -> void:
 	if _args.has("shot"):
 		for i in 12:
 			await get_tree().process_frame
+		if _args.has("settings"):   # test: the settings on a tab
+			SettingsPanel.tab = String(_args.settings) if _args.settings != "" else "gfx"
+			_settings()
+			for i in 6:
+				await get_tree().process_frame
 		if _args.has("hdd"):   # test: the map layer list, opened
 			hud.mode_dd.pressed.emit()
 		if _args.has("mouse"):   # test: the hover card at a point of the screen
@@ -465,6 +524,7 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 		session.speed_refused.connect(_speed_refused)
 	map_ui.visible = true
 	hud.visible = true
+	Music.game()
 	var p: Dictionary = session.sim.PL[hq]
 	map.camera.look_at_point(Vector2(p.x, p.z + .3), 6.0)
 
@@ -681,6 +741,8 @@ func _save_data() -> Dictionary:
 
 ## autosave: not while planning, in a dialog or before the headquarters
 func _autosave() -> Variant:
+	if not Settings.get_value("autosave"):
+		return {}
 	if session == null or session.sim == null or not hud.visible or planner.on or course.on or modals.is_open():
 		return {}
 	var s := _save_data()

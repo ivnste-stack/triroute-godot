@@ -400,7 +400,11 @@ func _process(delta: float) -> void:
 func _process_t(delta: float) -> void:
 	if session == null or session.sim == null or session.sim.CO.is_empty() or not session.sim.CO.has("hubs"):
 		return
-	_ticker_step(delta)
+	var tk: bool = not Settings.get_value("no_ticker")
+	_ticker.visible = tk
+	_ticker_dot.visible = tk
+	if tk:
+		_ticker_step(delta)
 	# the numbers: 8 times a second is enough, and nothing is touched that did not change
 	_refresh_t -= delta
 	if _refresh_t > 0:

@@ -144,9 +144,14 @@ func _cached(layer: Node, parent: Node) -> SubViewport:
 	return vp
 
 
+## the map is rendered at this share of the window's pixels (settings: the render resolution); the 3D map
+## through Viewport.scaling_3d_scale, the lines and the towns through the size of their buffers
+var render_k := 1.0
+
+
 func _process_t(_delta: float) -> void:
 	# the overlay buffer: the size of the screen in real pixels
-	var phys := Vector2i(get_viewport().get_visible_rect().size * get_window().content_scale_factor) if get_window() != null else Vector2i(1600, 900)
+	var phys := Vector2i(get_viewport().get_visible_rect().size * get_window().content_scale_factor * render_k) if get_window() != null else Vector2i(1600, 900)
 	if _ov_vp.size != phys and phys.x > 0:
 		_ov_vp.size = phys
 		overlay.dpr = phys.x / maxf(1.0, get_viewport().get_visible_rect().size.x)
@@ -155,8 +160,6 @@ func _process_t(_delta: float) -> void:
 		_tw_vp.size = phys
 		towns.dpr = phys.x / maxf(1.0, get_viewport().get_visible_rect().size.x)
 		towns._key = ""
-	if Perf.off("msaa"):
-		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	if Perf.off("map"):
 		_plane.visible = false
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):

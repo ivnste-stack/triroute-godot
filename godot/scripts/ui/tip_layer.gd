@@ -23,7 +23,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	var t := _tip_target()
+	var t: Control = null if Settings.get_value("no_tips") else _tip_target()
 	var txt := ""
 	if t != null:
 		if t is TipPanel and (t as TipPanel).tip_builder.is_valid():
