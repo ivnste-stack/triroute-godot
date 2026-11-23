@@ -21,12 +21,12 @@ void fragment() {
 	float tex_per_px = s.x / zoom * pic_size.x / rect_size.x;
 	float sigma_tex = blur_px * 0.5 * tex_per_px;
 	float lod = log2(max(sigma_tex, 1.0));
-	vec2 step_uv = vec2(sigma_tex) / pic_size;
+	vec2 step_uv = vec2(sigma_tex * 0.8) / pic_size;
 	vec3 acc = vec3(0.0);
 	float ws = 0.0;
-	for (int x = -3; x <= 3; x++) {
-		for (int y = -3; y <= 3; y++) {
-			float w = exp(-float(x * x + y * y) / 4.5);
+	for (int x = -2; x <= 2; x++) {
+		for (int y = -2; y <= 2; y++) {
+			float w = exp(-float(x * x + y * y) / 2.5);
 			acc += textureLod(pic, uv + vec2(float(x), float(y)) * step_uv, lod).rgb * w;
 			ws += w;
 		}
