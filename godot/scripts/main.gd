@@ -132,6 +132,8 @@ func _pace_frames() -> void:
 		cap = 15
 	elif not Settings.get_value("idle_fps"):
 		pass
+	elif menu != null and menu.visible:
+		pass   # the main menu's backgrounds float: every frame counts
 	elif (session == null or session.speed == 0) and Time.get_ticks_msec() / 1000.0 - _last_input > 3.0 and not modals.is_open():
 		var c := map.camera
 		if absf(c.tx - c.ttx) + absf(c.tz - c.ttz) + absf(c.dist - c.tdist) < 1e-4:

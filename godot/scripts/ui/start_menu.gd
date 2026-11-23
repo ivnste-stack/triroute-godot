@@ -30,25 +30,26 @@ func _process(delta: float) -> void:
 	var cur := int(_t / per) % n
 	var f := fmod(_t, per) / per
 	for i in n:
-		var bg: TextureRect = _bgs[i]
+		var bg: ColorRect = _bgs[i]
 		var on := i == cur
 		var nxt := i == (cur + 1) % n and n > 1
 		var fade_in := clampf((fmod(_t, per) - (per - FADE)) / FADE, 0, 1)
+		fade_in = fade_in * fade_in * (3 - 2 * fade_in)
 		var a := 1.0 if on else (fade_in if nxt else 0.0)
-		if on and n > 1:
-			a = 1.0
 		bg.visible = a > 0
 		bg.modulate.a = a
 		if not bg.visible:
 			continue
 		# the time of this picture on screen: the next one starts its drift while fading in
-		var lt := f if on else (fade_in * FADE / per - FADE / per)
-		var k := 1.08 + .06 * (lt + FADE / per)
+		var lt := f if on else (fmod(_t, per) - per) / per
+		var u := lt + FADE / per   # 0 … 1 + FADE / per over the life of the picture
 		var dir := Vector2(cos(i * 2.1 + .6), sin(i * 2.1 + .6))
-		bg.size = size * k
-		bg.position = -(bg.size - size) / 2 + dir * size.x * .025 * (lt - .5) * 2
+		var m: ShaderMaterial = bg.material
+		m.set_shader_parameter("rect_size", size)
+		m.set_shader_parameter("zoom", 1.06 + .05 * u)
+		m.set_shader_parameter("pan", dir * .018 * (u - .55))
 	# the one fading in lies above the current one
-	var top: TextureRect = _bgs[(cur + 1) % n]
+	var top: ColorRect = _bgs[(cur + 1) % n]
 	if n > 1 and top.get_index() < _bgs[cur].get_index():
 		move_child(top, _bgs[cur].get_index())
 
@@ -70,21 +71,22 @@ func _refresh_load() -> void:
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = Ui.theme()
-	# #bgSnap: the pictures blurred (filter: blur(6px) brightness(.9)): scaled down and stretched back
+	# #bgSnap: the pictures blurred by a shader (filter: blur(6px)), darker than the game so the buttons stand
+	# out on the light land; mipmapped 4K pictures: sharp on large screens, smooth when they drift
 	var paths: Array = BGS.filter(func(x): return ResourceLoader.exists(x))
 	if paths.is_empty():
 		paths = ["res://assets/img/menu_bg.webp"]
+	var sh: Shader = load("res://shaders/menu_bg.gdshader")
 	for path in paths:
-		if not ResourceLoader.exists(path):
-			continue
-		var img: Image = (load(path) as Texture2D).get_image()
-		img.resize(img.get_width() / 10, img.get_height() / 10, Image.INTERPOLATE_LANCZOS)
-		var bg := TextureRect.new()
-		bg.texture = ImageTexture.create_from_image(img)
-		bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		bg.self_modulate = Color(.7, .72, .76)   # darker than the game: the buttons stand out on the light land
-		bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		var tex: Texture2D = load(path)
+		var bg := ColorRect.new()
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("pic", tex)
+		m.set_shader_parameter("pic_size", Vector2(tex.get_width(), tex.get_height()))
+		m.set_shader_parameter("shade", Vector3(.7, .72, .76))
+		bg.material = m
+		bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bg.modulate.a = 0
 		add_child(bg)
