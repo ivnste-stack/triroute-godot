@@ -18,15 +18,22 @@ func _ready() -> void:
 
 
 func push(tone: String, title: String, text: String = "") -> void:
+	# the same message again: the one on screen starts over instead of a second copy
+	var key := tone + "|" + title + "|" + text
+	for c in get_children():
+		if c.get_meta("key", "") == key and not c.is_queued_for_deletion():
+			move_child(c, 0)
+			_life(c)
+			return
 	var g := Ui.glass()
+	g.set_meta("key", key)
 	var col: Color = {"bad": Ui.BAD, "good": Ui.GOOD, "warn": Ui.WARN}.get(tone, Ui.ACCENT)
-	var sb := Ui.box(Color.TRANSPARENT, Ui.LINE, 1, Vector4(12, 10, 12, 10))
-	sb.border_color = Ui.LINE
-	sb.border_width_left = 3
-	sb.content_margin_left = 12
-	g.add_theme_stylebox_override("panel", sb)
-	# the coloured left edge (border-left: 3px), drawn by the panel under its content
-	g.draw.connect(func(): g.draw_rect(Rect2(0, 0, 3, g.size.y), col))
+	# the glass fills the whole toast (no margins on the panel: they would shrink the blurred background);
+	# the outline and the coloured left edge (border-left: 3px) are drawn by the panel over the glass
+	g.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	g.draw.connect(func():
+		g.draw_rect(Rect2(0.5, 0.5, g.size.x - 1, g.size.y - 1), Ui.LINE, false, 1)
+		g.draw_rect(Rect2(0, 0, 3, g.size.y), col))
 	var ic := Ui.icon({"bad": "alert", "good": "check"}.get(tone, "info"), 16, col)
 	ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	# .toast b: the title in the colour of the tone; span: 12 px in fg-2 with the browser's line height
@@ -37,7 +44,7 @@ func push(tone: String, title: String, text: String = "") -> void:
 		d.add_theme_constant_override("line_spacing", 4)
 		tt.add_child(d)
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	g.add_child(Ui.hbox(10, [ic, tt]))
+	g.add_child(Ui.margin(Ui.hbox(10, [ic, tt]), 15, 10, 12, 10))   # padding 10px 12px after the 3 px edge
 	g.mouse_filter = Control.MOUSE_FILTER_PASS
 	g.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: g.queue_free())
 	add_child(g)
@@ -45,7 +52,16 @@ func push(tone: String, title: String, text: String = "") -> void:
 	while get_child_count() > 4:
 		get_child(get_child_count() - 1).free()
 	g.modulate.a = 0
+	_life(g)
+
+
+func _life(g: Control) -> void:
+	if g.has_meta("tw"):
+		var old: Tween = g.get_meta("tw")
+		if old != null and old.is_valid():
+			old.kill()
 	var tw := g.create_tween()
+	g.set_meta("tw", tw)
 	tw.tween_property(g, "modulate:a", 1.0, .25)
 	tw.tween_interval(LIFE)
 	tw.tween_property(g, "modulate:a", 0.0, .4)

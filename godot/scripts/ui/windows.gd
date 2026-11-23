@@ -84,7 +84,6 @@ static func _stat(l: String, v: String, s: String = "", tip: String = "", cls: S
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if tip != "":
 		p.tooltip_text = tip
-		p.mouse_default_cursor_shape = Control.CURSOR_HELP
 	return p
 
 

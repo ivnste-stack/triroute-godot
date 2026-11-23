@@ -59,15 +59,17 @@ func _build_top() -> void:
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(top)
 	# #yearBox.grbox: the badge of the grade of experience, 30 px in a 62 px box, the ladder in the tooltip
-	var menu := Ui.glass()
+	var menu: TipPanel = Ui.glass(Ui.GLASS, Ui.LINE, TipPanel.new())
+	menu.tip_builder = _grade_tip_ui
+	menu.tooltip_text = "Грейд"   # the content comes from _grade_tip_ui
 	menu.custom_minimum_size = Vector2(62, 0)
 	_grade = Control.new()
 	_grade.custom_minimum_size = Vector2(30, 30)
 	_grade.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_grade.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_grade.mouse_filter = Control.MOUSE_FILTER_IGNORE   # the panel shows the tooltip
 	_grade.draw.connect(func(): if session != null and session.sim != null: paint_grade(_grade, session.sim.co_grade(), 30))
 	menu.add_child(_grade)
-	menu.mouse_default_cursor_shape = Control.CURSOR_HELP
 	_grade_box = menu
 	top.add_child(menu)
 	# the company card
@@ -140,7 +142,54 @@ static func paint_grade(c: CanvasItem, g: int, sz: float, at: Vector2 = Vector2.
 			chev.call(21.5 - i * 3.6)
 
 
-## grTip: the grade, the experience to the next one and the ladder
+## grTip: the grade in its colour, the experience to the next one with a bar, the ladder of grades with their
+## badges (what the next one opens under it) and how experience is earned
+func _grade_tip_ui() -> Control:
+	if session == null or session.sim == null:
+		return null
+	var sim := session.sim
+	var g := sim.co_grade()
+	var x := int(floor(sim.CO.get("xp", 0)))
+	var G0: Dictionary = GameData.GRADES[g]
+	var gc := Color(G0.col)
+	var nx: Variant = GameData.GRADES[g + 1] if g + 1 < GameData.GRADES.size() else null
+	var v := Ui.vbox(4)
+	v.custom_minimum_size.x = 330
+	v.add_child(Ui.label("Грейд: " + G0.n, 13, gc, Ui.font("body", 600)))
+	v.add_child(Ui.label("Досвід %s%s" % [Ui.grp(x), (" · до «%s» ще %s" % [nx.n, Ui.grp(nx.xp - x)]) if nx != null else " · найвищий грейд"], 12, Ui.FG2))
+	var pct := 1.0 if nx == null else clampf(float(x - G0.xp) / maxf(1, nx.xp - G0.xp), 0, 1)
+	var bar := ColorRect.new()
+	bar.color = Color(1, 1, 1, .08)
+	bar.custom_minimum_size = Vector2(0, 6)
+	var fill := ColorRect.new()
+	fill.color = gc
+	fill.anchor_bottom = 1
+	fill.anchor_right = pct
+	bar.add_child(fill)
+	v.add_child(Ui.margin(bar, 0, 2, 0, 4))
+	for i in GameData.GRADES.size():
+		var q: Dictionary = GameData.GRADES[i]
+		var badge := Control.new()
+		badge.custom_minimum_size = Vector2(16, 16)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var gi: int = i
+		badge.draw.connect(func(): paint_grade(badge, gi, 16))
+		var nm := Ui.label(q.n, 13, Color(q.col) if i == g else Ui.FG, Ui.font("body", 600))
+		var xp := Ui.label(Ui.grp(q.xp), 12, Ui.FG2)
+		var row := Ui.hbox(8, [badge, nm, Ui.spacer(), xp])
+		row.modulate.a = 1.0 if i <= g else .55
+		v.add_child(row)
+		if i == g + 1:
+			var u := Ui.label(" · ".join(q.u), 11, Ui.FG2)
+			u.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			v.add_child(Ui.margin(u, 24, 0, 0, 2))
+	var f := Ui.label("Досвід дають успішні доставки: за маршрут, прокладений вручну, — повний, за маршрут диспетчера-логіста — 8%.", 11, Ui.FG2)
+	f.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(Ui.margin(f, 0, 4, 0, 0))
+	return v
+
+
+## grTip as plain text (kept for logs)
 func _grade_tip() -> String:
 	var sim := session.sim
 	var g := sim.co_grade()
@@ -207,10 +256,12 @@ func _build_rail() -> void:
 		b.tooltip_text = "%s\n%s" % [r[2], r[3]]
 		b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 		b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT))
-		b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT))
+		b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT))
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		var id: String = r[0]
-		b.pressed.connect(func(): window_requested.emit(id))
+		b.pressed.connect(func():
+			window_requested.emit(id)
+			_rail_state())
 		v.add_child(b)
 		_rail_btns[id] = [b, r[1]]
 		# a red badge (the orders on the board, the trips under way)
@@ -340,7 +391,7 @@ func _process_t(delta: float) -> void:
 	if gk != _grade_key:
 		_grade_key = gk
 		_grade.queue_redraw()
-		_grade_box.tooltip_text = _grade_tip()
+
 	var lm: Variant = CO.lm
 	var pr: float = sim.co_rev(lm) - sim.co_cost(lm) if lm != null else 0.0
 	var busy := 0
@@ -388,14 +439,7 @@ func _process_t(delta: float) -> void:
 		rparts.append(["%s%d%%" % ["+" if dlt >= 0 else "", int(JS.round_js(dlt))], Ui.GOOD if dlt >= 0 else Ui.BAD, 11])
 	_put(_cells.rev, rparts)
 	# rail: the open window, the badges
-	for id in _rail_btns:
-		var on: bool = id == open_window
-		var b: Button = _rail_btns[id][0]
-		if not b.has_meta("on") or b.get_meta("on") != on:
-			b.set_meta("on", on)
-			b.icon = Icons.tex(_rail_btns[id][1], Ui.ACCENT_INK if on else Ui.FG2, 20)
-			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else StyleBoxEmpty.new())
-			b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT) if on else Ui.box(Ui.ACCENT_SOFT))   # .rbtn.on stays lit
+	_rail_state()
 	_badge("coJobs", CO.board.size() if CO.tier >= 1 else 0)
 	var trips := 0
 	for j in CO.jobs:
@@ -424,6 +468,19 @@ func _ticker_step(delta: float) -> void:
 		_ticker_x = 0
 	_ticker_dot.position = Vector2(14 + _ticker_x, _ticker_clip.size.y / 2 - 3.5)
 	_ticker.position = Vector2(28 + _ticker_x, (_ticker_clip.size.y - _ticker.get_combined_minimum_size().y) / 2)
+
+
+## .rbtn / .rbtn.on: the open window's button on the accent with a dark icon, at once when it changes
+func _rail_state() -> void:
+	for id in _rail_btns:
+		var on: bool = id == open_window
+		var b: Button = _rail_btns[id][0]
+		if not b.has_meta("on") or b.get_meta("on") != on:
+			b.set_meta("on", on)
+			b.icon = Icons.tex(_rail_btns[id][1], Ui.ACCENT_INK if on else Ui.FG2, 20)
+			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else StyleBoxEmpty.new())
+			b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT) if on else Ui.box(Ui.ACCENT_SOFT))
+			b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT) if on else Ui.box(Ui.ACCENT_SOFT))
 
 
 func _badge(id: String, n: int) -> void:

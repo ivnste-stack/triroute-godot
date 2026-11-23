@@ -122,7 +122,7 @@ static func theme() -> Theme:
 	t.set_stylebox("panel", "PanelContainer", StyleBoxEmpty.new())
 	t.set_stylebox("normal", "LineEdit", box(Color(1, 1, 1, .04), LINE_HI, 1, Vector4(10, 6, 10, 6)))
 	t.set_stylebox("focus", "LineEdit", box(Color(1, 1, 1, .06), ACCENT, 1, Vector4(10, 6, 10, 6)))
-	t.set_stylebox("panel", "TooltipPanel", box(GLASS_HI, LINE_HI, 1, Vector4(12, 10, 12, 10)))
+	t.set_stylebox("panel", "TooltipPanel", box(Color(12 / 255.0, 19 / 255.0, 28 / 255.0, .96), LINE_HI, 1, Vector4(12, 10, 12, 10)))
 	t.set_color("font_color", "TooltipLabel", FG2)
 	t.set_font_size("font_size", "TooltipLabel", 12)
 	_theme = t
@@ -131,10 +131,10 @@ static func theme() -> Theme:
 
 # ---------- builders ----------
 ## a glass panel (.glass): the blurred map behind, a tint, a thin border
-static func glass(tint: Color = GLASS, border: Color = LINE) -> PanelContainer:
+static func glass(tint: Color = GLASS, border: Color = LINE, into: PanelContainer = null) -> PanelContainer:
 	if _glass == null:
 		_glass = load("res://shaders/glass.gdshader")
-	var p := PanelContainer.new()
+	var p := into if into != null else PanelContainer.new()
 	var bg := ColorRect.new()
 	var m := ShaderMaterial.new()
 	m.shader = _glass
