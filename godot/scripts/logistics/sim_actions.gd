@@ -534,3 +534,61 @@ func act_move(v: Dictionary, pid: int) -> Dictionary:
 		CO.m.fuel -= fuel
 		return _toast("good", "Техніка їде в новий хаб", "%s: %s → %s · %s · пальне %s" % [T.n, PL[from].name, PL[pid].name, "%.1f дн." % tm, usd_s(fuel)])
 	return _toast("good", "Приписку змінено", "%s після поточного рейсу поїде в хаб %s" % [T.n, PL[pid].name])
+
+
+# ---------- test sandbox ----------
+## the test switch of the settings: endless money (topped up by the game), the highest grade, licence and
+## rating, every permit, upgrade and manager, hubs of the highest level in the headquarters and in the
+## nearest port, airport and railway cities, 100 vehicles of every type with their crews
+func act_sandbox() -> Dictionary:
+	CO.sandbox = true
+	CO.cash = 1e12
+	CO.xp = maxf(float(CO.get("xp", 0)), float(D.GRADES[D.GRADES.size() - 1].xp))
+	CO.tier = D.LIC.size() - 1
+	CO.rating = 5.0
+	if not CO.has("perm") or not (CO.perm is Dictionary):
+		CO.perm = {}
+	for p in D.PERM:
+		CO.perm[p.id] = {"until": 1e9, "auto": true}
+	if not CO.has("upg"):
+		CO.upg = {}
+	for u in D.UPG:
+		if not CO.upg.has(u.id):
+			CO.upg[u.id] = {"d": day}
+	for id in CO.get("cand", {}).keys().duplicate():
+		if not CO.mgr.has(id) and CO.cand[id] is Array and CO.cand[id].size():
+			act_hire_mgr(id, 0)
+	# hubs: the headquarters and, for each kind of transport, the nearest city that can take it
+	var hq: Dictionary = PL[CO.hq]
+	for m in ["sea", "air", "rail"]:
+		if CO.hubs.any(func(h): return mode_ok(m, PL[h.pid])):
+			continue
+		var best: Variant = null
+		var bd := 1e9
+		for p in PL:
+			if mode_ok(m, p) and co_scope(p) and hub_at(p.id) == null:
+				var d := Vector2(p.x - hq.x, p.z - hq.z).length() + (0.0 if p.cid == me else 3.0)
+				if d < bd:
+					bd = d
+					best = p
+		if best != null:
+			act_hub(best.id)
+	for h in CO.hubs:
+		h.lvl = 2 if h.get("rent") else 4
+	# 100 of every vehicle, each where its transport can start
+	var need := {}
+	for t in D.VT:
+		var T: Dictionary = D.VT[t]
+		var hubs: Array = CO.hubs.filter(func(h): return mode_ok(T.mode, PL[h.pid]))
+		if hubs.is_empty():
+			continue
+		var at: int = CO.hq if hubs.any(func(h): return h.pid == CO.hq) else hubs[0].pid
+		for i in 100:
+			CO.veh.append({"id": CO.uid, "t": t, "loc": at, "st": "idle", "cond": 100.0, "km": 0.0})
+			CO.uid += 1
+		need[T.role] = need.get(T.role, 0) + 100 * int(T.get("crew", 1))
+	for r in need:
+		CO.staff[r] = maxi(int(CO.staff.get(r, 0)), need[r] + 20)
+	CO.morale = 90.0
+	CO.cash = 1e12
+	return _toast("good", "Тестовий режим", "Гроші без ліміту, усе відкрито, по 100 одиниць кожної техніки")

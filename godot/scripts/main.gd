@@ -323,6 +323,18 @@ func _settings() -> void:
 	modals.push({"icon": "gear", "eyebrow": "Гра", "title": "Налаштування", "content": c, "close": true, "width": 760})
 
 
+func in_game() -> bool:
+	return session != null and session.sim != null and hud.visible
+
+
+## the test sandbox of the settings (Sim.act_sandbox)
+func sandbox() -> void:
+	if not in_game():
+		return
+	_on_act(session.sim.act_sandbox())
+	map.company_colors()
+
+
 func apply_blur() -> void:
 	var v: bool = Settings.get_value("blur")
 	Ui.set_blur(v)
@@ -454,6 +466,8 @@ func _process_t(delta: float) -> void:
 	if session != null and session.sim != null:
 		# decisions of the game wait for the player
 		var sim := session.sim
+		if sim.CO.get("sandbox", false) and sim.CO.cash < 1e11:   # the test sandbox: money without a limit
+			sim.CO.cash = 1e12
 		if sim.auto_choice < 0 and sim.modals.size() and not modals.is_open():
 			modals.push(_decision(sim.modals.pop_front()))
 		if win.visible:

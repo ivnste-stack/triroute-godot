@@ -182,3 +182,41 @@ func test_move_vehicle_to_another_hub() -> String:
 	if v.st != "trip" or v.home != ts[0].pid:
 		return "the vehicle did not set off: %s" % [res]
 	return ""
+
+
+## the test sandbox of the settings: everything open, 100 of every vehicle; the game goes on and the windows
+## are built with it
+func test_sandbox() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game()
+	sim.act_sandbox()
+	var CO := sim.CO
+	if CO.tier != Sim.D.LIC.size() - 1 or CO.cash < 1e11:
+		return "not everything open: tier %d, cash %s" % [CO.tier, CO.cash]
+	var types := {}
+	for v in CO.veh:
+		types[v.t] = types.get(v.t, 0) + 1
+	for t in Sim.D.VT:
+		if types.get(t, 0) < 100:
+			return "%s: %d vehicles (no hub for its transport?)" % [t, types.get(t, 0)]
+	for m in ["sea", "air", "rail"]:
+		if not CO.hubs.any(func(h): return sim.mode_ok(m, sim.PL[h.pid])):
+			return "no hub for " + m
+	var t0 := Time.get_ticks_msec()
+	for d in 5:
+		for f in 8:
+			sim.co_frame(f / 8.0)
+		sim.co_day()
+	var ms := Time.get_ticks_msec() - t0
+	if ms > 20000:
+		return "5 days with the sandbox fleet took %d ms" % ms
+	var w := Windows.new(sim)
+	for id in ["coHome", "coJobs", "coTrips", "coFleet", "coNet", "coStaff", "coFin"]:
+		var body := VBoxContainer.new()
+		w.build(id, body)
+		var n := body.get_child_count()
+		body.free()
+		if n < 3:
+			return "%s: only %d parts" % [id, n]
+	return ""
