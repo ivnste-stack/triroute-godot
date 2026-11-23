@@ -41,8 +41,8 @@ var _cells := {}
 var _ticker: HBoxContainer       # the news one after another, twice in a row (a seamless loop)
 var _ticker_clip: Control
 var _ticker_x := 0.0
-var _ticker_key := ""
-var _ticker_w := 0.0             # the width of one copy of the line
+var _ticker_last: Variant = null # the newest news already in the line
+var _ticker_sim: Variant = null
 const TICKER_N := 8              # how many of the latest news run
 const TICKER_SPEED := 48.0       # px a second
 
@@ -473,45 +473,75 @@ func _process_t(delta: float) -> void:
 
 
 ## the ticker: the latest news, scrolling (every frame)
+## a running line, a conveyor: the news ride from right to left one after another; one that has left on the
+## left goes to the back of the line again (only the latest TICKER_N stay in it); a fresh news joins at the
+## back too, so the text on the screen never jumps. Whatever joins the back while the line is short of the
+## right edge starts beyond that edge (a gap before it), so nothing pops up in the middle.
 func _ticker_step(delta: float) -> void:
 	var sim := session.sim
-	var n: int = sim.news.size()
-	var key := "%d|%s" % [n, sim.news.back()[2] if n else ""]
-	if key != _ticker_key:
-		_ticker_key = key
-		_ticker_fill()
-		_ticker_x = 0.0   # a fresh news: the line starts again from it
-	if _ticker_w <= 0:
+	if not is_same(sim, _ticker_sim):   # another game: an empty line
+		_ticker_sim = sim
+		_ticker_last = null
+		_ticker_x = 0.0
+		for c in _ticker.get_children():
+			_ticker.remove_child(c)
+			c.queue_free()
+	if _ticker_last == null or (sim.news.size() and not is_same(sim.news.back(), _ticker_last)):
+		var fresh := []
+		for i in range(sim.news.size() - 1, -1, -1):
+			if is_same(sim.news[i], _ticker_last) or fresh.size() >= TICKER_N:
+				break
+			fresh.push_front(sim.news[i])
+		var first_fill: bool = _ticker_last == null
+		if first_fill:
+			fresh.reverse()   # the first fill: the newest first, one right after another
+		for it in fresh:
+			_ticker_push(it, not first_fill)
+		if sim.news.size():
+			_ticker_last = sim.news.back()
+	if _ticker.get_child_count() == 0:
 		return
-	# a running line: the newest news first, then the older ones, round and round
 	_ticker_x -= delta * TICKER_SPEED
-	if _ticker_x <= -_ticker_w:
-		_ticker_x += _ticker_w
+	var first: Control = _ticker.get_child(0)
+	var fw := first.get_combined_minimum_size().x
+	if _ticker_x + fw <= 0:
+		_ticker_x += fw
+		_ticker.remove_child(first)
+		var it: Variant = first.get_meta("news", null)
+		var keep := false
+		if it != null:
+			for i in range(sim.news.size() - 1, maxi(-1, sim.news.size() - 1 - TICKER_N), -1):
+				if is_same(sim.news[i], it):
+					keep = true
+					break
+		if keep:
+			_ticker_back(first)
+		else:
+			first.queue_free()
 	_ticker.position = Vector2(roundf(14 + _ticker_x), (_ticker_clip.size.y - _ticker.get_combined_minimum_size().y) / 2)
 
 
-## the latest news as dots and lines, twice (the second copy follows the first, so the loop has no gap)
-func _ticker_fill() -> void:
-	for c in _ticker.get_children():
-		_ticker.remove_child(c)
-		c.queue_free()
-	var sim := session.sim
-	var items := []
-	for i in range(sim.news.size() - 1, maxi(-1, sim.news.size() - 1 - TICKER_N), -1):
-		items.append(sim.news[i])
-	if items.is_empty():
-		_ticker_w = 0
-		return
-	for copy in 2:
-		for it in items:
-			var dot := ColorRect.new()
-			dot.custom_minimum_size = Vector2(7, 7)
-			dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			dot.color = {"good": Ui.GOOD, "bad": Ui.BAD, "warn": Ui.WARN}.get(it[0], Ui.ACCENT)
-			var l := Ui.label(it[2], 13, Ui.FG2)
-			_ticker.add_child(Ui.margin(Ui.hbox(8, [dot, l]), 0, 0, 36, 0))
-	_ticker.reset_size()
-	_ticker_w = _ticker.get_combined_minimum_size().x / 2
+func _ticker_push(it: Array, gap := true) -> void:
+	var dot := ColorRect.new()
+	dot.custom_minimum_size = Vector2(7, 7)
+	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	dot.color = {"good": Ui.GOOD, "bad": Ui.BAD, "warn": Ui.WARN}.get(it[0], Ui.ACCENT)
+	var m := Ui.margin(Ui.hbox(8, [dot, Ui.label(it[2], 13, Ui.FG2)]), 0, 0, 36, 0)
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.set_meta("news", it)
+	_ticker_back(m, gap)
+
+
+## to the back of the line, beyond the right edge when the line does not reach it
+func _ticker_back(c: Control, gap := true) -> void:
+	var end := _ticker_x + _ticker.get_combined_minimum_size().x
+	var edge := _ticker_clip.size.x - 14
+	if gap and _ticker.get_child_count() and end < edge:
+		var gap := Control.new()
+		gap.custom_minimum_size.x = edge - end
+		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_ticker.add_child(gap)   # no news: it leaves on the left and is gone
+	_ticker.add_child(c)
 
 
 ## .rbtn / .rbtn.on: the open window's button on the accent with a dark icon, at once when it changes
