@@ -442,6 +442,7 @@ var _perf_n := 0
 
 
 var _live_n := 0
+var _cdel_seen := -1
 
 
 func _process(delta: float) -> void:
@@ -478,6 +479,12 @@ func _process_t(delta: float) -> void:
 	if session != null and session.sim != null:
 		# decisions of the game wait for the player
 		var sim := session.sim
+		if sim.CO.get("cdel", 0) > _cdel_seen:   # a delivery: a coin (once for a burst)
+			if _cdel_seen >= 0:
+				Sfx.play("coin")
+			_cdel_seen = sim.CO.cdel
+		elif sim.CO.get("cdel", 0) < _cdel_seen:
+			_cdel_seen = sim.CO.cdel   # another game
 		if sim.CO.get("sandbox", false) and sim.CO.cash < 1e11:   # the test sandbox: money without a limit
 			sim.CO.cash = 1e12
 		if sim.auto_choice < 0 and sim.modals.size() and not modals.is_open():
@@ -746,9 +753,13 @@ const WIN_HEAD := {"coHome": ["briefcase", "Компанія"], "coJobs": ["box"
 
 func _toggle_window(id: String) -> void:
 	if hud.open_window == id or id == "":
+		if win.visible:
+			Sfx.play("close")
 		hud.open_window = ""
 		win.visible = false
 		return
+	if not win.visible:
+		Sfx.play("open")
 	hud.open_window = id
 	var vs := get_viewport().get_visible_rect().size
 	win.position = Vector2(78, 84)
@@ -869,6 +880,7 @@ func _restore_scroll(v: int) -> void:
 ## the result of an action in a window: a toast (a dialog for a new licence), then the window again
 func _on_act(res: Dictionary) -> void:
 	if res.get("lic"):
+		Sfx.play("level")
 		modals.push({"icon": "doc", "tone": "good", "eyebrow": "Нова ліцензія", "title": res.t, "body": res.d, "close": true,
 			"choices": [{"t": "Чудово", "f": func(): pass}]})
 	elif res.get("t", "") != "":
@@ -905,6 +917,7 @@ func _grade_check() -> void:
 		var q: Dictionary = GameData.GRADES[g]
 		sim.co_news("good", "star", "%s отримала грейд «%s»" % [sim.CO.name, q.n])
 		toasts.push("good", "Новий грейд: " + q.n, " · ".join(q.u))
+		Sfx.play("level")
 
 
 ## srOpen: a new course for a trip under way

@@ -124,6 +124,7 @@ func _row(mark: Dictionary, text: String) -> Control:
 	p.mouse_exited.connect(func(): p.add_theme_stylebox_override("panel", idle))
 	p.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			Sfx.play("click", -4.0)
 			MapVis.toggle(key)
 			toggled.emit())
 	return p

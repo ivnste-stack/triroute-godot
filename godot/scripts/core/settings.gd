@@ -26,6 +26,7 @@ const DEFAULTS := {
 	# sound
 	"master_vol": 0.8,    # general volume 0..1
 	"mus_vol": 0.6,       # music volume 0..1
+	"sfx_vol": 0.7,       # interface sounds 0..1
 	"no_music": false,    # menu music off
 	"no_game_music": false,
 	# controls
