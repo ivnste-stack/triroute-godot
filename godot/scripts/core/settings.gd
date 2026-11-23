@@ -29,6 +29,7 @@ const DEFAULTS := {
 	"sfx_vol": 0.7,       # interface sounds 0..1
 	"no_music": false,    # menu music off
 	"no_game_music": false,
+	"game_music": "mix",  # in the game: "mix" the tracks and the calm background, "tracks", "ambient"
 	# controls
 	"keys": {},           # key bindings changed by the player (Keys): {action: keycode}
 	# game

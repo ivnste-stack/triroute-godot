@@ -7,6 +7,9 @@ extends Node
 const MENU := "res://assets/music/menu.mp3"
 const TRACKS := ["res://assets/music/game-1.mp3", "res://assets/music/game-2.mp3", "res://assets/music/game-3.mp3",
 	"res://assets/music/game-4.mp3", "res://assets/music/game-5.mp3"]
+## the calm background (tools/make_ambient.py): in the game alone, looped ("ambient"), or one more track of
+## the bag ("mix"); the setting "game_music" picks
+const AMBIENT := "res://assets/music/ambient.ogg"
 const MENU_K := .55   # MUS.vol = .55 × the music volume
 const GAME_K := .5    # gmVol = .5 × the music volume
 
@@ -36,7 +39,11 @@ func _ready() -> void:
 		elif k == "no_music" and _want == "menu":
 			menu()
 		elif k == "no_game_music" and _want == "game":
-			game())
+			game()
+		elif k == "game_music" and _want == "game":
+			_bag = []
+			_stop_game(1.2)
+			_restart_game.call_deferred())
 
 
 func _player() -> AudioStreamPlayer:
@@ -120,11 +127,24 @@ func _stop_game(sec: float) -> void:
 		_ramp(_game, 0, sec, func(): if _want != "game" or Settings.get_value("no_game_music"): _game.stop())
 
 
+func _tracks() -> Array:
+	match String(Settings.get_value("game_music")):
+		"ambient":
+			return [AMBIENT]
+		"tracks":
+			return TRACKS
+	return TRACKS + [AMBIENT]
+
+
 func _pick() -> String:
+	var tracks := _tracks()
+	if tracks.size() == 1:
+		return tracks[0]
+	_bag = _bag.filter(func(x): return x in tracks)
 	if _bag.is_empty():
 		var b: Array = []
 		for t in 60:
-			b = TRACKS.duplicate()
+			b = tracks.duplicate()
 			b.shuffle()
 			if not (b[0] in _last) and not (b[1] in _last):
 				break
@@ -140,10 +160,20 @@ func _track() -> void:
 	var path := _pick()
 	if not ResourceLoader.exists(path):
 		return
-	_game.stream = load(path)
+	var st: AudioStream = load(path)
+	if st is AudioStreamOggVorbis:   # the calm background alone: round and round, no pause
+		(st as AudioStreamOggVorbis).loop = String(Settings.get_value("game_music")) == "ambient"
+	_game.stream = st
 	_game.volume_linear = 0
 	_game.play()
 	_ramp(_game, GAME_K, 2.5)
+
+
+func _restart_game() -> void:
+	await get_tree().create_timer(1.3).timeout
+	if _want == "game" and not Settings.get_value("no_game_music"):
+		_game.stop()
+		_track()
 
 
 func _track_done() -> void:
