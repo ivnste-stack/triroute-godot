@@ -296,12 +296,14 @@ func act_upg(id: String) -> Dictionary:
 
 
 # ---------- hubs ----------
-func act_hub(pid: int) -> Dictionary:
+## a hub of your own (bought at its full price) or rented (a deposit of a tenth, then a monthly rent; the
+## landlord lets it grow only to level 2); rent: null — as the original: rented abroad, bought at home
+func act_hub(pid: int, rent: Variant = null) -> Dictionary:
 	var p: Dictionary = PL[pid]
 	if hub_at(pid) != null or not co_scope(p):
 		return {}
-	var ab := hub_abroad(p)
-	var c := hub_open_cost(p)
+	var ab: bool = hub_abroad(p) if rent == null else bool(rent)
+	var c := hub_rent_deposit(p) if ab else hub_cost(p)
 	if CO.cash < c:
 		return _toast("warn", "Бракує грошей", ("Застава за оренду хаба " if ab else "Хаб коштує ") + usd_s(c))
 	CO.cash -= c
@@ -313,6 +315,11 @@ func act_hub(pid: int) -> Dictionary:
 	if p.cid != me:
 		CO.flags.abroad = 1
 	return _toast("good", "Хаб в оренді" if ab else "Новий хаб", ("%s: оренда %s/міс." % [p.name, usd_s(hub_rent_m(h))]) if ab else p.name)
+
+
+## the deposit for renting a hub: a tenth of its price
+func hub_rent_deposit(p: Dictionary) -> float:
+	return JS.round_js(hub_cost(p) * .1)
 
 
 func act_hub_up(pid: int) -> Dictionary:

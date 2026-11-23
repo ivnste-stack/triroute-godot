@@ -8,6 +8,8 @@ const HUB := Color("#ffb347")
 const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78), Color(.1, .29, .55)]
 const RISK_COL := [Color(.27, .62, .42), Color(.83, .71, .3), Color(.88, .47, .2), Color(.78, .2, .18)]
 
+signal toggled   # a line was clicked: what it names is hidden or shown again (MapVis)
+
 var sim: Sim
 var mode := "co"
 var _box: VBoxContainer
@@ -33,14 +35,16 @@ func _process(_delta: float) -> void:
 	if sim == null:
 		return
 	var folded: bool = Settings.get_value("legend_folded")
-	var k := "%s|%s|%d|%d|%d" % [mode, folded, sim.CO.get("hubs", []).size(), sim.CO.get("jobs", []).size(), int(get_viewport_rect().size.y)]
+	var k := "%d|%s|%s|%d|%d|%d" % [MapVis.ver, mode, folded, sim.CO.get("hubs", []).size(), sim.CO.get("jobs", []).size(), int(get_viewport_rect().size.y)]
 	if k != _key:
 		_key = k
 		_build(folded)
 
 
 func _build(folded: bool) -> void:
+	# out at once: rows waiting to be freed would still count in the size
 	for c in _box.get_children():
+		_box.remove_child(c)
 		c.queue_free()
 	var title: String = {"co": "Мережа " + String(sim.CO.get("name", "")), "grid": "Логістичні шляхи", "risk": "Ризики перевезень",
 		"pol": "Політична карта", "dem": "Світовий попит на доставку"}.get(mode, "")
@@ -75,6 +79,11 @@ func _build(folded: bool) -> void:
 
 ## max-height: calc(100% - 190px), the rest scrolls
 func _fit() -> void:
+	# wrapped notes know their height only after a layout pass
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	_scroll.custom_minimum_size = Vector2.ZERO
 	var inner := (_box.get_parent() as Control).get_combined_minimum_size()
 	var h := minf(inner.y, get_viewport_rect().size.y - 190)
 	_scroll.custom_minimum_size = Vector2(inner.x, h)
@@ -82,16 +91,42 @@ func _fit() -> void:
 	# anchored to the bottom left: the panel grows upwards from 86 px above the bottom
 	offset_top = offset_bottom - sz.y
 	offset_right = offset_left + sz.x
+	size = sz
 
 
-## a line of the legend: the mark and its name
+## a line of the legend: the mark and its name; on the network, logistics, political and demand layers a
+## click hides what it names (struck through and faded while hidden) or shows it again
 func _row(mark: Dictionary, text: String) -> Control:
 	var m := Control.new()
 	m.custom_minimum_size = Vector2(26, 16)
 	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.draw.connect(func(): _mark(m, mark))
 	var l := Ui.label(text, 12, Ui.FG2)
-	return Ui.hbox(10, [m, l])
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var h := Ui.hbox(10, [m, l])
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var key := MapVis.key_of(text) if mode in ["co", "grid", "pol", "dem"] else ""
+	if key == "":
+		return h
+	var p := PanelContainer.new()
+	var idle := Ui.box(Color.TRANSPARENT, Color.TRANSPARENT, 0, Vector4(0, 1, 6, 1))
+	var hov := Ui.box(Color(1, 1, 1, .05), Color.TRANSPARENT, 0, Vector4(0, 1, 6, 1))
+	p.add_theme_stylebox_override("panel", idle)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	p.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	p.tooltip_text = ("Показати на мапі" if not MapVis.vis(key) else "Сховати з мапи")
+	p.add_child(h)
+	var off := not MapVis.vis(key)
+	if off:
+		h.modulate.a = .38
+		l.draw.connect(func(): l.draw_line(Vector2(0, l.size.y / 2 + 1), Vector2(l.size.x, l.size.y / 2 + 1), Color(1, 1, 1, .35), 1.0))
+	p.mouse_entered.connect(func(): p.add_theme_stylebox_override("panel", hov))
+	p.mouse_exited.connect(func(): p.add_theme_stylebox_override("panel", idle))
+	p.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			MapVis.toggle(key)
+			toggled.emit())
+	return p
 
 
 func _mark(n: Control, k: Dictionary) -> void:

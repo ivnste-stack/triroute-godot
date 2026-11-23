@@ -111,83 +111,13 @@ func _draw_t() -> void:
 	var now := session.anim_t
 	var zf := clampf(11.0 / camera.dist, 1, 1.8)
 	var T0 := sim.co_now()
-	# couriers: idle city vehicles of a hub drive around its streets
-	var cour := []
-	for h in CO.hubs:
-		var p: Dictionary = sim.PL[h.pid]
-		if camera.dist >= 13 or not h.has("ids") or h.ids.is_empty():
-			continue
-		var paths := _city_paths(p)
-		var ids := []
-		for id in h.ids:
-			for v in CO.veh:
-				if v.id == id and v.st == "idle" and v.loc == h.pid:
-					ids.append(id)
-					break
-		for i in mini(ids.size(), 240):
-			var id: int = ids[i]
-			var pp: Dictionary = paths[(i * 7 + 3) % paths.size()]
-			var L: float = pp.L
-			var sp := (.018 + ((id * 37) % 11) * .0022) / 40.0
-			var d := fmod((now + id * 5.3) * sp, 2 * L)
-			var fwd := d < L
-			var s0 := d if fwd else 2 * L - d
-			var q := _at(pp, s0)
-			var qs: Variant = _P(q.x, 0, q.y)
-			if qs == null:
-				continue
-			var tr := []
-			for k in range(1, 5):
-				var xk := _at(pp, s0 + (-1 if fwd else 1) * k * .012 / 20.0)
-				var t2: Variant = _P(xk.x, 0, xk.y)
-				if t2 != null:
-					tr.append(t2)
-			cour.append({"id": id, "x": qs.x, "y": qs.y, "tr": tr, "pid": p.id})
-	# one marker when several couriers overlap (in a small city: all of its couriers)
-	var cell := 22 * dpr
-	var groups := {}
-	var order := []
-	var small := {}
-	for c in cour:
-		if not small.has(c.pid):
-			var q: Dictionary = sim.PL[c.pid]
-			var a: Variant = _P(q.x, 0, q.z)
-			var b: Variant = _P(q.x + BRAD.get(q.type, .04), 0, q.z)
-			small[c.pid] = a == null or b == null or a.distance_to(b) < 70 * dpr
-		var key: String = ("p%d" % c.pid) if small[c.pid] else "%d:%d" % [floor(c.x / cell), floor(c.y / cell)]
-		if not groups.has(key):
-			groups[key] = []
-			order.append(key)
-		groups[key].append(c)
-	for key in order:
-		var L: Array = groups[key]
-		if L.size() >= 2:
-			var c: Dictionary = L[0]
-			var x: float = c.x
-			var y: float = c.y
-			var hs := 8 * dpr
-			_trail(Vector2(x, y), c.tr, HUB_RGB)
-			draw_rect(Rect2(x - hs, y - hs, hs * 2, hs * 2), Color(11 / 255.0, 21 / 255.0, 32 / 255.0, .55))
-			draw_rect(Rect2(x - hs, y - hs, hs * 2, hs * 2), HUB_RGB, false, 1.4 * dpr)
-			_dot(Vector2(x, y), 2.8 * dpr, HUB_RGB, Color(6 / 255.0, 18 / 255.0, 27 / 255.0, .85), .9 * dpr)
-			var txt := "×%d" % L.size()
-			var fs := int(round(9.5 * dpr))
-			var tw := F_MONO_B.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 6 * dpr
-			var br := Rect2(x + hs - 1 * dpr, y - hs - 11 * dpr, tw, 12 * dpr)
-			draw_rect(br, Color("#0b1520"))
-			draw_rect(br, HUB_RGB, false, 1 * dpr)
-			_text(txt, Vector2(x + hs + 2 * dpr, y - hs - 5 * dpr), fs, HUB_RGB)
-			hits.append({"x": x, "y": y, "r": 14, "ids": L.map(func(o): return o.id), "pid": c.pid})
-		else:
-			for c in L:
-				_trail(Vector2(c.x, c.y), c.tr, HUB_RGB)
-				_dot(Vector2(c.x, c.y), 2.6 * dpr * minf(zf, 1.3), HUB_RGB, Color(6 / 255.0, 18 / 255.0, 27 / 255.0, .85), .9 * dpr)
-				hits.append({"x": c.x, "y": c.y, "r": 8, "ids": [c.id], "pid": c.pid})
 	# the remaining route of the selected trip
 	if selected != null and CO.jobs.any(func(x): return is_same(x, selected)):
 		_route(selected, T0)
 	# trips
 	for j in CO.jobs:
+		if not MapVis.vis("v_" + String(j.mode)) and not is_same(selected, j):
+			continue
 		var e: float = T0 - j.t0
 		var st := sim.co_job_state(j, minf(e, j.tl + j.hs + j.tm * .5) if j.get("hold", 0) > 0 else e)
 		var pos := sim.co_pos_at(j, st.s)
@@ -361,6 +291,8 @@ func _wdash_on(n: CanvasItem, pts: Array, col: Color, w: float) -> void:
 
 ## attacks: a skull badge with a ring, bandits or pirates closing in for the first seconds (drawIncMarks)
 func _marks() -> void:
+	if not MapVis.vis("mark"):
+		return
 	var sim := session.sim
 	var now := Time.get_ticks_msec()
 	for m in sim.CO.get("imk", []):

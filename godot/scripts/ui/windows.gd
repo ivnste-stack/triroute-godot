@@ -42,8 +42,13 @@ func _init(sim_: Sim) -> void:
 	sim = sim_
 
 
+var _idle_by_t := {}
+
+
 func build(id: String, body: VBoxContainer) -> void:
 	Perf.acc.erase("co_plan")
+	sim.plan_batch(true)   # building changes nothing: the fleet is counted once for all the plans shown
+	_idle_by_t = {}
 	match id:
 		"coHome": _home(body)
 		"coJobs": _jobs(body)
@@ -52,6 +57,7 @@ func build(id: String, body: VBoxContainer) -> void:
 		"coNet": _net(body)
 		"coStaff": _staff(body)
 		"coFin": _fin(body)
+	sim.plan_batch(false)
 
 
 func _do(res: Variant) -> void:
@@ -894,7 +900,12 @@ func _jobs(body: VBoxContainer) -> void:
 
 func _tender_card(o: Dictionary) -> PanelContainer:
 	var T: Dictionary = D.VT[o.t]
-	var idle: int = sim.CO.veh.filter(func(v): return v.t == o.t and v.st == "idle").size()
+	if _idle_by_t.is_empty():   # once per build: a large fleet scanned for every offer cost milliseconds
+		for v in sim.CO.veh:
+			if v.st == "idle":
+				_idle_by_t[v.t] = _idle_by_t.get(v.t, 0) + 1
+		_idle_by_t["_"] = 0
+	var idle: int = _idle_by_t.get(o.t, 0)
 	var ok: bool = idle >= o.n
 	var pay := Ui.num(Ui.usd(o.pay * o.n) + "/міс", 16)
 	pay.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -1245,10 +1256,11 @@ func _net(body: VBoxContainer) -> void:
 				ics.add_child(Ui.icon("anchor", 14, Ui.FG2))
 			if p.get("rail"):
 				ics.add_child(Ui.icon("train", 14, Ui.FG2))
-			var c := sim.hub_open_cost(p)
 			rows.append([Ui.vbox(2, [nm, _note("%s · %s" % [TYPE_N.get(p.type, "").capitalize(), Ui.people(p.pop)])]), ics,
-				_right([_btn(("Оренда " if sim.hub_abroad(p) else "") + Ui.usd(c), "pri sm" if CO.cash >= c else "sm", "plus", func(): _do(sim.act_hub(pid)), CO.cash >= c)])])
-		body.add_child(_table_rows(rows, [["", 0, false], ["", 70, false], ["", 150, true]]))
+				_right([_btn("Купити " + Ui.usd(sim.hub_cost(p)), "pri sm" if CO.cash >= sim.hub_cost(p) else "sm", "plus", func(): _do(sim.act_hub(pid, false)), CO.cash >= sim.hub_cost(p)),
+					_btn("Оренда " + Ui.usd(sim.hub_rent_deposit(p)), "sm", "doc", func(): _do(sim.act_hub(pid, true)), CO.cash >= sim.hub_rent_deposit(p),
+						_tip("Орендувати хаб", "Застава, далі щомісячна оренда ≈ %s. Розширити можна лише до 2 рівня." % Ui.usd(sim.hub_rent_m({"pid": pid, "lvl": 1, "rent": 1}))))])])
+		body.add_child(_table_rows(rows, [["", 0, false], ["", 70, false], ["", 280, true]]))
 	body.add_child(_sect("Ліцензії"))
 	for i in D.LIC.size():
 		var l: Dictionary = D.LIC[i]

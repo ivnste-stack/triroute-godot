@@ -67,6 +67,8 @@ func _ready() -> void:
 	_insp_title.clip_text = true
 	_insp_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_insp_sub = Ui.label("", 13, Ui.FG2)
+	_insp_sub.clip_text = true
+	_insp_sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_insp_sub.mouse_filter = Control.MOUSE_FILTER_STOP
 	_insp_sub.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_insp_sub.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: show_country(sel_c))
@@ -977,6 +979,7 @@ func _build_insp(keep: bool = false) -> void:
 	B.add_child(W._sect("Поруч" if sp != null else "Міста й села"))
 	for p in pls:
 		B.add_child(_place_row(p))
+	_clip_labels(B)
 	if keep:
 		_restore(scroll)
 	_insp.visible = true
@@ -985,6 +988,17 @@ func _build_insp(keep: bool = false) -> void:
 
 
 ## #insp: 330 wide at the right edge, never past the screen
+## the card keeps its width: a line of text in a column gives way (… at its end) instead of pushing the
+## card off the screen (long names, a row with a button)
+static func _clip_labels(n: Node) -> void:
+	for c in n.get_children():
+		if c is Label and n is VBoxContainer and c.autowrap_mode == TextServer.AUTOWRAP_OFF:
+			c.clip_text = true
+			c.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		elif c is Control:
+			_clip_labels(c)
+
+
 func _fit_insp() -> void:
 	var vs := get_viewport_rect().size
 	_insp.size = Vector2(330, vs.y - 170)
@@ -1037,11 +1051,28 @@ static func _flow(items: Array) -> HFlowContainer:
 	return f
 
 
+## a settlement without a hub: buy one (the full price) or rent one (a deposit, then a monthly rent, up to
+## level 2), one under the other
+func _hub_btns(p: Dictionary) -> Control:
+	var CO := sim.CO
+	var pid: int = p.id
+	var buy := sim.hub_cost(p)
+	var dep := sim.hub_rent_deposit(p)
+	var rent_m := sim.hub_rent_m({"pid": pid, "lvl": 1, "rent": 1})
+	var b1 := W._btn("Купити " + Ui.usd(buy), "pri sm" if CO.cash >= buy else "sm", "plus", func(): acted.emit(sim.act_hub(pid, false)), CO.cash >= buy,
+		W._tip("Купити хаб", "Власний хаб 1 рівня в цьому місті за %s. Без щомісячної оренди, розширюється до «Логістичного хабу»." % Ui.usd(buy)))
+	var b2 := W._btn("Оренда " + Ui.usd(dep), "sm", "doc", func(): acted.emit(sim.act_hub(pid, true)), CO.cash >= dep,
+		W._tip("Орендувати хаб", "Застава %s, далі ≈ %s/міс. Дешевий старт без великої покупки, але оренда дорожча за утримання власного. Розширити можна лише до 2 рівня." % [Ui.usd(dep), Ui.usd(rent_m)]))
+	for b in [b1, b2]:
+		b.size_flags_horizontal = Control.SIZE_FILL
+	return Ui.vbox(4, [b1, b2])
+
+
 func _place_row(p: Dictionary) -> PanelContainer:
 	var CO := sim.CO
 	var h: Variant = sim.hub_at(p.id)
 	var can := sim.co_scope(p)
-	var cost := sim.hub_open_cost(p)
+	var cost := sim.hub_cost(p)   # the upgrade is priced on the full price, as act_hub_up
 	var pid: int = p.id
 	var ic: String = ("star" if pid == CO.hq else "building") if h != null else ("crown" if p.type == "cap" else "pin")
 	var nm := W._b(p.name, 14)
@@ -1062,12 +1093,7 @@ func _place_row(p: Dictionary) -> PanelContainer:
 		else:
 			right = Ui.pill("Логістичний хаб", "good")
 	elif can:
-		var tip: String
-		if sim.hub_abroad(p):
-			tip = W._tip("Орендувати хаб", "За кордоном хаб не купити, лише орендувати: застава %s, далі ≈ %s/міс. (значно дорожче за власний). Тут можна тримати свою техніку, і біржа даватиме замовлення з цієї країни. Розширити можна лише до 2 рівня." % [Ui.usd(cost), Ui.usd(sim.hub_rent_m({"pid": pid, "lvl": 1, "rent": 1}))])
-		else:
-			tip = W._tip("Відкрити хаб", "Власний хаб 1 рівня в цьому місті: техніка виїздить звідси на рейси.")
-		right = W._btn(("Оренда " if sim.hub_abroad(p) else "") + Ui.usd(cost), "pri sm" if CO.cash >= cost else "sm", "plus", func(): acted.emit(sim.act_hub(pid)), CO.cash >= cost, tip)
+		right = _hub_btns(p)
 	else:
 		right = Ui.pill("", "", "lock")
 		right.tooltip_text = W._tip("Недоступно", "Потрібна ліцензія «Міжміська доставка»." if CO.tier < 1 else ("Хаби за кордоном — з ліцензією «Міжнародні перевезення»." if CO.tier < 3 else "Інші материки — з ліцензією «Морський перевізник»."))

@@ -180,7 +180,7 @@ func _process(_delta: float) -> void:
 func _process_t(_delta: float) -> void:
 	if camera == null or towns.is_empty() or _lay == null:
 		return
-	var ck := "%.2f" % dpr
+	var ck := "%.2f|%d" % [dpr, MapVis.ver]
 	if sim != null:
 		ck += "|%d|%d|%s" % [sim.CO.get("hq", -1), sim.me, sim.CO.get("hubs", []).map(func(h): return [h.pid, h.lvl, h.get("rent", false)])]
 	if ck != _content:
@@ -205,6 +205,8 @@ func _P(x: float, z: float) -> Variant:
 
 
 func _hub(pid: int) -> Variant:
+	if not MapVis.vis("hub"):
+		return null
 	return sim.hub_at(pid) if sim != null and pid >= 0 and not sim.CO.is_empty() else null
 
 
@@ -272,9 +274,22 @@ func _rebuild() -> void:
 		var uv := Rect2(o.x / ATLAS_W, o.y / H, ceilf(b.size.x) / ATLAS_W, ceilf(b.size.y) / H)
 		var bb := Rect2(b.position, Vector2(ceilf(b.size.x), ceilf(b.size.y)))
 		if pc[3] >= 0:
-			_lay.set_point_picture(pc[3], CP_SIZES[pc[3]], bb, uv)
+			if MapVis.vis("cp"):
+				_lay.set_point_picture(pc[3], CP_SIZES[pc[3]], bb, uv)
+			else:
+				_lay.set_point_picture(pc[3], CP_SIZES[pc[3]], Rect2(), Rect2())
 		else:
 			_lay.set_instance(pc[0], bb, uv)
+	# hidden from the legend: small towns (and villages), cities, capitals with their chips
+	for pid in _order:
+		var t: String = towns[pid].type
+		if not MapVis.vis("s_town" if t == "town" or t == "vil" else "s_city"):
+			_lay.set_instance(_i_mk[pid], Rect2(), Rect2())
+			_lay.set_instance(_i_lb[pid], Rect2(), Rect2())
+	if not MapVis.vis("s_city"):
+		for k in _chips.size():
+			_lay.set_instance(base + k * 2, Rect2(), Rect2())
+			_lay.set_instance(base + k * 2 + 1, Rect2(), Rect2())
 	_atlas.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
@@ -343,11 +358,11 @@ func _town_info(pid: int) -> Dictionary:
 		tag = ("★ ШТАБ · " if hq else "") + ("ОРЕНДА · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl]).to_upper()
 	var tgw := _tw(F_MONO_B, tag, int(round(9 * d))) if tag else 0.0
 	var icl := []
-	if p.port:
+	if p.port and MapVis.vis("port"):
 		icl.append("anchor")
-	if p.air_ov or p.type == "big":
+	if (p.air_ov or p.type == "big") and MapVis.vis("air"):
 		icl.append("plane")
-	if rail_nodes.has(p.node):
+	if rail_nodes.has(p.node) and MapVis.vis("rails"):
 		icl.append("train")
 	var isz := 11 * d
 	var name_w := _tw(font, p.name, int(round(fs)))

@@ -276,6 +276,21 @@ const RISK_COL := [Color(.27, .62, .42), Color(.83, .71, .3), Color(.88, .47, .2
 const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78), Color(.1, .29, .55)]
 
 
+## the legend's hidden kinds (MapVis): roads, motorways, railways and, on the political layer, borders
+func apply_vis() -> void:
+	if overlay != null and overlay._layers.size():
+		var L: Dictionary = overlay._layers
+		for k in ["road", "road_case"]:
+			L[k].visible = MapVis.vis("r2")
+		for k in ["mway", "mway_case"]:
+			L[k].visible = MapVis.vis("r3")
+		for k in ["rail", "rail_case"]:
+			L[k].visible = MapVis.vis("rail")
+		L.borders.visible = not (mode == "pol" and not MapVis.vis("pol_b"))
+		overlay.dirty()
+	company_colors()
+
+
 func set_glint(on: bool) -> void:
 	_mat.set_shader_parameter("glint", 1.0 if on else 0.0)
 
@@ -285,6 +300,7 @@ func set_mode(m: String) -> void:
 	company_colors()
 	inc_base.mode = m
 	inc_top.mode = m
+	apply_vis()
 
 
 ## coColors: the colours of the states for the layer
@@ -301,7 +317,7 @@ func company_colors() -> void:
 			return
 		"grid":
 			for c in world.states:
-				cols.append(Color(.72, .75, .78))
+				cols.append(Color(.72, .75, .78) if MapVis.vis("land") else Color(.3, .33, .36))
 			set_colors(cols)
 			return
 		"risk":
@@ -345,14 +361,15 @@ func company_colors() -> void:
 			if p.cid == c.id and p.type == "cap":
 				cap = p
 				break
-		if hub_c.has(c.id):
+		if hub_c.has(c.id) and MapVis.vis("hub"):
 			col = mix.call(col, Color(1, .7, .28), .35)
 		elif cap != null and sim.co_scope(cap):
-			col = mix.call(col, Color(.3, .34, .38), .35)
-		else:
+			if MapVis.vis("avail"):
+				col = mix.call(col, Color(.3, .34, .38), .35)
+		elif MapVis.vis("unavail"):
 			col = mix.call(col, Color(.17, .2, .24), .78)
 		cols.append(col)
-	for cl in sim.CO.get("cls", []):
+	for cl in (sim.CO.get("cls", []) if MapVis.vis("clb") else []):
 		if cl.kind == "cty" and cl.a < cols.size():
 			cols[cl.a] = mix.call(cols[cl.a], Color(.86, .22, .2), .55)
 	set_colors(cols)

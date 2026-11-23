@@ -196,6 +196,7 @@ func _ready() -> void:
 	legend = Legend.new()
 	hud.add_child(legend)
 	hud.mode_changed.connect(func(m): legend.mode = m)
+	legend.toggled.connect(func(): map.apply_vis())
 	# the compass over the bottom right corner: back to the standard view after Q / E
 	var cmp := CompassButton.new()
 	cmp.camera = map.camera
@@ -420,6 +421,7 @@ func _create_world() -> void:
 		menu.visible = false
 	_loading.visible = true
 	_load_t = 0.0
+	MapVis.clear()   # a new world: everything shown
 	GameState.reset(_ng.seed)
 	_size_key = _args.get("size", _ng.size)
 	map.generate(_ng.seed, _size_key)
@@ -557,6 +559,10 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("hide"):   # test: kinds hidden from the legend, --hide=roads,rail
+		for k in String(_args.hide).split(","):
+			MapVis.toggle(k)
+		map.apply_vis()
 	if _args.has("yaw"):   # test: the camera turned
 		map.camera.yaw = float(_args.yaw)
 		map.camera.tyaw = map.camera.yaw

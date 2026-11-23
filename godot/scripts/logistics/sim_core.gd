@@ -1095,6 +1095,29 @@ func cp_wait(cid: int, mode: String) -> float:
 	return ((.25 if mode == "rail" else .35) + bur(cid) / 110) * (1 - .6 * msk("clo")) * .45
 
 
+var _plan_batch := false
+var _plan_pre := {}
+
+
+## many plans in a row with the company unchanged (a window listing the board): what every plan counts
+## over the whole fleet is counted once; off again after, so the game itself always plans on fresh data
+func plan_batch(on: bool) -> void:
+	_plan_batch = on
+	_plan_pre = {}
+
+
+func _plan_prepare() -> Dictionary:
+	var by_t := {}
+	for v in CO.veh:
+		if not by_t.has(v.t):
+			by_t[v.t] = []
+		by_t[v.t].append(v)
+	var hub_pid := {}
+	for h in CO.hubs:
+		hub_pid[h.pid] = true
+	return {"by_t": by_t, "hub_pid": hub_pid, "free": co_crew_free()}
+
+
 func co_plan1(k: Dictionary) -> Dictionary:
 	var mode: String = k.mode
 	var A: Dictionary = PL[k.from]
@@ -1116,10 +1139,19 @@ func co_plan1(k: Dictionary) -> Dictionary:
 	var main: Variant = co_route(mode, k.from, k.to)
 	if main == null:
 		return {"ok": false, "why": "Маршрут перекрито: закритий кордон або негода" if blk else "Маршрут недоступний"}
-	var free := co_crew_free()
 	var best: Variant = null
 	var why: String = "Немає вільної техніки: " + D.MODE_N[mode].to_lower()
 	var ex: Dictionary = k.get("_ex", {})
+	# the fleet by type in one pass and the hub cities as a set: the same vehicles in the same order as a
+	# scan of the whole fleet for every type, without it (a large fleet made a plan take milliseconds);
+	# while a window lists many orders (plan_batch) they are counted once for all of them
+	var pre: Dictionary = _plan_pre if _plan_batch and not _plan_pre.is_empty() else _plan_prepare()
+	if _plan_batch:
+		_plan_pre = pre
+	var free: Dictionary = pre.free.duplicate()
+	var by_t: Dictionary = pre.by_t
+	var hub_pid: Dictionary = pre.hub_pid
+	var now := co_now()
 	for t in D.VT:
 		var T: Dictionary = D.VT[t]
 		if T.mode != mode:
@@ -1129,10 +1161,8 @@ func co_plan1(k: Dictionary) -> Dictionary:
 			why = sw
 			continue
 		var idle := []
-		for v in CO.veh:
-			if v.t != t:
-				continue
-			var ok_st: bool = (v.st == "idle" and (hub_at(v.loc) != null or (v.get("idle0") != null and co_now() - v.idle0 < 1))) or is_ret_v(v)
+		for v in by_t.get(t, []):
+			var ok_st: bool = (v.st == "idle" and (hub_pid.has(v.loc) or (v.get("idle0") != null and now - v.idle0 < 1))) or is_ret_v(v)
 			if not ok_st:
 				continue
 			if k.get("_ctry") != null and v_cid(v) != k._ctry:
@@ -1169,11 +1199,24 @@ func co_plan1(k: Dictionary) -> Dictionary:
 		if free[T.role] + mini(n, ret_n) * crew < crew * n:
 			why = "Бракує персоналу: " + D.ROLE[T.role].n.to_lower()
 			continue
-		_stable_sort(idle, func(a, b): return JS.hypot(PL[a.loc].x - A.x, PL[a.loc].z - A.z) - JS.hypot(PL[b.loc].x - A.x, PL[b.loc].z - A.z))
+		# the nearest first (as a stable sort by distance: ties keep the fleet order), taken one at a time
+		# only as far as needed: a plan wants a few vehicles, sorting a fleet of hundreds cost milliseconds
+		var dist := PackedFloat64Array()
+		dist.resize(idle.size())
+		for i in idle.size():
+			dist[i] = JS.hypot(PL[idle[i].loc].x - A.x, PL[idle[i].loc].z - A.z)
+		var used := PackedByteArray()
+		used.resize(idle.size())
 		var sel := []
 		var lead := 0.0
 		var lead_r: Variant = null
-		for v in idle:
+		for _take in idle.size():
+			var bi := -1
+			for i in idle.size():
+				if not used[i] and (bi < 0 or dist[i] < dist[bi]):
+					bi = i
+			used[bi] = 1
+			var v: Dictionary = idle[bi]
 			var r: Variant = ret_lead(v, k.from) if v.st == "trip" else co_route(mode, v.loc, k.from)
 			if r == null:
 				continue

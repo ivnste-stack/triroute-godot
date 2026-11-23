@@ -48,7 +48,7 @@ func _process_t(_delta: float) -> void:
 	var sim := session.sim
 	var CO := sim.CO
 	# the situation changes with the camera and with the game (a few times a game day), not every frame
-	var k := "%s|%s|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [mode, camera.global_transform, size, dpr, int(sim.co_now() * 8),
+	var k := "%d|%s|%s|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [MapVis.ver, mode, camera.global_transform, size, dpr, int(sim.co_now() * 8),
 		CO.get("clV", 0), CO.get("wx", []).size(), CO.get("pir", []).size(), CO.get("band", []).size(), sim.jam.size(), sim.sky.size(), camera.dist < 26]
 	if k != _key:
 		_key = k
@@ -120,7 +120,7 @@ func _draw_t() -> void:
 
 
 func _jams_on() -> bool:
-	return session.sim.jam.size() > 0 and camera.dist < 26 and (mode == "co" or mode == "grid")
+	return MapVis.vis("jam") and session.sim.jam.size() > 0 and camera.dist < 26 and (mode == "co" or mode == "grid")
 
 
 func _draw_base() -> void:
@@ -131,7 +131,7 @@ func _draw_base() -> void:
 	var H := size.y
 	# pirate and bandit zones
 	for e in [["pir", "240,98,95"], ["band", "255,140,60"]]:
-		for z in CO.get(e[0], []):
+		for z in (CO.get(e[0], []) if MapVis.vis(e[0]) else []):
 			var pts := _circle(z.x, z.z, z.r, 36)
 			if pts.size() < 10:
 				continue
@@ -141,7 +141,7 @@ func _draw_base() -> void:
 			if c != null and camera.dist < 26:
 				_badge(c, "skull", _c(e[1]))
 	# weather zones: a tinted disc with diagonal hatching
-	for w in CO.get("wx", []):
+	for w in (CO.get("wx", []) if MapVis.vis("wx") else []):
 		var K: Dictionary = GameData.WXK[w.k]
 		var pts := _circle(w.x, w.z, w.r, 40)
 		if pts.size() < 10:
@@ -173,7 +173,7 @@ func _draw_base() -> void:
 			_badge(c, K.ic, _c("150,160,172") if w.t0 > sim.co_now() else _c(K.col))
 	# closed borders: red lines along the border
 	var zw := clampf(13 / camera.dist, 1, 3.2)
-	for cl in CO.get("cls", []):
+	for cl in (CO.get("cls", []) if MapVis.vis("clb") else []):
 		if cl.kind == "cp":
 			continue   # a single closed checkpoint: only its square turns red
 		for p in _border_pts(cl):
@@ -240,7 +240,7 @@ func _draw_top() -> void:
 	var W := size.x
 	var H := size.y
 	# a closed sky: a running dashed line along the borders of the states at war, a badge at the capital
-	if sim.sky.size():
+	if sim.sky.size() and MapVis.vis("sky"):
 		for cid in sim.sky:
 			var cap: Variant = null
 			for p in sim.PL:
@@ -263,7 +263,7 @@ func _draw_top() -> void:
 			draw_line(Vector2(q.x - tw / 2 + 5 * dpr, q.y + 6 * dpr), Vector2(q.x - tw / 2 + 18 * dpr, q.y - 6 * dpr), RED, 1.6 * dpr, true)
 			_text(txt, Vector2(q.x - tw / 2 + 22 * dpr, q.y + .5 * dpr), fs, Color("#e9c8ff"))
 	# closed checkpoints: a red square with a cross, the size of an open one
-	if CO.get("cls", []).size():
+	if CO.get("cls", []).size() and MapVis.vis("clb"):
 		var u0: Variant = _P(camera.tx, camera.tz)
 		var u1: Variant = _P(camera.tx + 1, camera.tz)
 		var pu: float = u0.distance_to(u1) / dpr if u0 != null and u1 != null else 40.0
@@ -291,7 +291,7 @@ func _draw_top() -> void:
 			draw_line(q + Vector2(cs, -cs) * .55, q + Vector2(-cs, cs) * .55, Color.WHITE, 2 * dpr, true)
 			hits.append({"x": q.x, "y": q.y, "r": cs / dpr + 4, "kind": "cl", "data": o[1], "cp": o[0]})
 	# closed ports and airports
-	for p in sim.PL:
+	for p in (sim.PL if MapVis.vis("clp") else []):
 		var sea: Variant = sim.inc_port_cl(p, "sea") if p.port != null else null
 		var air: Variant = sim.inc_port_cl(p, "air") if p.air else null
 		if sea == null and air == null:
@@ -315,7 +315,7 @@ func _draw_top() -> void:
 
 ## the running dashes along the borders of the states at war (a closed sky)
 func _anim_top(n: Node2D) -> void:
-	if session == null or session.sim == null or session.sim.sky.is_empty():
+	if session == null or session.sim == null or session.sim.sky.is_empty() or not MapVis.vis("sky"):
 		return
 	var sim := session.sim
 	var off := fmod(Time.get_ticks_msec() / 1000.0 * 14 * dpr, 13 * dpr)
