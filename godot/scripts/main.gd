@@ -71,6 +71,8 @@ func apply_video() -> void:
 	var aa := _aa_mode()
 	vp.msaa_3d = Viewport.MSAA_DISABLED
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "fxaa" or aa == "fxaa_ssaa" else Viewport.SCREEN_SPACE_AA_DISABLED
+	if map != null:
+		map.set_glint(bool(Settings.get_value("glint")))
 	vp.anisotropic_filtering_level = clampi(int(Settings.get_value("aniso")), 0, 4) as Viewport.AnisotropicFiltering
 	apply_render_scale()
 
@@ -455,6 +457,8 @@ func _on_world(w: Dictionary) -> void:
 	if _args.has("shot"):
 		for i in 12:
 			await get_tree().process_frame
+		if _args.has("wait"):   # test: seconds of play before the shot
+			await get_tree().create_timer(float(_args.wait)).timeout
 		if _args.has("settings"):   # test: the settings on a tab
 			SettingsPanel.tab = String(_args.settings) if _args.settings != "" else "gfx"
 			_settings()

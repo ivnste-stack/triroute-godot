@@ -16,6 +16,7 @@ uniform vec2 WSZ = vec2(22.5, 15.0);        // world size
 uniform vec3 col[120];
 uniform int hov = -1;
 uniform int sel = -1;
+uniform float glint = 1.0;   // slow glints on the water triangles (settings)
 uniform float lgrid = 0.0;   // the logistics layer: a fine grid of 0.08 world units and a coarse one of 5 cells
 
 float lgr(vec2 p, float s, float w) {
@@ -109,6 +110,26 @@ void fragment() {
 		w = mix(w, deep, smoothstep(.18, .85, depth));
 		w += vec3(.12, .22, .24) * exp(-depth * 45.);
 		w = w * (.84 + .32 * tH) + vec3(0., .035, .045) * (tH - .5);
+		// ---- glints: now and then a water triangle slowly lights up (or darkens a little) and slowly returns.
+		// Every triangle has its own slow cycle (26…46 s) and is lit only in a short part of it (4…8 s);
+		// only one in five takes part, so at any moment just a few are changing
+		if (glint > 0.) {
+			vec2 fl = floor(uv * MWH / triS);
+			float up = triInfo(uv).z;
+			vec2 k = fl + up * vec2(.5, .25);
+			float g1 = hsh(k * vec2(3.17, 1.93) + 11.3), g2 = hsh(k * vec2(7.31, 4.77) + 2.9), g3 = hsh(k * vec2(2.71, 8.13) + 5.7);
+			float per = 26. + 20. * g1;
+			float ph = fract(TIME / per + g2);
+			float win = .12 + .06 * g3;
+			float e = ph < win ? sin(3.14159265 * ph / win) : 0.;
+			e = e * e * step(.8, hsh(k * vec2(5.53, 3.11) + 7.7));
+			e *= glint * smoothstep(.0, .04, depth);
+			if (g3 > .72) {
+				w *= 1. - .16 * e;   // a darker patch
+			} else {
+				w += vec3(.07, .13, .16) * e;
+			}
+		}
 		// ---- land: state colour
 		uint id = idAt(tcuv);
 		vec3 L = cc(id);

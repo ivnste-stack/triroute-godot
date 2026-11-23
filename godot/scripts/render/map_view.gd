@@ -276,6 +276,10 @@ const RISK_COL := [Color(.27, .62, .42), Color(.83, .71, .3), Color(.88, .47, .2
 const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78), Color(.1, .29, .55)]
 
 
+func set_glint(on: bool) -> void:
+	_mat.set_shader_parameter("glint", 1.0 if on else 0.0)
+
+
 func set_mode(m: String) -> void:
 	mode = m
 	_mat.set_shader_parameter("lgrid", .08 if m == "grid" else 0.0)
