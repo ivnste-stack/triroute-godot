@@ -77,9 +77,22 @@ func _process_t(delta: float) -> void:
 	tx += (ttx - tx) * k
 	tz += (ttz - tz) * k
 	yaw += (tyaw - yaw) * k
+	# the glide ends on its target: closing in for ever by ever smaller steps kept the transform changing for
+	# seconds after a move, and every layer that waits for the camera to stop redrew each frame
+	if absf(tdist - dist) < tdist * 1e-5:
+		dist = tdist
+	if absf(ttx - tx) < 1e-5 * maxf(1.0, dist):
+		tx = ttx
+	if absf(ttz - tz) < 1e-5 * maxf(1.0, dist):
+		tz = ttz
 	if absf(tyaw - yaw) < 1e-4:
 		yaw = tyaw
-	_apply()
+	# placed again only when it moved (a glide, a drag, a jump from outside): an unchanged transform lets
+	# every cached layer keep its picture
+	var now_at := Vector4(tx, tz, dist, yaw)
+	if now_at != _applied:
+		_applied = now_at
+		_apply()
 
 
 ## the keyboard (04-map.js): W A S D / arrows move the board along the screen, Q / E turn the camera
@@ -125,6 +138,9 @@ func reset_turn() -> void:
 	# the remaining angle the short way
 	var d := wrapf(yaw - n, -PI, PI)
 	yaw = n + d
+
+
+var _applied := Vector4(INF, INF, INF, INF)
 
 
 func _apply() -> void:

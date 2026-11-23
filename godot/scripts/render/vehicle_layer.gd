@@ -67,6 +67,7 @@ func _draw_t() -> void:
 	var now := session.anim_t
 	var zf := clampf(11.0 / camera.dist, 1, 1.8)
 	var T0 := sim.co_now()
+	var vw := size
 	# the remaining route of the selected trip
 	if selected != null and CO.jobs.any(func(x): return is_same(x, selected)):
 		_route(selected, T0)
@@ -81,6 +82,9 @@ func _draw_t() -> void:
 		var sp: Variant = _P(pos[0], alt, pos[1])
 		if sp == null:
 			continue
+		# off the screen: nothing to draw or to point at (its trail could reach in, by at most a few dots)
+		if sp.x < -60 or sp.y < -60 or sp.x > vw.x + 60 or sp.y > vw.y + 60:
+			continue
 		var gv := _gps_vis(j, T0)
 		if gv <= 0:
 			continue
@@ -91,9 +95,11 @@ func _draw_t() -> void:
 		# trail
 		if st.seg >= 0 and inc == null:
 			var step: float = {"road": .05, "rail": .06, "sea": .08, "air": .12}[j.mode] * minf(1, camera.dist / 6 + .25) * sim.CO_DU / 1.6
-			var prev: Vector2 = sp
-			for k in range(1, 10):
-				var s2: float = st.s - k * step
+			# one polyline with fading colours instead of nine separate lines
+			var tp := PackedVector2Array([sp])
+			var tc := PackedColorArray([Color(rgb, .75 * gv)])
+			for k in range(1, 7):   # 6 points 1.5 steps apart: the same length as the original's 9
+				var s2: float = st.s - k * step * 1.5
 				if s2 < 0:
 					break
 				var pp := sim.co_pos_at(j, s2)
@@ -106,8 +112,10 @@ func _draw_t() -> void:
 				var q: Variant = _P(pp[0], a2, pp[1])
 				if q == null:
 					break
-				draw_line(prev, q, Color(rgb, .75 * (1 - k / 10.0) * gv), (2.4 if j.mode == "sea" else 1.8) * dpr * zf * (1 - k / 12.0), true)
-				prev = q
+				tp.append(q)
+				tc.append(Color(rgb, .75 * (1 - k * 1.5 / 10.0) * gv))
+			if tp.size() > 1:
+				draw_polyline_colors(tp, tc, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8, true)
 		if j.mode == "air" and alt > 0:
 			var sh: Variant = _P(pos[0], 0, pos[1])
 			if sh != null:

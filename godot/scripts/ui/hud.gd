@@ -38,11 +38,13 @@ var _badges := {}
 var _speed_btns: Array = []
 var mode_dd: Dropdown
 var _cells := {}
-var _ticker: Label
-var _ticker_dot: ColorRect
+var _ticker: HBoxContainer       # the news one after another, twice in a row (a seamless loop)
 var _ticker_clip: Control
 var _ticker_x := 0.0
-var _ticker_text := ""
+var _ticker_key := ""
+var _ticker_w := 0.0             # the width of one copy of the line
+const TICKER_N := 8              # how many of the latest news run
+const TICKER_SPEED := 48.0       # px a second
 
 
 func _ready() -> void:
@@ -338,12 +340,8 @@ func _build_bar() -> void:
 	_ticker_clip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_ticker_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(_ticker_clip)
-	_ticker_dot = ColorRect.new()
-	_ticker_dot.custom_minimum_size = Vector2(7, 7)
-	_ticker_dot.size = Vector2(7, 7)
-	_ticker_dot.color = Color.TRANSPARENT
-	_ticker_clip.add_child(_ticker_dot)
-	_ticker = Ui.label("", 13, Ui.FG2)
+	_ticker = Ui.hbox(0)
+	_ticker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ticker_clip.add_child(_ticker)
 	# #gearBtn: the game menu
 	var mb := Button.new()
@@ -406,7 +404,6 @@ func _process_t(delta: float) -> void:
 	_speed_state()
 	var tk: bool = not Settings.get_value("no_ticker")
 	_ticker.visible = tk
-	_ticker_dot.visible = tk
 	if tk:
 		_ticker_step(delta)
 	# the numbers: 8 times a second is enough, and nothing is touched that did not change
@@ -478,23 +475,43 @@ func _process_t(delta: float) -> void:
 ## the ticker: the latest news, scrolling (every frame)
 func _ticker_step(delta: float) -> void:
 	var sim := session.sim
-	var n: Variant = sim.news.back() if sim.news.size() else null
-	var txt: String = n[2] if n != null else ""
-	if txt != _ticker_text:
-		_ticker_text = txt
-		_ticker.text = txt
-		_ticker_x = 0.0
-		_ticker_dot.color = {"good": Ui.GOOD, "bad": Ui.BAD, "warn": Ui.WARN}.get(n[0] if n != null else "", Ui.ACCENT) if n != null else Color.TRANSPARENT
-	var cw := _ticker_clip.size.x
-	var tw := _ticker.get_combined_minimum_size().x
-	if tw + 30 > cw:
-		_ticker_x -= delta * 40
-		if _ticker_x < -(tw + 30):
-			_ticker_x = cw
-	else:
-		_ticker_x = 0
-	_ticker_dot.position = Vector2(14 + _ticker_x, _ticker_clip.size.y / 2 - 3.5)
-	_ticker.position = Vector2(28 + _ticker_x, (_ticker_clip.size.y - _ticker.get_combined_minimum_size().y) / 2)
+	var n: int = sim.news.size()
+	var key := "%d|%s" % [n, sim.news.back()[2] if n else ""]
+	if key != _ticker_key:
+		_ticker_key = key
+		_ticker_fill()
+		_ticker_x = 0.0   # a fresh news: the line starts again from it
+	if _ticker_w <= 0:
+		return
+	# a running line: the newest news first, then the older ones, round and round
+	_ticker_x -= delta * TICKER_SPEED
+	if _ticker_x <= -_ticker_w:
+		_ticker_x += _ticker_w
+	_ticker.position = Vector2(roundf(14 + _ticker_x), (_ticker_clip.size.y - _ticker.get_combined_minimum_size().y) / 2)
+
+
+## the latest news as dots and lines, twice (the second copy follows the first, so the loop has no gap)
+func _ticker_fill() -> void:
+	for c in _ticker.get_children():
+		_ticker.remove_child(c)
+		c.queue_free()
+	var sim := session.sim
+	var items := []
+	for i in range(sim.news.size() - 1, maxi(-1, sim.news.size() - 1 - TICKER_N), -1):
+		items.append(sim.news[i])
+	if items.is_empty():
+		_ticker_w = 0
+		return
+	for copy in 2:
+		for it in items:
+			var dot := ColorRect.new()
+			dot.custom_minimum_size = Vector2(7, 7)
+			dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			dot.color = {"good": Ui.GOOD, "bad": Ui.BAD, "warn": Ui.WARN}.get(it[0], Ui.ACCENT)
+			var l := Ui.label(it[2], 13, Ui.FG2)
+			_ticker.add_child(Ui.margin(Ui.hbox(8, [dot, l]), 0, 0, 36, 0))
+	_ticker.reset_size()
+	_ticker_w = _ticker.get_combined_minimum_size().x / 2
 
 
 ## .rbtn / .rbtn.on: the open window's button on the accent with a dark icon, at once when it changes
