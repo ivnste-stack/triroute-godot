@@ -29,6 +29,7 @@ var _args := {}
 var _ng := {"size": "m", "diff": 1, "seed": 0}
 var _loading: Control
 var backdrop: MenuBackdrop
+var legend: Legend
 var _checks: PanelContainer
 var _ui: CanvasLayer
 var _size_key := "m"
@@ -191,6 +192,10 @@ func _ready() -> void:
 	hud.menu_requested.connect(_game_menu)
 	hud.mode_changed.connect(func(m): map.set_mode(m))
 	_ui.add_child(hud)
+	# the legend of the map layer, over the bottom left corner
+	legend = Legend.new()
+	hud.add_child(legend)
+	hud.mode_changed.connect(func(m): legend.mode = m)
 	# the compass over the bottom right corner: back to the standard view after Q / E
 	var cmp := CompassButton.new()
 	cmp.camera = map.camera
@@ -262,9 +267,11 @@ func _ready() -> void:
 				await get_tree().process_frame
 			if _args.has("wait"):
 				await get_tree().create_timer(float(_args.wait)).timeout
-			if _args.has("loadscr"):   # test: the loading screen, a moment into the generation
-				_create_world()
-				for i in int(_args.loadscr):
+			if _args.has("loadscr"):   # test: the loading screen alone (the world is not made), some seconds in
+				menu.visible = false
+				_loading.visible = true
+				_load_t = float(_args.loadscr)
+				for i in 4:
 					await get_tree().process_frame
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(_args.shot)
@@ -428,6 +435,10 @@ func _process_t(delta: float) -> void:
 	_pace_frames()
 	if _loading.visible:
 		_loading_step(delta)
+	if legend != null:
+		legend.sim = session.sim if session != null else null
+		legend.visible = legend.sim != null
+		legend.mode = map.mode
 	if backdrop != null:
 		backdrop.visible = (menu != null and menu.visible) or _loading.visible
 	if session != null and session.sim != null:

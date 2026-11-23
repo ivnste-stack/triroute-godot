@@ -159,7 +159,8 @@ PackedFloat32Array TRLabelLayout::layout(const Projection &view_proj, const Vect
 		}
 		const float lx = c.x + t.s + 5 * dpr, ly = c.y - t.h / 2;
 		bool hit = false;
-		for (const Box &b : boxes) {
+		// big and middle towns (no threshold) always keep their names; the small ones give way to them
+		if (t.min_ppu >= 0) for (const Box &b : boxes) {
 			if (lx < b.x1 && lx + t.w > b.x0 && ly < b.y1 && ly + t.h > b.y0) {
 				hit = true;
 				break;

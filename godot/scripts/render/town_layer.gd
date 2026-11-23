@@ -154,7 +154,8 @@ func setup(board: Dictionary, states_: Array, countries_: Array, mwh_: Vector2) 
 	var caps := PackedInt32Array()
 	for t in towns:
 		xz.append_array([t.x, t.z])
-		mp.append(150.0 if t.type == "vil" else (60.0 if t.type == "town" else -1.0))
+		# villages: only close up; small towns: until 3/4 of the way out (_layout); cities and capitals: always
+		mp.append(150.0 if t.type == "vil" else (0.0 if t.type == "town" else -1.0))
 		caps.append(1 if t.type == "cap" else 0)
 	_lay.set_towns(xz, PackedInt32Array(_order), mp, caps, _i_mk, _i_lb)
 	var cxz := PackedFloat32Array()
@@ -285,7 +286,9 @@ func _layout() -> void:
 	var vp := camera.get_camera_projection() * Projection(camera.get_camera_transform().affine_inverse())
 	var vsize := camera.get_viewport().get_visible_rect().size
 	var cp_size: float = clampf(ppu / 40, 3.5, 7) if ppu > 45 else 0.0
-	_lbl_r = _lay.layout(vp, vsize, dpr, ppu, cp_size, camera.dist > 11)
+	# past 3/4 of the zoom out the small towns go (a "pixels per unit" under their threshold of 0)
+	var zo := (camera.dist - camera.min_dist) / maxf(.01, camera.world_size.x * 1.25 - camera.min_dist)
+	_lbl_r = _lay.layout(vp, vsize, dpr, ppu if zo <= .75 else -.5, cp_size, camera.dist > 11)
 	_mm.multimesh.buffer = _lay.buffer()
 
 

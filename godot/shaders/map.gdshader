@@ -75,8 +75,10 @@ void fragment() {
 		vec2 d = max(abs(wp.xz) - half_w, 0.);
 		float dd = length(d);
 		cf = bg + vec3(.25, .45, .6) * (g1 * .05 + g2 * .1);
-		cf *= .35 + .65 * smoothstep(0., .9, dd);
-		cf += vec3(.05, .12, .18) * exp(-dd * 1.2) * .6;
+		// a soft shadow under the board and a faint blue halo, both fading out exponentially: no edge where
+		// a falloff ends (smoothstep over 0.9 left a visible band around the board)
+		cf *= 1. - .6 * exp(-dd * 2.4);
+		cf += vec3(.03, .085, .14) * exp(-dd * 3.2) * .55;
 	}
 	c = cf;
 	if (sd > -fe * 2.) {

@@ -22,6 +22,7 @@ const DEFAULTS := {
 	"ui_scale": 0.0,      # 0 = the system scale (Windows display scaling), else 1…2
 	"no_tips": false,
 	"no_ticker": false,
+	"legend_folded": false,   # the map legend folded to its title
 	# sound
 	"master_vol": 0.8,    # general volume 0..1
 	"mus_vol": 0.6,       # music volume 0..1
