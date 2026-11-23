@@ -19,6 +19,7 @@ var win: WindowPanel
 var wins: Windows
 var toasts: Toasts
 var map_ui: MapUi
+var tips: TipLayer
 var perf_panel: PerfPanel
 var _bb: BackBufferCopy
 var planner: Planner
@@ -112,6 +113,7 @@ func _ready() -> void:
 	hud.visible = false
 	hud.window_requested.connect(_toggle_window)
 	hud.menu_requested.connect(_game_menu)
+	hud.mode_changed.connect(func(m): map.set_mode(m))
 	_ui.add_child(hud)
 	win = WindowPanel.new()
 	win.visible = false
@@ -144,6 +146,8 @@ func _ready() -> void:
 	_ui.add_child(_loading)
 	perf_panel = PerfPanel.new()
 	_ui.add_child(perf_panel)
+	tips = TipLayer.new()
+	_ui.add_child(tips)
 	if _args.has("f3"):
 		perf_panel.toggle.call_deferred()
 	_checks = PanelContainer.new()
@@ -377,9 +381,15 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("mode"):   # test: a map layer
+		hud.mode_dd.value = String(_args.mode)
+		hud.mode_dd._show_value()
+		map.set_mode(String(_args.mode))
 	if _args.has("shot"):
 		for i in 12:
 			await get_tree().process_frame
+		if _args.has("hdd"):   # test: the map layer list, opened
+			hud.mode_dd.pressed.emit()
 		if _args.has("mouse"):   # test: the hover card at a point of the screen
 			var c: PackedStringArray = String(_args.mouse).split(",")
 			get_viewport().warp_mouse(Vector2(float(c[0]), float(c[1])))

@@ -266,15 +266,72 @@ var _session: GameSession
 
 ## the map colours of the company mode (coColors + the closed-country tint of 08f): states with a hub are tinted
 ## orange, states within the licence are muted, the rest darkened, closed countries reddened
+## the map layer (UI.mode): "co" the company's network, "grid" logistic routes, "risk" transport risks,
+## "pol" political, "dem" world demand
+var mode := "co"
+const RISK_COL := [Color(.27, .62, .42), Color(.83, .71, .3), Color(.88, .47, .2), Color(.78, .2, .18)]
+const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78), Color(.1, .29, .55)]
+
+
+func set_mode(m: String) -> void:
+	mode = m
+	_mat.set_shader_parameter("lgrid", .08 if m == "grid" else 0.0)
+	company_colors()
+	inc_base.mode = m
+	inc_top.mode = m
+
+
+## coColors: the colours of the states for the layer
 func company_colors() -> void:
 	if _session == null or _session.sim == null:
 		return
 	var sim := _session.sim
+	var cols := []
+	match mode:
+		"pol":
+			for c in world.states:
+				cols.append(Color(c.color))
+			set_colors(cols)
+			return
+		"grid":
+			for c in world.states:
+				cols.append(Color(.72, .75, .78))
+			set_colors(cols)
+			return
+		"risk":
+			var v := []
+			for i in world.states.size():
+				v.append(sim.co_risk(i))
+			var srt := v.duplicate()
+			srt.sort()
+			var q := func(f: float) -> float: return srt[mini(srt.size() - 1, int(floor(f * srt.size())))]
+			var Q := [q.call(.3), q.call(.65), q.call(.88)]
+			for r in v:
+				cols.append(RISK_COL[3 if r > Q[2] else (2 if r > Q[1] else (1 if r > Q[0] else 0))])
+			set_colors(cols)
+			return
+		"dem":
+			var d := []
+			d.resize(world.states.size())
+			d.fill(0.0)
+			for p in sim.PL:
+				if p.cid < d.size():
+					d[p.cid] += (p.pop * 1000 + 400) * (.45 + sim.states[p.cid].dev) * sim.price_k(p.cid)
+			var v := []
+			for i in d.size():
+				v.append(d[i] / maxf(1, sqrt(float(world.countries[i].get("area", 1)) if i < world.countries.size() else 1.0)))
+			var srt := v.duplicate()
+			srt.sort()
+			var q := func(f: float) -> float: return srt[int(floor(f * (srt.size() - 1)))]
+			var T := [q.call(.35), q.call(.65), q.call(.88)]
+			for x in v:
+				cols.append(DEM_COL[0 if x < T[0] else (1 if x < T[1] else (2 if x < T[2] else 3))])
+			set_colors(cols)
+			return
 	var hub_c := {}
 	for h in sim.CO.hubs:
 		hub_c[sim.PL[h.pid].cid] = true
 	var mix := func(a: Color, b: Color, t: float) -> Color: return a.lerp(b, t)
-	var cols := []
 	for c in world.states:
 		var col := Color(c.color)
 		var cap: Variant = null

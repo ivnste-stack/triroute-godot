@@ -51,6 +51,12 @@ func _ready() -> void:
 	for c in h.get_children():
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(h)
+	# as wide as the longest option (the HTML button grows with its value; this one does not jump)
+	var f: Font = _lbl.get_theme_font("font")
+	var w := 0.0
+	for o in options:
+		w = maxf(w, f.get_string_size(String(o[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x)
+	custom_minimum_size.x = maxf(custom_minimum_size.x, ceilf(w) + 20 + 24 + 22 + 2)
 	_show_value()
 	pressed.connect(_toggle)
 	tree_exiting.connect(close)

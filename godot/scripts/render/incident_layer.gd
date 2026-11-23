@@ -12,6 +12,7 @@ var camera: MapCamera
 var session: GameSession
 var lines: Array = []          # TRWorldGen.lines() (borders between states: a, b = state id + 1)
 var top := false
+var mode := "co"             # the map layer (MapView.mode): road closures only on "co" and "grid"
 var dpr := 1.0
 var hits: Array = []           # {x, y, r, kind, data}: hover targets (INC_HIT / JAM_HIT)
 var _border_cache := {}
@@ -47,7 +48,7 @@ func _process_t(_delta: float) -> void:
 	var sim := session.sim
 	var CO := sim.CO
 	# the situation changes with the camera and with the game (a few times a game day), not every frame
-	var k := "%s|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [camera.global_transform, size, dpr, int(sim.co_now() * 8),
+	var k := "%s|%s|%s|%.2f|%d|%d|%d|%d|%d|%d|%d|%s" % [mode, camera.global_transform, size, dpr, int(sim.co_now() * 8),
 		CO.get("clV", 0), CO.get("wx", []).size(), CO.get("pir", []).size(), CO.get("band", []).size(), sim.jam.size(), sim.sky.size(), camera.dist < 26]
 	if k != _key:
 		_key = k
@@ -57,7 +58,7 @@ func _process_t(_delta: float) -> void:
 		_anim = Piece.new()
 		_anim.fn = _anim_top if top else _anim_base
 		add_child(_anim)
-	if (top and sim.sky.size()) or (not top and sim.jam.size() and camera.dist < 26):
+	if (top and sim.sky.size()) or (not top and _jams_on()):
 		_anim.queue_redraw()
 		_anim_on = true
 	elif _anim_on:
@@ -118,12 +119,38 @@ func _draw_t() -> void:
 	hits = _hits_static + _hits_anim
 
 
+func _jams_on() -> bool:
+	return session.sim.jam.size() > 0 and camera.dist < 26 and (mode == "co" or mode == "grid")
+
+
 func _draw_base() -> void:
 	var sim := session.sim
 	var CO := sim.CO
 	var t := Time.get_ticks_msec() / 1000.0
 	var W := size.x
 	var H := size.y
+	# the territory of the settlements on the logistics layer (drawCompany)
+	if mode == "grid":
+		var d := camera.dist
+		for p in sim.PL:
+			if p.type == "vil" and d > 2.3 or p.type == "town" and d > 4.2:
+				continue
+			var c: Variant = _P(p.x, p.z)
+			if c == null:
+				continue
+			var r := sim.co_rad(p)
+			var ex: Variant = _P(p.x + r, p.z)
+			if ex == null:
+				continue
+			var rx: float = (ex - c).length()
+			if rx < 4 * dpr or c.x < -rx * 2 or c.y < -rx * 2 or c.x > W + rx * 2 or c.y > H + rx * 2:
+				continue
+			var pts := _circle(p.x, p.z, r, 40)
+			if pts.size() < 41:
+				continue
+			var cap: bool = p.type == "cap"
+			draw_colored_polygon(pts, Color(92 / 255.0, 200 / 255.0, 242 / 255.0, .13 if cap else .09))
+			draw_polyline(pts, Color(40 / 255.0, 140 / 255.0, 200 / 255.0, .75 if cap else .5), (1.6 if cap else 1.1) * dpr, true)
 	# pirate and bandit zones
 	for e in [["pir", "240,98,95"], ["band", "255,140,60"]]:
 		for z in CO.get(e[0], []):
@@ -185,7 +212,7 @@ func _anim_base(n: Node2D) -> void:
 	var W := size.x
 	var H := size.y
 	# road closures
-	if sim.jam.size() and camera.dist < 26:
+	if _jams_on():
 		var r := clampf(9 / sqrt(camera.dist), 2.2, 5) * dpr
 		var T_ := sim.co_now()
 		for J in sim.jam:

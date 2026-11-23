@@ -7,6 +7,7 @@ extends Control
 
 signal window_requested(id: String)
 signal menu_requested
+signal mode_changed(mode: String)
 
 const RAIL := [["coHome", "briefcase", "Компанія", "Огляд, рейтинг, ліцензії, досягнення і поради."],
 	["coJobs", "box", "Біржа вантажів", "Замовлення від підприємств, прокладання маршрутів, автодиспетчеризація, тендери."],
@@ -35,6 +36,7 @@ var _grade_key := ""
 var _refresh_t := 0.0
 var _badges := {}
 var _speed_btns: Array = []
+var mode_dd: Dropdown
 var _cells := {}
 var _ticker: Label
 var _ticker_dot: ColorRect
@@ -306,6 +308,15 @@ func _build_bar() -> void:
 		b.pressed.connect(func(): if session != null: session.set_speed(i))
 		sp.add_child(b)
 		_speed_btns.append(b)
+	# the map layer (#modeCell, CO_MODES)
+	var mc := PanelContainer.new()
+	mc.add_theme_stylebox_override("panel", _cell_box(true, Vector4(16, 7, 16, 7)))
+	mc.tooltip_text = "Шар мапи\nМережа компанії — ваші хаби, техніка й рейси, перекриті дороги й кордони. Логістичні шляхи — дороги, залізниці, порти, аеропорти й пункти пропуску. Ризики перевезень — наскільки небезпечно возити вантажі в кожній країні. Політична — держави та їхні кордони. Світовий попит — де найбільше замовлень на доставку."
+	mode_dd = Dropdown.make([["co", "Мережа компанії", "truck"], ["grid", "Логістичні шляхи", "road"],
+			["risk", "Ризики перевезень", "alert"], ["pol", "Політична", "mapIc"], ["dem", "Світовий попит", "chart"]],
+			"co", func(v): mode_changed.emit(v), 30)
+	mc.add_child(Ui.vbox(4, [Ui.lbl("Шар мапи"), mode_dd]))
+	row.add_child(mc)
 	for c in [["date", "Дата", "1 день = 1 крок симуляції. Рейси рухаються щохвилини, економіка рахується щодня й щомісяця."],
 			["trips", "Рейси в дорозі", "Техніка в рейсах і замовлення на біржі."],
 			["fuel", "Пальне, барель", "Світова ціна барелю нафти. Від неї залежить вартість кожного рейсу. Стрибає при нафтових шоках, війнах і санкціях і поступово повертається до норми ≈ $80."],
@@ -331,13 +342,28 @@ func _build_bar() -> void:
 	_ticker_clip.add_child(_ticker_dot)
 	_ticker = Ui.label("", 13, Ui.FG2)
 	_ticker_clip.add_child(_ticker)
+	# #gearBtn: the game menu
 	var mb := Button.new()
-	mb.flat = true
-	mb.icon = Icons.tex("menu", Ui.FG2, 20)
-	mb.add_theme_constant_override("icon_max_width", 20)
-	mb.custom_minimum_size = Vector2(48, 0)
+	mb.icon = Icons.tex("menu", Ui.FG2, 18)
+	mb.add_theme_constant_override("icon_max_width", 18)
+	mb.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mb.custom_minimum_size = Vector2(44, 0)
 	mb.focus_mode = Control.FOCUS_NONE
-	mb.tooltip_text = "Шари мапи й легенда"
+	mb.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var mb_n := StyleBoxFlat.new()
+	mb_n.bg_color = Color.TRANSPARENT
+	mb_n.border_color = Ui.LINE
+	mb_n.border_width_left = 1
+	var mb_h: StyleBoxFlat = mb_n.duplicate()
+	mb_h.bg_color = Ui.ACCENT_SOFT
+	mb.add_theme_stylebox_override("normal", mb_n)
+	mb.add_theme_stylebox_override("hover", mb_h)
+	mb.add_theme_stylebox_override("pressed", mb_h)
+	mb.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	mb.mouse_entered.connect(func(): mb.icon = Icons.tex("menu", Ui.FG, 18))
+	mb.mouse_exited.connect(func(): mb.icon = Icons.tex("menu", Ui.FG2, 18))
+	mb.tooltip_text = "Меню (Esc)\nЗбереження, завантаження, налаштування, вихід."
+	mb.pressed.connect(func(): menu_requested.emit())
 	row.add_child(mb)
 
 
