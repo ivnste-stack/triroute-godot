@@ -753,13 +753,9 @@ const WIN_HEAD := {"coHome": ["briefcase", "Компанія"], "coJobs": ["box"
 
 func _toggle_window(id: String) -> void:
 	if hud.open_window == id or id == "":
-		if win.visible:
-			Sfx.play("close")
 		hud.open_window = ""
 		win.visible = false
 		return
-	if not win.visible:
-		Sfx.play("open")
 	hud.open_window = id
 	var vs := get_viewport().get_visible_rect().size
 	win.position = Vector2(78, 84)

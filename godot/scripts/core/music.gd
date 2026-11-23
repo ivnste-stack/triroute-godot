@@ -10,6 +10,8 @@ const TRACKS := ["res://assets/music/game-1.mp3", "res://assets/music/game-2.mp3
 ## the calm background (tools/make_ambient.py): in the game alone, looped ("ambient"), or one more track of
 ## the bag ("mix"); the setting "game_music" picks
 const AMBIENT := "res://assets/music/ambient.ogg"
+## for concentration (tools/make_focus.py): brighter and quicker, a soft pulse of plucked arpeggios
+const FOCUS := ["res://assets/music/focus-1.ogg", "res://assets/music/focus-2.ogg", "res://assets/music/focus-3.ogg"]
 const MENU_K := .55   # MUS.vol = .55 × the music volume
 const GAME_K := .5    # gmVol = .5 × the music volume
 
@@ -131,9 +133,11 @@ func _tracks() -> Array:
 	match String(Settings.get_value("game_music")):
 		"ambient":
 			return [AMBIENT]
+		"focus":
+			return FOCUS
 		"tracks":
 			return TRACKS
-	return TRACKS + [AMBIENT]
+	return TRACKS + [AMBIENT] + FOCUS
 
 
 func _pick() -> String:
