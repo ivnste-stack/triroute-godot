@@ -130,6 +130,24 @@ func test_consolidated_trip_from_the_board() -> String:
 		return "the orders stayed on the board"
 	if not w.cons_orders().is_empty():
 		return "the panel keeps sent orders"
+	# the trip card on the map for every trip, the legs of a route among them
+	var mu := MapUi.new()
+	mu.sim = sim
+	mu._card = Ui.glass()
+	var legs := 0
+	for j in sim.CO.jobs:
+		if j.get("lp") and j.lp.plan.legs.size() > 1:
+			legs += 1
+		mu.build_card_for(j)
+		# a script error inside stops the card before its content is added
+		if not mu._card.get_children().any(func(c): return c is VBoxContainer and not c.is_queued_for_deletion()):
+			mu._card.free()
+			mu.free()
+			return "the card of trip %d was not built" % j.id
+	mu._card.free()
+	mu.free()
+	if legs == 0:
+		return "no trip of several legs to show on a card"
 	return ""
 
 

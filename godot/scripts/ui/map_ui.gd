@@ -682,6 +682,11 @@ func _build_card() -> void:
 	var j: Variant = map.vehicles.selected
 	if j == null:
 		return
+	build_card_for(j)
+
+
+## the card of a trip into _card (also used by the tests for every trip)
+func build_card_for(j: Dictionary) -> void:
 	_card_t = Time.get_ticks_msec()
 	for c in _card.get_children():
 		if not (c is ColorRect):
@@ -704,8 +709,9 @@ func _build_card() -> void:
 	else:
 		rows.append(["Техніка", T.n + ((" ×%d" % j.n) if j.get("n", 1) > 1 else "")])
 		rows.append(["Вантаж", "%s, %s т" % [cg.n, Ui.loc(j.k.tons)]])
-		if j.get("lp") and j.lp.plan.size() > 1:
-			rows.append(["Маршрут", "ділянка %d з %d: %s" % [j.lp.i + 1, j.lp.plan.size(), " → ".join(j.lp.plan.map(func(L): return LP_N[L.m]))]])
+		if j.get("lp") and j.lp.plan.legs.size() > 1:
+			var legs: Array = j.lp.plan.legs
+			rows.append(["Маршрут", "ділянка %d з %d: %s" % [j.lp.i + 1, legs.size(), " → ".join(PackedStringArray(legs.map(func(L): return LP_N[L.m])))]])
 		if j.k.get("fs"):
 			rows.append(["Відправник", j.k.fs])
 			rows.append(["Отримувач", j.k.ft])
@@ -791,7 +797,8 @@ func _build_card() -> void:
 	col.add_child(Ui.margin(body, 12))
 	_card.add_child(col)
 	_card.visible = true
-	get_viewport().update_mouse_cursor_state.call_deferred()
+	if is_inside_tree():
+		get_viewport().update_mouse_cursor_state.call_deferred()
 	_card.reset_size()
 
 
