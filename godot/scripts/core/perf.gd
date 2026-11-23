@@ -1,8 +1,12 @@
 class_name Perf
 extends RefCounted
-## Frame-time counters for --perf: Perf.begin("name") … Perf.end("name"); main prints the averages each second.
+## Frame-time counters: Perf.begin("name") … Perf.end("name") around the parts of the game's own code.
+## Two readers: report() (F3 panel and --perf, averages since its last call) and take_frame() (PerfRecorder,
+## what each single frame spent). Sections may nest (co_day runs inside game_session._process): a reader
+## sees both, the outer one includes the inner.
 
-static var acc := {}
+static var acc := {}       # µs since the last report()
+static var frame := {}     # µs in the frame going on
 static var _t := {}
 
 
@@ -11,7 +15,16 @@ static func begin(k: String) -> void:
 
 
 static func end(k: String) -> void:
-	acc[k] = acc.get(k, 0) + Time.get_ticks_usec() - _t.get(k, Time.get_ticks_usec())
+	var d: int = Time.get_ticks_usec() - _t.get(k, Time.get_ticks_usec())
+	acc[k] = acc.get(k, 0) + d
+	frame[k] = frame.get(k, 0) + d
+
+
+## what the frame that just ended spent, section by section (µs); starts the next one
+static func take_frame() -> Dictionary:
+	var f := frame
+	frame = {}
+	return f
 
 
 static func report(frames: int) -> String:

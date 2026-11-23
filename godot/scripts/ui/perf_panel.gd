@@ -20,6 +20,11 @@ func _ready() -> void:
 	position = Vector2(get_viewport_rect().size.x - 440, 84)
 
 
+func _rec() -> bool:
+	var m: Node = get_tree().current_scene
+	return m != null and "perf_rec" in m and m.perf_rec != null and m.perf_rec.recording
+
+
 func toggle() -> void:
 	visible = not visible
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), visible)
@@ -50,6 +55,7 @@ func _process(delta: float) -> void:
 		"Драйвер: %s · %s" % [RenderingServer.get_current_rendering_driver_name(), RenderingServer.get_current_rendering_method()],
 		"Вікно %dx%d · масштаб %.2f · VSync %s" % [win.size.x, win.size.y, win.content_scale_factor, ["вимк", "увімк", "adaptive", "mailbox"][DisplayServer.window_get_vsync_mode()]],
 		"Збірка: %s" % ("debug (з редактора)" if OS.is_debug_build() else "release"),
+		("● ЗАПИС (F4 — зупинити)" if _rec() else "F4 — запис у файл"),
 		"",
 		"Найдорожче в коді, мс/кадр:"]
 	var parts: String = Perf.report(_n)

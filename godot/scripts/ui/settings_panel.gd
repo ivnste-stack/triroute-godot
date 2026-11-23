@@ -254,6 +254,15 @@ func _snd() -> void:
 func _game() -> void:
 	_row("Автозбереження", "Кожні 15 хвилин гри в окремий слот — він перший у списку «Завантажити гру».", _toggle("autosave"))
 	_row("Перевірки", "Самоперевірка симуляції і рендеру (F9).", Ui.btn("Відкрити", "sm", "check", func(): host.open_checks()))
+	_head("Продуктивність")
+	var rec: PerfRecorder = host.perf_rec
+	var rb := Ui.btn("Зупинити й зберегти" if rec.recording else "Почати запис", "sm" if rec.recording else "pri sm", "chart", func():
+		rec.toggle()
+		_refresh())
+	var ob := Ui.btn("Папка", "sm", "doc", func():
+		DirAccess.make_dir_recursive_absolute("user://perf")
+		OS.shell_open(ProjectSettings.globalize_path("user://perf")))
+	_row("Запис продуктивності (F4)", "Пише звіт про те, що навантажує гру: частота й час кадрів, рендер, пам'ять, стан гри щосекунди, усі повільні кадри з розкладом по частинах коду, підсумок у кінці. Пограйте як зазвичай, зупиніть запис і надішліть файл з папки." + (" Зараз пишеться: " + ProjectSettings.globalize_path(rec.path) if rec.recording else ""), Ui.hbox(6, [rb, ob]))
 	_head("Тестування")
 	var on: bool = host.in_game() and host.session.sim.CO.get("sandbox", false)
 	var b := Ui.btn("Увімкнено" if on else "Увімкнути", "sm" if on else "pri sm", "bolt", func():

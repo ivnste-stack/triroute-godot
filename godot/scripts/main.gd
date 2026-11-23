@@ -20,6 +20,7 @@ var wins: Windows
 var toasts: Toasts
 var map_ui: MapUi
 var tips: TipLayer
+var perf_rec: PerfRecorder
 var perf_panel: PerfPanel
 var _bb: BackBufferCopy
 var planner: Planner
@@ -246,6 +247,15 @@ func _ready() -> void:
 	_ui.add_child(perf_panel)
 	tips = TipLayer.new()
 	_ui.add_child(tips)
+	# F4: the performance record (user://perf/), read back to find what loads the game
+	perf_rec = PerfRecorder.new()
+	perf_rec.context = _perf_context
+	perf_rec.viewports = func(): return {"lines": map._ov_vp, "towns": map._tw_vp} if map != null and map._ov_vp != null else {}
+	perf_rec.state_changed.connect(func(on, p):
+		toasts.push("good" if on else "", "Запис продуктивності" + (" почато" if on else " збережено"), ("F4 — зупинити. Файл: " if on else "Надішліть цей файл: ") + p))
+	add_child(perf_rec)
+	if _args.has("perf-rec"):
+		perf_rec.start.call_deferred()
 	if _args.has("f3"):
 		perf_panel.toggle.call_deferred()
 	_checks = PanelContainer.new()
@@ -434,25 +444,8 @@ var _perf_n := 0
 var _live_n := 0
 
 
-var _spike_prev := {}
-
-
 func _process(delta: float) -> void:
 	if _args.has("perf"):
-		# a frame whose code took long: what took it (the day change at a high speed, a window, the map)
-		var tot := 0.0
-		var diff := {}
-		for k in Perf.acc:
-			var pv: float = _spike_prev.get(k, 0.0)
-			var d: float = Perf.acc[k] - pv if Perf.acc[k] >= pv else Perf.acc[k]   # co_day starts over every day
-			if d > 0 and not k.begins_with("main"):
-				diff[k] = d
-				tot += d
-		if tot > 6000.0:
-			var ks := diff.keys()
-			ks.sort_custom(func(a, b): return diff[a] > diff[b])
-			print("PERF spike %.1f ms (day %s): %s" % [tot / 1000.0, session.sim.day if session != null and session.sim != null else -1, ", ".join(ks.slice(0, 6).map(func(k): return "%s %.1f" % [k, diff[k] / 1000.0]))])
-		_spike_prev = Perf.acc.duplicate()
 		_perf_n += 1
 		_perf_t += delta
 		if _perf_t >= 2.0:
@@ -790,6 +783,7 @@ func _win_tick(force: bool = false) -> void:
 			return
 	var keep := win.scroll.scroll_vertical
 	var t0 := Time.get_ticks_usec()
+	Perf.begin("window.build")
 	var off := VBoxContainer.new()
 	if id == "news":
 		for i in range(sim.news.size() - 1, maxi(-1, sim.news.size() - 60), -1):
@@ -805,6 +799,7 @@ func _win_tick(force: bool = false) -> void:
 			off.add_child(Ui.note("Поки що новин немає.", Ui.MUTED))
 	else:
 		wins.build(id, off)
+	Perf.end("window.build")
 	_swap_gen += 1
 	if smooth:
 		var gen := _swap_gen
@@ -1049,6 +1044,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			_toggle_checks()
 		KEY_F3:
 			perf_panel.toggle()
+		KEY_F4:
+			perf_rec.toggle()
 		KEY_ESCAPE:
 			if planner.on or course.on or map_ui.mv_v != null:
 				return
@@ -1098,6 +1095,27 @@ func _screenshot() -> void:
 		toasts.push("good", "Скріншот збережено", ProjectSettings.globalize_path(f))
 	else:
 		toasts.push("bad", "Скріншот не збережено", "Помилка %d" % err)
+
+
+## the state of the game for the performance record, once a second
+func _perf_context() -> Dictionary:
+	var c := {"screen": "menu" if menu != null and menu.visible else ("loading" if _loading.visible else "game")}
+	if session != null and session.sim != null and hud.visible:
+		var CO := session.sim.CO
+		c.speed = session.speed
+		c.day = int(session.sim.day)
+		c.zoom = snappedf(map.camera.dist, .01)
+		c.yaw = snappedf(map.camera.yaw, .01)
+		c.layer = map.mode
+		c.win = hud.open_window if hud.open_window != "" else "-"
+		c.dialog = modals.is_open()
+		c.trips = CO.jobs.size()
+		c.veh = CO.veh.size()
+		c.hubs = CO.hubs.size()
+		c.board = CO.board.size()
+		c.wx = CO.get("wx", []).size()
+		c.sandbox = CO.get("sandbox", false)
+	return c
 
 
 func _toggle_checks() -> void:

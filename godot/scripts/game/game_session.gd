@@ -131,6 +131,8 @@ func _process_t(delta: float) -> void:
 	_logic_t += delta
 	if _logic_t >= 1.0 / 60.0 or n_days_done(sim.day):
 		_logic_t = 0.0
+		Perf.begin("sim.frame")
 		sim.co_frame(fraction())
+		Perf.end("sim.frame")
 	else:
 		sim.CO.lastFr = fraction()
