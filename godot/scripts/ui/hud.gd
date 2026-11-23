@@ -302,10 +302,13 @@ func _build_bar() -> void:
 		b.tooltip_text = SPEED[i][1]
 		b.add_theme_stylebox_override("normal", Ui.box(Color.TRANSPARENT, Color.TRANSPARENT))
 		b.add_theme_stylebox_override("hover", Ui.box(Color.TRANSPARENT, Ui.LINE_HI))
-		b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT))
+		b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT))
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.add_theme_constant_override("icon_max_width", 18)
-		b.pressed.connect(func(): if session != null: session.set_speed(i))
+		b.pressed.connect(func():
+			if session != null:
+				session.set_speed(i)
+				_speed_state())
 		sp.add_child(b)
 		_speed_btns.append(b)
 	# the map layer (#modeCell, CO_MODES)
@@ -400,6 +403,7 @@ func _process(delta: float) -> void:
 func _process_t(delta: float) -> void:
 	if session == null or session.sim == null or session.sim.CO.is_empty() or not session.sim.CO.has("hubs"):
 		return
+	_speed_state()
 	var tk: bool = not Settings.get_value("no_ticker")
 	_ticker.visible = tk
 	_ticker_dot.visible = tk
@@ -440,14 +444,7 @@ func _process_t(delta: float) -> void:
 	_put(_kpi_vals[5], [[str(staff)]])
 	_put(_kpi_vals[6], [["%d/%d" % [CO.tier, GameData.LIC.size() - 1]]])
 	# the bottom bar
-	for i in _speed_btns.size():
-		var on := i == session.speed
-		var b: Button = _speed_btns[i]
-		if not b.has_meta("on") or b.get_meta("on") != on:
-			b.set_meta("on", on)
-			b.icon = Icons.tex(SPEED[i][0], Ui.ACCENT_INK if on else Ui.FG2, 18, 1.7, SPEED[i][0] != "pause")
-			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Color.TRANSPARENT))
-			b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Ui.LINE_HI))
+	_speed_state()
 	var fr := session.fraction()
 	var h := int(fr * 24)
 	var mm := int((fr * 24 - h) * 6) * 10
@@ -501,6 +498,21 @@ func _ticker_step(delta: float) -> void:
 
 
 ## .rbtn / .rbtn.on: the open window's button on the accent with a dark icon, at once when it changes
+## the speed buttons: the chosen one on the accent with a dark icon, at once when it changes (as the rail)
+func _speed_state() -> void:
+	if session == null:
+		return
+	for i in _speed_btns.size():
+		var on := i == session.speed
+		var b: Button = _speed_btns[i]
+		if not b.has_meta("on") or b.get_meta("on") != on:
+			b.set_meta("on", on)
+			b.icon = Icons.tex(SPEED[i][0], Ui.ACCENT_INK if on else Ui.FG2, 18, 1.7, SPEED[i][0] != "pause")
+			b.add_theme_stylebox_override("normal", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Color.TRANSPARENT))
+			b.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT) if on else Ui.box(Color.TRANSPARENT, Ui.LINE_HI))
+			b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT) if on else Ui.box(Ui.ACCENT_SOFT))
+
+
 func _rail_state() -> void:
 	for id in _rail_btns:
 		var on: bool = id == open_window

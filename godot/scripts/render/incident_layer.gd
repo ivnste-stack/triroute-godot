@@ -150,13 +150,23 @@ func _draw_base() -> void:
 		var bb := Rect2(pts[0], Vector2.ZERO)
 		for q in pts:
 			bb = bb.expand(q)
-		var sp := 14 * dpr
-		var x := bb.position.x - bb.size.y - sp
-		while x < bb.end.x:
-			var seg := PackedVector2Array([Vector2(x, bb.end.y), Vector2(x + bb.size.y, bb.position.y)])
-			for piece in Geometry2D.intersect_polyline_with_polygon(seg, pts):
-				draw_polyline(piece, _c(K.col, .3), 1.3 * dpr, true)
-			x += sp
+		# only the part on the screen: close up a zone is many screens wide, and hatching all of it cost
+		# thousands of lines a redraw; the 45° lines keep their phase (x from a fixed origin) when it is cut
+		bb = bb.intersection(Rect2(-20, -20, W + 40, H + 40))
+		if bb.size.x > 0 and bb.size.y > 0:
+			var sp := 14 * dpr
+			var hatch := PackedVector2Array()
+			# the lines x + y = k·sp: the same lines whatever part of the zone is cut by the screen
+			var k := floorf((bb.position.x + bb.position.y) / sp) * sp
+			while k < bb.end.x + bb.end.y:
+				var seg := PackedVector2Array([Vector2(k - bb.end.y, bb.end.y), Vector2(k - bb.position.y, bb.position.y)])
+				for piece in Geometry2D.intersect_polyline_with_polygon(seg, pts):
+					for i in piece.size() - 1:
+						hatch.append(piece[i])
+						hatch.append(piece[i + 1])
+				k += sp
+			if hatch.size():
+				draw_multiline(hatch, _c(K.col, .3), 1.3 * dpr, true)
 		draw_polyline(pts, _c(K.col, .95), 1.8 * dpr, true)
 		var c: Variant = _P(w.x, w.z)
 		if c != null and camera.dist < 26:

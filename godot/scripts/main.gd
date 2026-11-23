@@ -537,6 +537,12 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("camwx") and session != null and session.sim.CO.get("wx", []).size():   # test: close up on a weather zone
+		var wz: Dictionary = session.sim.CO.wx[0]
+		map.camera.look_at_point(Vector2(wz.x, wz.z), float(_args.camwx))
+		map.camera.tx = map.camera.ttx
+		map.camera.tz = map.camera.ttz
+		map.camera.dist = map.camera.tdist
 	if _args.has("yaw"):   # test: the camera turned
 		map.camera.yaw = float(_args.yaw)
 		map.camera.tyaw = map.camera.yaw
