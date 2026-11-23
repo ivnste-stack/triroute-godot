@@ -407,10 +407,8 @@ func _build_loading() -> Control:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var step := Ui.label("", 12, Ui.FG, Ui.font("mono", 500))
 	step.name = "step"
-	var pct := Ui.label("", 12, Ui.ACCENT, Ui.font("mono", 600))
-	pct.name = "pct"
-	var row := Ui.hbox(10, [step, Ui.spacer(), pct])
-	c.add_child(Ui.vbox(12, [title, bar, row]))
+	step.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c.add_child(Ui.vbox(12, [title, bar, step]))
 	return root
 
 
@@ -421,9 +419,9 @@ func _loading_step(delta: float) -> void:
 	var bar: ProgressBar = _loading.find_child("bar", true, false)
 	bar.value = p
 	var i := mini(int(p / 0.96 * LOAD_STEPS.size()), LOAD_STEPS.size() - 1)
-	var dots := ".".repeat(1 + int(_load_t * 3) % 3)
+	var nd := 1 + int(_load_t * 3) % 3
+	var dots := ".".repeat(nd) + " ".repeat(3 - nd)   # a steady width: the centred line does not wobble
 	(_loading.find_child("step", true, false) as Label).text = LOAD_STEPS[i] + dots
-	(_loading.find_child("pct", true, false) as Label).text = "%d%%" % int(p * 100)
 
 
 func _create_world() -> void:

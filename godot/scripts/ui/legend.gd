@@ -15,6 +15,7 @@ var mode := "co"
 var _box: VBoxContainer
 var _key := ""
 var _scroll: ScrollContainer
+var _pad: MarginContainer
 
 
 func _ready() -> void:
@@ -27,7 +28,8 @@ func _ready() -> void:
 	_box = Ui.vbox(7)
 	_scroll = SmoothScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.add_child(Ui.margin(_box, 14, 12, 14, 12))
+	_pad = Ui.margin(_box, 14, 12, 14, 12)
+	_scroll.add_child(_pad)
 	add_child(_scroll)
 
 
@@ -48,20 +50,29 @@ func _build(folded: bool) -> void:
 		c.queue_free()
 	var title: String = {"co": "Мережа " + String(sim.CO.get("name", "")), "grid": "Логістичні шляхи", "risk": "Ризики перевезень",
 		"pol": "Політична карта", "dem": "Світовий попит на доставку"}.get(mode, "")
-	var head := Ui.hbox(10, [Ui.lbl(title), Ui.spacer()])
+	# folded: the title and the button side by side, nothing between; open: the button at the right edge
+	var head := Ui.hbox(10, [Ui.lbl(title)] if folded else [Ui.lbl(title), Ui.spacer()])
 	var fold := Button.new()
 	fold.icon = Icons.tex("plus" if folded else "minus", Ui.FG2, 14)
 	fold.flat = true
 	fold.focus_mode = Control.FOCUS_NONE
 	fold.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	fold.tooltip_text = "Розгорнути легенду" if folded else "Згорнути легенду"
-	fold.custom_minimum_size = Vector2(26, 20)
+	fold.custom_minimum_size = Vector2(22, 16)
+	fold.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	fold.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+	fold.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+	fold.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	fold.mouse_entered.connect(func(): fold.icon = Icons.tex("plus" if folded else "minus", Ui.ACCENT, 14))
 	fold.mouse_exited.connect(func(): fold.icon = Icons.tex("plus" if folded else "minus", Ui.FG2, 14))
 	fold.pressed.connect(func(): Settings.set_value("legend_folded", not folded))
 	head.add_child(fold)
 	_box.add_child(head)
 	custom_minimum_size.x = 0 if folded else 258
+	# a slim bar when folded
+	_pad.add_theme_constant_override("margin_top", 6 if folded else 12)
+	_pad.add_theme_constant_override("margin_bottom", 6 if folded else 12)
+	_pad.add_theme_constant_override("margin_right", 8 if folded else 14)
 	if folded:
 		_fit.call_deferred()
 		return
