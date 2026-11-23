@@ -7,8 +7,50 @@ signal settings
 signal load_game
 signal quit
 
-const BG := preload("res://assets/img/menu_bg.webp")
+## the backgrounds: the logistics layer of a world, shot from a few places and turns; they float slowly and
+## take turns, one fading into the next
+const BGS := ["res://assets/img/menu_bg_1.webp", "res://assets/img/menu_bg_2.webp", "res://assets/img/menu_bg_3.webp", "res://assets/img/menu_bg_4.webp"]
+const SHOW := 16.0    # seconds a picture stays
+const FADE := 3.0     # seconds of the cross-fade
 const LOGO := preload("res://assets/img/logo.webp")
+
+
+var _bgs: Array = []
+var _t := 0.0
+
+
+## the backgrounds float: each drifts and grows a little over its time on screen (a slow pan and zoom),
+## the next one fades in over the last seconds
+func _process(delta: float) -> void:
+	if not visible or _bgs.is_empty():
+		return
+	_t += delta
+	var n := _bgs.size()
+	var per := SHOW
+	var cur := int(_t / per) % n
+	var f := fmod(_t, per) / per
+	for i in n:
+		var bg: TextureRect = _bgs[i]
+		var on := i == cur
+		var nxt := i == (cur + 1) % n and n > 1
+		var fade_in := clampf((fmod(_t, per) - (per - FADE)) / FADE, 0, 1)
+		var a := 1.0 if on else (fade_in if nxt else 0.0)
+		if on and n > 1:
+			a = 1.0
+		bg.visible = a > 0
+		bg.modulate.a = a
+		if not bg.visible:
+			continue
+		# the time of this picture on screen: the next one starts its drift while fading in
+		var lt := f if on else (fade_in * FADE / per - FADE / per)
+		var k := 1.08 + .06 * (lt + FADE / per)
+		var dir := Vector2(cos(i * 2.1 + .6), sin(i * 2.1 + .6))
+		bg.size = size * k
+		bg.position = -(bg.size - size) / 2 + dir * size.x * .025 * (lt - .5) * 2
+	# the one fading in lies above the current one
+	var top: TextureRect = _bgs[(cur + 1) % n]
+	if n > 1 and top.get_index() < _bgs[cur].get_index():
+		move_child(top, _bgs[cur].get_index())
 
 
 var _load_btn: Button
@@ -28,17 +70,27 @@ func _refresh_load() -> void:
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = Ui.theme()
-	# #bgSnap: the picture blurred (filter: blur(6px) brightness(.9)): scaled down and stretched back
-	var img: Image = BG.get_image()
-	img.resize(img.get_width() / 6, img.get_height() / 6, Image.INTERPOLATE_LANCZOS)
-	var bg := TextureRect.new()
-	bg.texture = ImageTexture.create_from_image(img)
-	bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	bg.modulate = Color(.9, .9, .9)
-	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	# #bgSnap: the pictures blurred (filter: blur(6px) brightness(.9)): scaled down and stretched back
+	var paths: Array = BGS.filter(func(x): return ResourceLoader.exists(x))
+	if paths.is_empty():
+		paths = ["res://assets/img/menu_bg.webp"]
+	for path in paths:
+		if not ResourceLoader.exists(path):
+			continue
+		var img: Image = (load(path) as Texture2D).get_image()
+		img.resize(img.get_width() / 6, img.get_height() / 6, Image.INTERPOLATE_LANCZOS)
+		var bg := TextureRect.new()
+		bg.texture = ImageTexture.create_from_image(img)
+		bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		bg.self_modulate = Color(.9, .9, .9)
+		bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg.modulate.a = 0
+		add_child(bg)
+		_bgs.append(bg)
+	if _bgs.size():
+		_bgs[0].modulate.a = 1
 	# #start: linear-gradient(90deg, rgba(3,6,10,.5), rgba(3,6,10,.12) 45%, rgba(3,6,10,.05))
 	var gr := Gradient.new()
 	gr.offsets = PackedFloat32Array([0, .45, 1])

@@ -13,6 +13,7 @@ var tx := 0.0
 var tz := 0.4
 var dist := 13.0
 var yaw := 0.0
+var tyaw := 0.0      # the turn the camera glides to (Q / E, the compass button)
 var ttx := 0.0
 var ttz := 0.4
 var tdist := 13.0
@@ -75,6 +76,9 @@ func _process_t(delta: float) -> void:
 	dist += (tdist - dist) * k
 	tx += (ttx - tx) * k
 	tz += (ttz - tz) * k
+	yaw += (tyaw - yaw) * k
+	if absf(tyaw - yaw) < 1e-4:
+		yaw = tyaw
 	_apply()
 
 
@@ -101,7 +105,7 @@ func _keys(dt: float) -> void:
 		return
 	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_ALT) or Input.is_key_pressed(KEY_META):
 		return
-	yaw += rot * 1.4 * dt
+	tyaw += rot * 1.4 * dt
 	if mv != Vector2.ZERO:
 		# along the screen: "up" goes away from the camera whatever its turn
 		var s := dist * 1.5 * dt
@@ -112,6 +116,15 @@ func _keys(dt: float) -> void:
 		var mzz := minf(world_size.y / 2 - .4, dist * .2)
 		ttx = clampf(ttx + d.x, -world_size.x / 2 + mxx, world_size.x / 2 - mxx)
 		ttz = clampf(ttz + d.y, -world_size.y / 2 + mzz, world_size.y / 2 - mzz * .3)
+
+
+## back to the standard view: north up, the nearest whole turn (no spinning round)
+func reset_turn() -> void:
+	var n := roundf(yaw / TAU) * TAU
+	tyaw = n
+	# the remaining angle the short way
+	var d := wrapf(yaw - n, -PI, PI)
+	yaw = n + d
 
 
 func _apply() -> void:

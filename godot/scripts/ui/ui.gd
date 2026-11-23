@@ -131,6 +131,16 @@ static func theme() -> Theme:
 
 # ---------- builders ----------
 ## a glass panel (.glass): the blurred map behind, a tint, a thin border
+## the glass of a panel over a dialog's veil: what it blurs is darkened like the screen under the veil
+static func glass_dim(p: PanelContainer, dim: float = .55) -> void:
+	for c in p.get_children():
+		if c is ColorRect and c.has_meta("glass"):
+			(c.get_meta("glass") as ShaderMaterial).set_shader_parameter("dim", dim)
+			var t: Color = (c.get_meta("glass") as ShaderMaterial).get_shader_parameter("tint")
+			if not blur:
+				c.color = Color(t.r, t.g, t.b, minf(1.0, t.a + .22)).lerp(Color(.0078, .0196, .0353), dim * .5)
+
+
 static func glass(tint: Color = GLASS, border: Color = LINE, into: PanelContainer = null) -> PanelContainer:
 	if _glass == null:
 		_glass = load("res://shaders/glass.gdshader")

@@ -99,6 +99,12 @@ func _open() -> void:
 	layer.add_child(catcher)
 	_list = catcher
 	var g := Ui.glass(Ui.GLASS_HI, Ui.LINE_HI)
+	var a: Node = get_parent()
+	while a != null:   # in a dialog: the list lies over its veil too
+		if a is ModalLayer:
+			Ui.glass_dim(g)
+			break
+		a = a.get_parent()
 	g.mouse_filter = Control.MOUSE_FILTER_STOP
 	var v := Ui.vbox(0)
 	g.add_child(Ui.margin(v, 4))

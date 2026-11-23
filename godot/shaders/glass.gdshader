@@ -7,6 +7,9 @@ uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform vec4 tint : source_color = vec4(0.0431, 0.0667, 0.098, 0.66);
 uniform float radius_px = 18.0;
 uniform float saturate = 1.5;
+// the dark veil a dialog lays over the screen (.55 under a modal): the copy of the screen is taken before it,
+// so the glass of a dialog darkens what it blurs by itself, as backdrop-filter sees the veil in the HTML version
+uniform float dim = 0.0;
 
 void fragment() {
 	vec3 acc = vec3(0.0);
@@ -22,5 +25,6 @@ void fragment() {
 	vec3 c = acc / ws;
 	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
 	c = mix(vec3(l), c, saturate);
+	c = mix(c, vec3(0.0078, 0.0196, 0.0353), dim);
 	COLOR = vec4(mix(c, tint.rgb, tint.a), 1.0);
 }

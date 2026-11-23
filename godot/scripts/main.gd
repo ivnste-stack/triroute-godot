@@ -188,6 +188,18 @@ func _ready() -> void:
 	hud.menu_requested.connect(_game_menu)
 	hud.mode_changed.connect(func(m): map.set_mode(m))
 	_ui.add_child(hud)
+	# the compass over the bottom right corner: back to the standard view after Q / E
+	var cmp := CompassButton.new()
+	cmp.camera = map.camera
+	cmp.anchor_left = 1
+	cmp.anchor_right = 1
+	cmp.anchor_top = 1
+	cmp.anchor_bottom = 1
+	cmp.offset_left = -14 - 44
+	cmp.offset_right = -14
+	cmp.offset_top = -84 - 44
+	cmp.offset_bottom = -84
+	hud.add_child(cmp)
 	win = WindowPanel.new()
 	win.visible = false
 	win.theme = Ui.theme()
@@ -459,6 +471,11 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("yaw"):   # test: the camera turned
+		map.camera.yaw = float(_args.yaw)
+		map.camera.tyaw = map.camera.yaw
+	if _args.has("noui"):   # test: the map alone (the main menu's backgrounds)
+		_ui.visible = false
 	if _args.has("mode"):   # test: a map layer
 		hud.mode_dd.value = String(_args.mode)
 		hud.mode_dd._show_value()

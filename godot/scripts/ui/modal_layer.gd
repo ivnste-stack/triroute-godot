@@ -67,6 +67,7 @@ func _build(spec: Dictionary) -> Control:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var g := Ui.glass()
+	Ui.glass_dim(g)
 	g.custom_minimum_size.x = spec.get("width", 560)
 	center.add_child(g)
 	var col := Ui.vbox(0)
