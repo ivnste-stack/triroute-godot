@@ -358,27 +358,37 @@ var _load_t := 0.0
 ## the loading screen: the floating pictures of the menu behind (MenuBackdrop), a thin bar without a frame,
 ## the stage of the generation under it
 func _build_loading() -> Control:
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.visible = false
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	# a veil over the pictures: the light land would swallow the thin text
+	var veil := ColorRect.new()
+	veil.color = Color(3 / 255.0, 6 / 255.0, 10 / 255.0, .45)
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(veil)
 	var c := CenterContainer.new()
 	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	c.visible = false
-	c.mouse_filter = Control.MOUSE_FILTER_STOP
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(c)
 	var bar := ProgressBar.new()
 	bar.show_percentage = false
 	bar.custom_minimum_size = Vector2(460, 4)
 	bar.max_value = 1.0
 	bar.step = 0.0
-	bar.add_theme_stylebox_override("background", Ui.box(Color(1, 1, 1, .1)))
+	bar.add_theme_stylebox_override("background", Ui.box(Color(1, 1, 1, .14)))
 	bar.add_theme_stylebox_override("fill", Ui.box(Ui.ACCENT))
 	bar.name = "bar"
-	var title := Ui.lbl("Генерація світу")
+	var title := Ui.label("ГЕНЕРАЦІЯ СВІТУ", 11, Ui.FG, Ui.font("mono", 600, 2.5))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var step := Ui.label("", 12, Ui.FG2, Ui.font("mono", 500))
+	var step := Ui.label("", 12, Ui.FG, Ui.font("mono", 500))
 	step.name = "step"
-	var pct := Ui.label("", 12, Ui.MUTED, Ui.font("mono", 500))
+	var pct := Ui.label("", 12, Ui.ACCENT, Ui.font("mono", 600))
 	pct.name = "pct"
 	var row := Ui.hbox(10, [step, Ui.spacer(), pct])
 	c.add_child(Ui.vbox(12, [title, bar, row]))
-	return c
+	return root
 
 
 func _loading_step(delta: float) -> void:
