@@ -11,7 +11,7 @@ const DEFAULTS := {
 	"win_size": "1600x900",
 	"res": 0,             # the width the map is rendered at (0 = the window's): 1280…3840 (RES_OPTS)
 	"upscale": "bilinear",  # how a smaller map render is stretched: "bilinear" or "fsr" (AMD FSR 1.0)
-	"aa": "off",          # anti-aliasing of the map: "off", "fxaa", "msaa2", "msaa4", "msaa8"
+	"aa": "off",          # anti-aliasing of the map: "off", "fxaa", "ssaa2", "ssaa4", "fxaa_ssaa"
 	"aniso": 2,           # anisotropic filtering of the map textures: 0…4 = 1×, 2×, 4×, 8×, 16×
 	"vsync": true,        # wait for the monitor's refresh
 	"fps": 0,             # the frame limit: 0 none, else 30…240
