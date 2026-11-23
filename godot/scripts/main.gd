@@ -467,6 +467,44 @@ func _on_world(w: Dictionary) -> void:
 				get_viewport().warp_mouse(ob[0].get_global_rect().position + Vector2(40, 56))
 			for i in 6:
 				await get_tree().process_frame
+		if _args.has("alljobs"):   # test: select every trip in turn and time the frames
+			for j in session.sim.CO.jobs.duplicate():
+				var t1 := Time.get_ticks_usec()
+				map_ui.select_job(j)
+				var t2 := Time.get_ticks_usec()
+				for i in 3:
+					await get_tree().process_frame
+				print("job %d %s ret=%s sel %.1f ms, 3 frames %.1f ms" % [j.id, j.mode, j.get("ret", false), (t2 - t1) / 1000.0, (Time.get_ticks_usec() - t2) / 1000.0])
+		if _args.has("clickveh"):   # test: a click on the first vehicle on screen, then a few seconds of play
+			for h in map.vehicles.hits:
+				if h.has("j") and session.sim.co_job_state(h.j, session.sim.co_now() - h.j.t0).seg >= 0:
+					print("click vehicle at ", h.x, ",", h.y)
+					if _args.has("real"):
+						get_viewport().warp_mouse(Vector2(h.x, h.y))
+						await get_tree().process_frame
+						var hp := Vector2(h.x, h.y)
+						for h2 in map.vehicles.hits:
+							if h2.has("j") and is_same(h2.j, h.j):
+								hp = Vector2(h2.x, h2.y)
+						get_viewport().warp_mouse(hp)
+						for pr in [true, false]:
+							var ev := InputEventMouseButton.new()
+							ev.button_index = MOUSE_BUTTON_LEFT
+							ev.pressed = pr
+							ev.position = hp
+							ev.global_position = ev.position
+							Input.parse_input_event(ev)
+							await get_tree().process_frame
+					elif not _args.has("noclick"):
+						map.camera.clicked.emit(Vector2(h.x, h.y))
+					if _args.has("nofollow"):
+						map_ui.follow = false
+					break
+			var t0 := Time.get_ticks_msec()
+			for i in 120:
+				await get_tree().process_frame
+			print("120 frames in %d ms, card %s, follow %s" % [Time.get_ticks_msec() - t0, map_ui._card.visible, map_ui.follow])
+			print(Perf.report(120))
 		if _args.has("click"):   # test: a click on the map
 			var c: PackedStringArray = String(_args.click).split(",")
 			map.camera.clicked.emit(Vector2(float(c[0]), float(c[1])))

@@ -90,7 +90,7 @@ func _circle(x: float, z: float, r: float, n: int) -> PackedVector2Array:
 
 func _badge(c: Vector2, icon: String, col: Color) -> void:
 	var R := 10 * dpr
-	draw_circle(c, R, Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .9))
+	draw_circle(c, R, Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .9), true, -1.0, true)
 	draw_arc(c, R, 0, TAU, 28, col, 1.4 * dpr, true)
 	Icons.draw(self, icon, c.x - R * .62, c.y, R * 1.24, col)
 
@@ -222,8 +222,8 @@ func _anim_base(n: Node2D) -> void:
 			var pl: bool = J.t0 > T_
 			var col := _c("150,160,172") if pl else (_c("240,68,60") if J.sev > 1 else _c("255,138,42"))
 			var f: float = .3 if pl else .5 + .5 * sin(t * 4 + J.id)
-			n.draw_circle(q, r * (1.9 + .4 * f), Color(col, .18 + .14 * f))
-			n.draw_circle(q, r, col)
+			n.draw_circle(q, r * (1.9 + .4 * f), Color(col, .18 + .14 * f), true, -1.0, true)
+			n.draw_circle(q, r, col, true, -1.0, true)
 			n.draw_arc(q, r, 0, TAU, 20, Color("#0b1520"), 1.2 * dpr, true)
 			_hits_anim.append({"x": q.x, "y": q.y, "r": r / dpr + 5, "kind": "jam", "data": J})
 	hits = _hits_static + _hits_anim
@@ -319,7 +319,7 @@ func _draw_top() -> void:
 		var R := 8.5 * dpr
 		for i in ks.size():
 			var q := Vector2(q0.x + (i - (ks.size() - 1) / 2.0) * (R * 2 + 3 * dpr), q0.y - R - 9 * dpr)
-			draw_circle(q, R, Color("#f0443c"))
+			draw_circle(q, R, Color("#f0443c"), true, -1.0, true)
 			draw_arc(q, R, 0, TAU, 24, Color("#0b1520"), 1.4 * dpr, true)
 			Icons.draw(self, ks[i][0], q.x - R * .6, q.y, R * 1.2, Color.WHITE)
 			hits.append({"x": q.x, "y": q.y, "r": R / dpr + 3, "kind": "port", "data": {"place": p, "what": ks[i][0], "why": ks[i][1]}})

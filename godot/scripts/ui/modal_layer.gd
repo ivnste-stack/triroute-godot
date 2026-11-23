@@ -84,8 +84,8 @@ func _build(spec: Dictionary) -> Control:
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var head := Ui.hbox(14, [mic, tt])
 	if spec.get("close", false):
-		var x := Ui.btn("", "", "close", func(): _next())
-		x.flat = true
+		var x := Ui.xbtn(func(): _next())
+		x.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		head.add_child(x)
 	var hp := PanelContainer.new()
 	hp.add_theme_stylebox_override("panel", Ui.box(Color.TRANSPARENT, Color.TRANSPARENT, 0, Vector4(18, 16, 18, 16)))

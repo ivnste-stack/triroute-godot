@@ -455,11 +455,20 @@ func _on_click(mp: Vector2) -> void:
 		course.click(mp)
 		return
 	# a vehicle
+	# where the vehicles are now, not where they were drawn the frame before: at a high speed a moving
+	# one is a few pixels further on and the click would miss it
 	var jh: Variant = null
-	var bd := 14.0
+	var bd := 16.0
+	var T := sim.co_now()
 	for h in map.vehicles.hits:
 		if h.has("j"):
-			var d := Vector2(h.x, h.y).distance_to(mp)
+			var j: Dictionary = h.j
+			var e: float = T - j.t0
+			var st := sim.co_job_state(j, minf(e, j.tl + j.hs + j.tm * .5) if j.get("hold", 0) > 0 else e)
+			var pos := sim.co_pos_at(j, st.s)
+			var w := Vector3(pos[0], sim.co_alt(j, st), pos[1])
+			var sp := Vector2(h.x, h.y) if map.camera.is_position_behind(w) else map.camera.unproject_position(w)
+			var d := minf(sp.distance_to(mp), Vector2(h.x, h.y).distance_to(mp))
 			if d < bd:
 				bd = d
 				jh = h
@@ -585,8 +594,8 @@ func _mv_draw() -> void:
 		var col := Color8(92, 200, 242) if ok else Color8(150, 160, 172)
 		if ok:
 			n.draw_arc(q, 10 + f * 22, 0, TAU, 40, Color(col, 1 - f), 2, true)
-		n.draw_circle(q, 8.75, Color("#0b1520"))
-		n.draw_circle(q, 8, col)
+		n.draw_circle(q, 8.75, Color("#0b1520"), true, -1.0, true)
+		n.draw_circle(q, 8, col, true, -1.0, true)
 		Icons.draw(n, "updown", q.x - 5, q.y, 10, Color("#0b1520"))
 		var txt: String = p.name if ok else "%s · %s" % [p.name, t.why]
 		var tw := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 12
@@ -597,8 +606,8 @@ func _mv_draw() -> void:
 	var vp: Dictionary = sim.PL[sim.mv_from(mv_v)]
 	var s: Variant = _screen(vp.x, vp.z)
 	if s != null:
-		n.draw_circle(s, 5.75, Color("#0b1520"))
-		n.draw_circle(s, 5, Color("#ffb347"))
+		n.draw_circle(s, 5.75, Color("#0b1520"), true, -1.0, true)
+		n.draw_circle(s, 5, Color("#ffb347"), true, -1.0, true)
 
 
 # ====================================================================== the trip card

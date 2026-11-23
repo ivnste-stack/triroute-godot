@@ -11,6 +11,20 @@ const BG := preload("res://assets/img/menu_bg.webp")
 const LOGO := preload("res://assets/img/logo.webp")
 
 
+var _load_btn: Button
+var _load_box: Control
+
+
+## #sLoad: no saves, nothing to load (checked each time the menu shows)
+func _refresh_load() -> void:
+	if _load_btn == null or not visible:
+		return
+	var has := SaveSystem.any()
+	_load_btn.disabled = not has
+	_load_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if has else Control.CURSOR_ARROW
+	_load_box.modulate.a = 1.0 if has else .45
+
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = Ui.theme()
@@ -63,9 +77,8 @@ func _ready() -> void:
 		bt.custom_minimum_size.y = 46
 		bt.add_theme_font_override("font", Ui.font("body", 600))
 		bt.add_theme_font_size_override("font_size", 14)
-		if not b[2].is_valid():
-			bt.disabled = true
-			bt.tooltip_text = "Збереження з'являться в наступних частинах переносу"
+		if b[0] == "Завантажити гру":
+			_load_btn = bt
 		if b[1] == "":
 			# .snav: glass under a transparent button
 			var g := Ui.glass(Ui.GLASS, Ui.LINE_HI)
@@ -74,5 +87,9 @@ func _ready() -> void:
 			bt.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT, Ui.BAD if b[0] == "Вихід" else Ui.ACCENT))
 			g.add_child(bt)
 			col.add_child(g)
+			if bt == _load_btn:
+				_load_box = g
 		else:
 			col.add_child(bt)
+	visibility_changed.connect(_refresh_load)
+	_refresh_load()

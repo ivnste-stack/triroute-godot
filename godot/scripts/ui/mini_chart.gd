@@ -85,8 +85,8 @@ func _draw() -> void:
 	var e := _hi if _hi >= 0 else data.size() - 1
 	if _hi >= 0:
 		draw_line(Vector2(pts[e].x, Tp), Vector2(pts[e].x, h - B), Color(231 / 255.0, 238 / 255.0, 244 / 255.0, .35), 1)
-	draw_circle(pts[e], 5.5, Color("#0b1119"))
-	draw_circle(pts[e], 4.5, col)
+	draw_circle(pts[e], 5.5, Color("#0b1119"), true, -1.0, true)
+	draw_circle(pts[e], 4.5, col, true, -1.0, true)
 	if _hi >= 0:
 		var t := Ui.usd(data[_hi])
 		var fs := Ui.font("body", 500)

@@ -129,7 +129,7 @@ static func paint_grade(c: CanvasItem, g: int, sz: float, at: Vector2 = Vector2.
 	var chev := func(y: float) -> void:
 		c.draw_polyline(PackedVector2Array([P.call(10, y), P.call(16, y - 3.4), P.call(22, y)]), col, 2.2 * k, true)
 	if g == 0:
-		c.draw_circle(P.call(16, 15.5), 2.6 * k, col)
+		c.draw_circle(P.call(16, 15.5), 2.6 * k, col, true, -1.0, true)
 	elif g < 4:
 		for i in g:
 			chev.call(20 - i * 4.4)

@@ -237,7 +237,7 @@ func _draw_t() -> void:
 			for w in (2 if amb else 1):
 				var f := fmod(t / .9 + w * .5, 1.0)
 				draw_arc(sp, r + 2 * dpr + f * 14 * dpr, 0, TAU, 32, Color(wc, .9 * (1 - f) * gv), 1.8 * dpr, true)
-		draw_circle(sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv))
+		draw_circle(sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv), true, -1.0, true)
 		_dot(sp, r, Color(rgb, ((.35 + .65 * bl) if red and inc != null else 1.0) * gv), Color(Color("#06121b"), gv), 1.4 * dpr)
 		if inc != null and red and camera.dist < 16:
 			_text("!", Vector2(sp.x - 2.5 * dpr, sp.y), int(round(9 * dpr)), Color(Color("#06121b"), gv))
@@ -257,7 +257,7 @@ func _trail(from: Vector2, tr: Array, col: Color) -> void:
 
 
 func _dot(c: Vector2, r: float, fill: Color, stroke: Color, w: float) -> void:
-	draw_circle(c, r, fill)
+	draw_circle(c, r, fill, true, -1.0, true)
 	draw_arc(c, r, 0, TAU, 24, stroke, w, true)
 
 
@@ -315,7 +315,7 @@ func _route(j: Dictionary, T0: float) -> void:
 	if pts.size():
 		var e: Variant = _P(pts.back().x, pts.back().y, pts.back().z)
 		if e != null:
-			draw_circle(e, 4 * dpr, Color(rgb, .25))
+			draw_circle(e, 4 * dpr, Color(rgb, .25), true, -1.0, true)
 			draw_arc(e, 4 * dpr, 0, TAU, 24, rgb, 2 * dpr, true)
 
 

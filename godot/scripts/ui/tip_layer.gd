@@ -13,6 +13,7 @@ const PAD := Vector4(12, 10, 12, 10)
 var _target: Control = null
 var _text := ""
 var _card: PanelContainer = null
+var _settle := 0
 
 
 func _ready() -> void:
@@ -35,6 +36,11 @@ func _process(_delta: float) -> void:
 		_text = txt
 		_rebuild()
 	if _card != null:
+		if _settle > 0:
+			_settle -= 1
+			_card.reset_size()
+			if _settle == 0:
+				_card.modulate.a = 1
 		_place()
 
 
@@ -83,6 +89,10 @@ func _rebuild() -> void:
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(g)
 	_card = g
+	# wrapped text knows its height only after a layout pass: the card shows once its size has settled,
+	# not stretched down the screen for a frame
+	g.modulate.a = 0
+	_settle = 2
 	g.reset_size()
 	_place()
 

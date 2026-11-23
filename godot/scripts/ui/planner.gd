@@ -706,8 +706,8 @@ func _wave(n: Control, p: Dictionary, col: Color) -> void:
 	for w in 3:
 		var f := fmod(t + w / 3.0, 1.0)
 		n.draw_arc(q, 6 + f * 26, 0, TAU, 40, Color(col, .95 * (1 - f)), 2.4 * (1 - f * .5), true)
-	n.draw_circle(q, 6.1, Color("#06121b"))
-	n.draw_circle(q, 4.5, col)
+	n.draw_circle(q, 6.1, Color("#06121b"), true, -1.0, true)
+	n.draw_circle(q, 4.5, col, true, -1.0, true)
 
 
 ## lpDraw: the legs in the colour of their transport, the preview to the point under the pointer, the points,
@@ -742,13 +742,13 @@ func _draw_route() -> void:
 				map.vehicles._wdash_on(n, pts, Color(LP_C[m], .85), 2.4)
 				var e: Variant = _scr(pts.back().x, pts.back().y, pts.back().z)
 				if e != null:
-					n.draw_circle(e, 4, Color(LP_C[m], .25))
+					n.draw_circle(e, 4, Color(LP_C[m], .25), true, -1.0, true)
 					n.draw_arc(e, 4, 0, TAU, 24, Color(LP_C[m], .85), 2, true)
 			if Sim.lp_is_w(t):
 				var q: Variant = _scr(t.x, 0, t.z)
 				if q != null:
-					n.draw_circle(q, 6.25, LP_C[m])
-					n.draw_circle(q, 3.75, Color.WHITE)
+					n.draw_circle(q, 6.25, LP_C[m], true, -1.0, true)
+					n.draw_circle(q, 3.75, Color.WHITE, true, -1.0, true)
 					var s := sim.lp_name(t)
 					var f := Ui.font("body", 600)
 					var w := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
@@ -761,13 +761,13 @@ func _draw_route() -> void:
 		if q == null:
 			continue
 		if Sim.lp_is_w(pid):
-			n.draw_circle(q, 5.25, LP_C[LP.modes[i - 1]])
-			n.draw_circle(q, 2.75, Color.WHITE)
+			n.draw_circle(q, 5.25, LP_C[LP.modes[i - 1]], true, -1.0, true)
+			n.draw_circle(q, 2.75, Color.WHITE, true, -1.0, true)
 			continue
 		if i == 0:
 			continue
-		n.draw_circle(q, 6.5, Color("#06121b"))
-		n.draw_circle(q, 5.5, LP_C[LP.modes[i - 1]])
+		n.draw_circle(q, 6.5, Color("#06121b"), true, -1.0, true)
+		n.draw_circle(q, 5.5, LP_C[LP.modes[i - 1]], true, -1.0, true)
 	var k: Dictionary = LP.k
 	if k.get("cons"):
 		for o in k.cons:
@@ -807,7 +807,7 @@ func draw_tags(n: CanvasItem, tags: Array) -> void:
 		placed.append([bx, by, bx + w, by + h])
 		var col: Color = t.col
 		n.draw_line(Vector2(q.x, by + h), Vector2(q.x, q.y - 9), Color(col, .9), 1.6, true)
-		n.draw_circle(q, 9, Color(col, .22))
+		n.draw_circle(q, 9, Color(col, .22), true, -1.0, true)
 		n.draw_arc(q, 9, 0, TAU, 32, Color(col, .9), 2.4, true)
 		for k in 3:
 			n.draw_rect(Rect2(bx, by + 6, w, h).grow(3 + k * 4), Color(0, 0, 0, .1))

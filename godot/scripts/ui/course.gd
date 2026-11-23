@@ -307,7 +307,7 @@ func _draw_course() -> void:
 		var r: float = c.distance_to(e)
 		var red: bool = z.k != "wx"
 		var col := Color8(240, 98, 95) if red else Color8(110, 170, 255)
-		n.draw_circle(c, r, Color(col, .16))
+		n.draw_circle(c, r, Color(col, .16), true, -1.0, true)
 		n.draw_arc(c, r, 0, TAU, 64, Color(col, .8), 1.5, true)
 	var C := _c()
 	_line(n, C.N.rem, Color(220 / 255.0, 230 / 255.0, 240 / 255.0, .6), 2, true)
@@ -326,17 +326,17 @@ func _draw_course() -> void:
 		if _hq != null:
 			var s: Variant = planner._scr(_hq.x, 0, _hq.z)
 			if s != null:
-				n.draw_circle(s, 5.75, Planner.LP_C[m])
-				n.draw_circle(s, 3.25, Color.WHITE)
+				n.draw_circle(s, 5.75, Planner.LP_C[m], true, -1.0, true)
+				n.draw_circle(s, 3.25, Color.WHITE, true, -1.0, true)
 	for q in pts:
 		var s: Variant = planner._scr(q.x, 0, q.z)
 		if s != null:
-			n.draw_circle(s, 6.5, Color("#06121b"))
-			n.draw_circle(s, 5.5, Planner.LP_C[m])
+			n.draw_circle(s, 6.5, Color("#06121b"), true, -1.0, true)
+			n.draw_circle(s, 5.5, Planner.LP_C[m], true, -1.0, true)
 	var s0: Variant = planner._scr(C.N.pos[0], 0, C.N.pos[1])
 	if s0 != null:
-		n.draw_circle(s0, 8.5, Planner.LP_C[m])
-		n.draw_circle(s0, 5.5, Color.WHITE)
+		n.draw_circle(s0, 8.5, Planner.LP_C[m], true, -1.0, true)
+		n.draw_circle(s0, 5.5, Color.WHITE, true, -1.0, true)
 	# departure and arrival: blinking waves, as in the planner
 	planner._wave(n, sim.PL[j.k.from], Planner.DEP)
 	planner._wave(n, sim.PL[j.k.to], Planner.ARR)
