@@ -1,7 +1,7 @@
 // Reference run of the company simulation, day by day, for the Godot port (godot/tests/test_sim.gd).
 //   node legacy/tests/simref.js <outFile> [days] [seed…]     (run legacy/build.sh first)
 // Deterministic: the game's RNG is seeded by the world seed, Math.random (road closures, pirate zones) too;
-// the postal service is switched off (not ported yet); in "fleet" the first tender offer is taken; decisions in dialogs take
+// the postal service is switched off (not ported yet); city deliveries are gone (coLocal keeps upkeep and morale); in "fleet" the first tender offer is taken; decisions in dialogs take
 // the first choice; Math.pow is replaced by the correctly rounded one of crmath.js
 // (the Godot version uses the same, see native/src/core/crmath.h). Time stands still (speed 0) and every
 // day runs 8 frames (G.pfr = 0, 1/8 … 7/8; coFrame) and then dayTick().
@@ -28,6 +28,10 @@ await p.evaluate(s=>{Math.pow=CRMATH.pow;SET.res=600;SEED=s;SET.roadGab=false;
   guard=function(n,f){f()}; /* errors must stop the run, not be swallowed */
   window.__inc=[incFrame,coJobsDay];incFrame=()=>{};coJobsDay=()=>{}; /* switched back on when the run starts */
   poDay=()=>{};poMonth=()=>{};
+  /* the game has no city deliveries any more (removed in the Godot version): the day of the company keeps only
+     the upkeep and the morale (no local market, revenue, couriers' wear, service rating or city accidents) */
+  coLocal=function(){let up=0;for(const v of CO.veh){up+=VT[v.t].up*[.8,1,1.35][CO.maint]}CO.cash-=up;CO.m.upkeep+=up;
+    const mt=clamp(52+(CO.wageLv-1)*130+msk("hro")*16-(CO.cash<0?12:0)+(CO.founder?6:0),5,98);CO.morale+=(mt-CO.morale)*.04};
   /* decisions are taken at once: the first choice (the Godot test does the same, Sim.auto_choice = 0) */
   coModal=function(s){CO.mcd=G.day+rint(9,18);s.choices[Math.min(window.__choice||0,s.choices.length-1)].f()};
   const _sh=coSetHQ;coSetHQ=function(){const r=_sh.apply(this,arguments);setSpeed(0);return r}},seed);

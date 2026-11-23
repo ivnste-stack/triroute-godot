@@ -13,7 +13,7 @@ const RAIL := [["coHome", "briefcase", "Компанія", "Огляд, рейт
 	["coJobs", "box", "Біржа вантажів", "Замовлення від підприємств, прокладання маршрутів, автодиспетчеризація, тендери."],
 	["coTrips", "road", "Рейси в дорозі", "Техніка в рейсах, ділянки маршрутів, повернення в хаби, останні доставки."],
 	["coFleet", "truck", "Автопарк", "Купівля, продаж і ремонт техніки."],
-	["coNet", "globe", "Мережа хабів", "Хаби в містах, місцевий ринок доставок, реклама, склади."],
+	["coNet", "globe", "Мережа хабів", "Хаби в містах, їхні рівні, де відкрити наступний."],
 	["coStaff", "users", "Персонал і менеджмент", "Найм, зарплати, моральний дух, менеджери."],
 	["coFin", "coins", "Фінанси", "Прибутки й витрати, кредити, страхування, рейтинг компаній світу."],
 	["|"],
@@ -89,7 +89,7 @@ func _build_top() -> void:
 	_kpis = Ui.hbox(0)
 	kp.add_child(_kpis)
 	top.add_child(kp)
-	for k in ["Гроші", "Прибуток / міс", "Рейтинг", "Доставки / день", "Техніка", "Персонал", "Ліцензія"]:
+	for k in ["Гроші", "Прибуток / міс", "Рейтинг", "Доставлено", "Техніка", "Персонал", "Ліцензія"]:
 		var cell := PanelContainer.new()
 		cell.add_theme_stylebox_override("panel", _cell_box(k != "Ліцензія"))
 		cell.custom_minimum_size.x = 84
@@ -439,7 +439,7 @@ func _process_t(delta: float) -> void:
 	_put(_kpi_vals[0], [[Ui.usd(CO.cash)], ["▲" if CO.cash >= 0 else "▼", Ui.GOOD if CO.cash >= 0 else Ui.BAD, 11]])
 	_put(_kpi_vals[1], [[Ui.usd(pr, true) if lm != null else "—", (Ui.GOOD if pr >= 0 else Ui.BAD) if lm != null else Ui.FG]])
 	_put(_kpi_vals[2], [["%.2f ★" % CO.rating]])
-	_put(_kpi_vals[3], [[Ui.grp(CO.dayLocal)]])
+	_put(_kpi_vals[3], [[Ui.grp(CO.get("cdel", 0))]])
 	_put(_kpi_vals[4], [[str(CO.veh.size())], ["%d у рейсі" % busy, Ui.MUTED, 11]])
 	_put(_kpi_vals[5], [[str(staff)]])
 	_put(_kpi_vals[6], [["%d/%d" % [CO.tier, GameData.LIC.size() - 1]]])

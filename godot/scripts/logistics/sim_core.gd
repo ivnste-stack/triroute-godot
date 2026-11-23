@@ -1974,98 +1974,19 @@ func co_frame(fr: float) -> void:
 		co_returns()
 
 
-# ---------- the city: local deliveries, upkeep, rating, morale (coLocal) ----------
+# ---------- the day of the company: upkeep and morale (coLocal without the city deliveries: the game has
+# no local delivery market any more, no city revenue, no couriers) ----------
 func co_local() -> void:
-	var free := co_crew_free()
-	var drv: float = free.driver
-	var rev := 0.0
-	var tot := 0.0
-	var strike: bool = CO.strike > day
-	for h in CO.hubs:
-		var p: Dictionary = PL[h.pid]
-		var c: Dictionary = states[p.cid]
-		var mk := JS.log10(1 + h.get("mk", 0) / 400.0) * .05
-		var target := JS.clamp_js(.035 + (CO.rating - 3) * .035 + h.lvl * .015 + msk("cco") * .03 + mk, .01, .5)
-		h.share += (target - h.share) * .015
-		var market: float = (p.pop * 1000 + 400) * (.45 + c.dev)
-		var w: float = market * h.share
-		var cap := 0.0
-		var n := 0
-		h.ids = []
-		for v in CO.veh:
-			if v.loc != p.id or v.st != "idle":
-				continue
-			var T: Dictionary = D.VT[v.t]
-			if not T.get("loc", 0):
-				continue
-			var crew: int = T.get("crew", 1)
-			if drv < crew:
-				continue
-			drv -= crew
-			v.today = JS.round_js(T.loc * sqrt(R.next()) * (1.0 if v.cond > 35 else .6))
-			cap += v.today
-			n += 1
-			h.ids.append(v.id)
-		var cm: float = (.72 + CO.morale / 220) * (1 + msk("coo") * .08) * (.1 if strike else 1.0)
-		cap *= cm
-		var served := minf(w, cap)
-		var fr_ := served / cap if cap > 0 else 0.0
-		for id in h.ids:
-			for v in CO.veh:
-				if v.id == id:
-					v.done = JS.round_js(v.today * cm * fr_)
-					break
-		h.want = w
-		h.cap = cap
-		h.served = served
-		h.nloc = n
-		var price := 4.2 * price_k(p.cid) * (1 + msk("cco") * .06)
-		rev += served * price
-		tot += served
-		h.earn = h.get("earn", 0) + served * price
-	CO.cash += rev
-	CO.m.local += rev
-	CO.deliv += tot
-	CO.dayLocal = tot
 	# wear & upkeep
 	var up := 0.0
 	for v in CO.veh:
 		var T: Dictionary = D.VT[v.t]
 		up += T.up * [.8, 1.0, 1.35][CO.maint]
-		if T.get("loc", 0) and v.st == "idle":
-			v.cond = maxf(0, v.cond - .035 * [1.5, 1.0, .6][CO.maint])
 	CO.cash -= up
 	CO.m.upkeep += up
-	# service quality → rating
-	if tot > 0:
-		var avg_c := 100.0
-		if CO.veh.size():
-			avg_c = 0.0
-			for v in CO.veh:
-				avg_c += v.cond
-			avg_c /= CO.veh.size()
-		var s := JS.clamp_js(2.7 + 1.4 * CO.morale / 100 + msk("coo") * .6 + (avg_c - 80) / 80 + (-1.5 if strike else 0.0), 1, 5)
-		var w := minf(.012, tot * .00015)
-		CO.rating = JS.clamp_js(CO.rating + (s - CO.rating) * w, 1, 5)
 	# morale
-	var over_n := 0
-	for h in CO.hubs:
-		if h.want > h.cap * 1.6:
-			over_n += 1
-	var mt := JS.clamp_js(52 + (CO.wageLv - 1) * 130 + msk("hro") * 16 - over_n * 3 - (12 if CO.cash < 0 else 0) + (6 if CO.founder else 0), 5, 98)
+	var mt := JS.clamp_js(52 + (CO.wageLv - 1) * 130 + msk("hro") * 16 - (12 if CO.cash < 0 else 0) + (6 if CO.founder else 0), 5, 98)
 	CO.morale += (mt - CO.morale) * .04
-	# local accidents
-	for v in CO.veh:
-		var T: Dictionary = D.VT[v.t]
-		if not T.get("loc", 0) or v.loc == null or v.st != "idle":
-			continue
-		if chance(dfk() * .0009 * (1 - .45 * msk("coo")) * (1.35 - CO.morale / 100) * (1.2 - v.cond / 250)):
-			var cost := JS.round_js(rnd(800, 4500) * price_k(PL[v.loc].cid))
-			CO.cash -= cost
-			CO.m.claims += cost
-			v.cond = maxf(0, v.cond - rnd(15, 40))
-			CO.rating = JS.clamp_js(CO.rating - .01, 1, 5)
-			co_news("bad", "alert", "%s %s потрапив у ДТП у місті %s" % [T.n, CO.name, PL[v.loc].name])
 
 
 # ---------- the order board (coBoardDay) ----------
@@ -2240,7 +2161,6 @@ func co_month() -> void:
 		mgmt += CO.mgr[id].sal
 	for h in CO.hubs:
 		rent += hub_rent_m(h)
-		mk += h.get("mk", 0)
 	if CO.ins:
 		var vc := 0.0
 		for v in CO.veh:

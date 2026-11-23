@@ -396,7 +396,6 @@ func month_plan() -> Dictionary:
 	var mk := 0.0
 	for h in CO.hubs:
 		rent += sim.hub_rent_m(h)
-		mk += h.get("mk", 0)
 	var ins := 0.0
 	if CO.ins:
 		var c := 0.0
@@ -1139,8 +1138,6 @@ func _fleet(body: VBoxContainer) -> void:
 			sub += " · до %s т" % Ui.loc(T.cap)
 		if T.get("vol"):
 			sub += " · %s м³" % Ui.grp(T.vol)
-		if T.get("loc"):
-			sub += " · доставка по місту"
 		var price := Ui.num(Ui.usd(T.cost), 14)
 		price.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		var c := Ui.vbox(6, [Ui.hbox(10, [_tt(T.n, sub, T.ic), price]),
@@ -1184,13 +1181,12 @@ func _upg_sect(body: VBoxContainer, ff: String) -> void:
 # ====================================================================== coNet
 func _net(body: VBoxContainer) -> void:
 	var CO := sim.CO
-	body.add_child(Ui.hint("Хаб — база вашої техніки в місті: звідси машини виїздять на рейси й сюди повертаються. Він дає [b]місцевий ринок доставок[/b], а підприємства навколо частіше дають [b]замовлення[/b]. Рівні: 1, 2, 3, а хаб 3 рівня можна перетворити на [b]Логістичний хаб[/b]. Щоб відкрити хаб, клацніть на країну на мапі або оберіть місто зі списку нижче.", "bulb"))
+	body.add_child(Ui.hint("Хаб — база вашої техніки в місті: звідси машини виїздять на рейси й сюди повертаються. Підприємства навколо хаба дають [b]замовлення[/b] на біржу. Рівні: 1, 2, 3, а хаб 3 рівня можна перетворити на [b]Логістичний хаб[/b]. Щоб відкрити хаб, клацніть на країну на мапі або оберіть місто зі списку нижче.", "bulb"))
 	body.add_child(_sect("Ваші хаби"))
 	var list := Ui.vbox(8)
 	for h in CO.hubs:
 		var p: Dictionary = sim.PL[h.pid]
 		var pid: int = p.id
-		var q: float = minf(1, h.get("cap", 0) / h.want) if h.get("want", 0) > 0 else 1.0
 		var lvl: int = h.lvl
 		var infra := []
 		if p.get("air"):
@@ -1210,15 +1206,11 @@ func _net(body: VBoxContainer) -> void:
 		var acts := _right([])
 		if lvl < 4:
 			var up: float = sim.hub_cost(p) * D.HUB_UP[lvl]
-			var tip := _tip(D.HUB_LV[lvl + 1], "Техніки в хабі: %d → %d. Робочих місць: +%d. Завантаження й розвантаження %d%% швидше. Замовлень від підприємств поблизу ×%s. Більша частка міського ринку і +1 місце на біржі. Оренда %s/міс." % [
+			var tip := _tip(D.HUB_LV[lvl + 1], "Техніки в хабі: %d → %d. Робочих місць: +%d. Завантаження й розвантаження %d%% швидше. Замовлень від підприємств поблизу ×%s. +1 місце на біржі. Оренда %s/міс." % [
 				D.HUB_VEH[lvl], D.HUB_VEH[lvl + 1], D.HUB_STAFF[lvl + 1] - D.HUB_STAFF[lvl], int(JS.round_js((1 - D.HUB_HAND[lvl + 1]) * 100)), str(D.HUB_ORD[lvl + 1]), Ui.usd(D.HUB_RENT[lvl + 1] * sim.price_k(p.cid))])
 			acts.add_child(_btn("%s · %s" % [D.HUB_LV[lvl + 1], Ui.usd(up)], "sm", "up", func(): _do(sim.act_hub_up(pid)), true, tip))
 		if pid != CO.hq:
 			acts.add_child(_btn("", "sm", "trash", func(): _do(sim.act_hub_close(pid)), true, "Закрити хаб"))
-		var stats := _grid(3, [
-			_stat("Попит", "%d/день" % int(JS.round_js(h.get("want", 0))), "частка ринку %.1f%%" % (h.get("share", 0) * 100), _tip("Попит на ваші доставки", "Залежить від населення, багатства міста, вашого рейтингу, реклами і рівня хабу.")),
-			_stat("Потужність", "%d/день" % int(JS.round_js(h.get("cap", 0))), "%d од. техніки" % h.get("nloc", 0), _tip("Потужність", "Скільки посилок встигають розвезти фургони й вантажні машини, що стоять у хабі цього міста."), "warn" if q < .6 else ""),
-			_stat("Розвезено", "%d/день" % int(JS.round_js(h.get("served", 0))), Ui.usd(h.get("served", 0) * 4.2 * sim.price_k(p.cid)) + "/день")])
 		var nveh := sim.hub_veh_n(pid)
 		var facts := HFlowContainer.new()
 		facts.add_theme_constant_override("h_separation", 14)
@@ -1227,14 +1219,7 @@ func _net(body: VBoxContainer) -> void:
 		facts.add_child(_icl("users", "Робочих місць %d" % D.HUB_STAFF[lvl]))
 		facts.add_child(_icl("box", "Завантаження " + (("−%d%%" % int(JS.round_js((1 - D.HUB_HAND[lvl]) * 100))) if lvl > 1 else "звичайне")))
 		facts.add_child(_icl("doc", "Замовлень ×%s" % str(D.HUB_ORD[lvl])))
-		var mk_opts := []
-		for x in [0, 500, 2000, 8000, 30000]:
-			mk_opts.append([x, (Ui.usd(x) + "/міс") if x else "Без реклами", "spark"])
-		var mk := _dd(mk_opts, int(h.get("mk", 0)), func(x):
-			sim.act_mk(pid, x)
-			_do({}))
-		var mkr := Ui.hbox(8, [_note("Реклама в місті"), mk])
-		list.add_child(_blk(Ui.vbox(10, [Ui.hbox(10, [hi, info, acts]), stats, facts, mkr])))
+		list.add_child(_blk(Ui.vbox(10, [Ui.hbox(10, [hi, info, acts]), facts])))
 	body.add_child(list)
 	body.add_child(_sect("Де відкрити наступний хаб"))
 	if CO.tier < 1:
@@ -1392,7 +1377,7 @@ func _fin(body: VBoxContainer) -> void:
 	var PLN := month_plan()
 	var rows := [["Доставки по країні", "local", 1], ["Офіс, бухгалтерія, диспетчери", "office", -1], ["Міжнародні перевезення", "contract", 1], ["Тендери", "tender", 1],
 		["Зарплати і найм", "wage", -1], ["Менеджмент", "mgmt", -1], ["Пальне", "fuel", -1], ["Утримання і ремонт", "upkeep", -1], ["Оренда хабів", "rent", -1],
-		["Податок за чужі хаби", "hubtax", -1], ["Реклама", "mk", -1], ["Страхування", "ins", -1], ["Відсотки", "interest", -1], ["Претензії й збитки", "claims", -1],
+		["Податок за чужі хаби", "hubtax", -1], ["Страхування", "ins", -1], ["Відсотки", "interest", -1], ["Претензії й збитки", "claims", -1],
 		["Інше (штрафи, втрати)", "other", -1]]
 	var debt := sim.loans_left()
 	var lim := sim.co_credit()

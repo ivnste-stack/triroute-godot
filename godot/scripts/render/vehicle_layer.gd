@@ -19,7 +19,6 @@ var session: GameSession
 var selected: Variant = null      # the selected trip (CO_SEL)
 var dpr := 1.0
 var hits: Array = []              # {j | ids, x, y, r}: what is under the pointer (CO_HITS / CO_CL)
-var _paths := {}                  # coCityPaths per place
 
 
 func _ready() -> void:
@@ -47,49 +46,6 @@ func _P(x: float, y: float, z: float) -> Variant:
 
 func _ms() -> float:
 	return Time.get_ticks_msec() / 1000.0
-
-
-# ---------- the streets couriers drive along in a hub city (coCityPaths, board version) ----------
-func _city_paths(p: Dictionary) -> Array:
-	if _paths.has(p.id):
-		return _paths[p.id]
-	var r := []
-	var R_: float = BRAD.get(p.type, .04) * .92
-	var rr := Mulberry.new(((p.id * 9973 + 7)) & 0xFFFFFFFF)
-	var push := func(pts: PackedVector2Array) -> void:
-		var c := PackedFloat32Array([0.0])
-		for i in range(1, pts.size()):
-			c.append(c[c.size() - 1] + pts[i].distance_to(pts[i - 1]))
-		r.append({"p": pts, "c": c, "L": c[c.size() - 1]})
-	var ring := PackedVector2Array()
-	for k in 33:
-		var a := k / 32.0 * 6.2832
-		ring.append(Vector2(p.x + cos(a) * R_ * .62, p.z + sin(a) * R_ * .62))
-	push.call(ring)
-	for k in 5:
-		var a := rr.next() * 3.1416
-		var o := (rr.next() - .5) * R_ * .8
-		var nx := -sin(a)
-		var nz := cos(a)
-		var h := sqrt(maxf(0, R_ * R_ - o * o))
-		var q := PackedVector2Array()
-		for t in 9:
-			var s := -h + 2 * h * t / 8.0
-			q.append(Vector2(p.x + cos(a) * s + nx * o, p.z + sin(a) * s + nz * o))
-		push.call(q)
-	_paths[p.id] = r
-	return r
-
-
-static func _at(pp: Dictionary, s: float) -> Vector2:
-	s = clampf(s, 0, pp.L)
-	var c: PackedFloat32Array = pp.c
-	var k := 1
-	while k < c.size() - 1 and c[k] < s:
-		k += 1
-	var d := c[k] - c[k - 1]
-	var t := (s - c[k - 1]) / (d if d else 1.0)
-	return pp.p[k - 1].lerp(pp.p[k], t)
 
 
 func _draw() -> void:

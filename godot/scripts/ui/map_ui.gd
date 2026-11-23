@@ -235,19 +235,9 @@ func _hover() -> void:
 	if (planner != null and planner.on) or (course != null and course.on) or mv_v != null:
 		_show_tip("", null, mp)
 		return
-	# vehicles grouped in a city
-	for h in map.vehicles.hits:
-		if h.has("ids") and Vector2(h.x, h.y).distance_to(mp) < h.r:
-			_show_tip("cl:%d:%d" % [h.pid, h.ids.size()], func(): return _couriers_tip(h.pid, h.ids, false), mp)
-			return
 	var pid := map.towns.place_at(mp)
 	if pid >= 0:
-		var hb: Variant = sim.hub_at(pid)
-		var vs: Array = sim.CO.veh.filter(func(v): return v.loc == pid and v.st == "idle" and D.VT[v.t].get("loc")) if hb != null else []
-		if vs.size():
-			_show_tip("hub:%d:%d" % [pid, vs.size()], func(): return _couriers_tip(pid, vs.map(func(v): return v.id), true), mp)
-		else:
-			_show_tip("pl:%d" % pid, func(): return _place_tip(sim.PL[pid]), mp)
+		_show_tip("pl:%d" % pid, func(): return _place_tip(sim.PL[pid]), mp)
 		return
 	var w: Variant = map.camera.pick_plane(mp)
 	if w != null:
@@ -347,24 +337,6 @@ func _vnm(v: Dictionary) -> String:
 
 
 ## the city couriers of a hub, or a group of vehicles on the streets
-func _couriers_tip(pid: int, ids: Array, at_hub: bool) -> Control:
-	var vs: Array = sim.CO.veh.filter(func(v): return ids.has(v.id))
-	var v := Ui.vbox(0)
-	var tot := 0
-	for x in vs:
-		tot += x.get("done", 0)
-	var t := ("Доставка по місту" if vs.size() == 1 else "×%d машин по місту" % vs.size()) if at_hub else ("×%d машин по місту" % vs.size() if vs.size() > 1 else "Доставка по місту")
-	v.add_child(_row_sp(W._b(t, 13), Ui.label(sim.PL[pid].name + (" · сьогодні %d пос." % tot if at_hub else ""), 12, Ui.FG2)))
-	var n := 14 if at_hub else 12
-	for x in vs.slice(0, n):
-		var T: Dictionary = D.VT[x.t]
-		var r := Ui.label("%s%s · стан %.0f%%" % [String(T.n).to_lower(), (" · %d пос. сьогодні" % x.get("done", 0)) if at_hub else "", x.cond], 12, Ui.FG2)
-		v.add_child(_sep_top(_row_sp(Ui.hbox(6, [Ui.icon(T.ic, 14), Ui.label(_vnm(x), 13)]), r), 5))
-	if vs.size() > n:
-		v.add_child(_sep_top(Ui.label("і ще %d…" % (vs.size() - n), 12, Ui.FG2), 5))
-	return v
-
-
 ## the hover text of a road closure, a closed border or checkpoint, a closed port or airport
 func _inc_tip(h: Dictionary) -> Control:
 	var v := Ui.vbox(4)
@@ -493,15 +465,6 @@ func _on_click(mp: Vector2) -> void:
 	if pid >= 0:
 		show_place(pid)
 		return
-	# a group of vehicles in a city: zoom in
-	for h in map.vehicles.hits:
-		if h.has("ids") and h.ids.size() >= 2 and Vector2(h.x, h.y).distance_to(mp) < h.r:
-			var q: Variant = map.camera.pick_plane(mp)
-			if q != null:
-				map.camera.ttx = q.x
-				map.camera.ttz = q.z
-				map.camera.tdist = maxf(2.2, map.camera.tdist * .55)
-			return
 	# the nearest settlement within 16 px
 	var best := -1
 	var bdd := 16.0
