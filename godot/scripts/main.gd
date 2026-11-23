@@ -28,6 +28,7 @@ var menu: StartMenu
 var _args := {}
 var _ng := {"size": "m", "diff": 1, "seed": 0}
 var _loading: Control
+var backdrop: MenuBackdrop
 var _checks: PanelContainer
 var _ui: CanvasLayer
 var _size_key := "m"
@@ -231,6 +232,10 @@ func _ready() -> void:
 	Dropdown.layer = ddl
 	_loading = _build_loading()
 	_ui.add_child(_loading)
+	backdrop = MenuBackdrop.new()
+	backdrop.visible = false
+	_ui.add_child(backdrop)
+	_ui.move_child(backdrop, 0)
 	perf_panel = PerfPanel.new()
 	_ui.add_child(perf_panel)
 	tips = TipLayer.new()
@@ -255,6 +260,12 @@ func _ready() -> void:
 		if _args.has("shot"):
 			for i in 12:
 				await get_tree().process_frame
+			if _args.has("wait"):
+				await get_tree().create_timer(float(_args.wait)).timeout
+			if _args.has("loadscr"):   # test: the loading screen, a moment into the generation
+				_create_world()
+				for i in int(_args.loadscr):
+					await get_tree().process_frame
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(_args.shot)
 			get_tree().quit()
@@ -270,6 +281,7 @@ func _show_menu() -> void:
 		menu.quit.connect(func(): get_tree().quit())
 		_ui.add_child(menu)
 		_ui.move_child(menu, 0)
+		_ui.move_child(backdrop, 0)
 	menu.visible = true
 	Music.menu()
 	hud.visible = false
@@ -327,28 +339,58 @@ func _game_menu() -> void:
 		{"t": "Вихід", "center": true, "f": func(): get_tree().quit()}]})
 
 
+## the stages the loading screen names while the world is made (the generation is one native call: the bar
+## eases towards its end and the stages follow it)
+const LOAD_STEPS := ["Ініціалізація генератора", "Генерація рельєфу й узбережжя", "Розподіл суші та моря", "Тріангуляція сітки клітинок",
+	"Векторизація кордонів держав", "Розрахунок висот і гірських хребтів", "Прокладання автомагістралей", "Трасування залізничної мережі",
+	"Розміщення портів і аеропортів", "Заснування міст і сіл", "Економіка держав і ресурси", "Побудова біржі вантажів",
+	"Запікання текстур мапи", "Компіляція шейдерів"]
+var _load_t := 0.0
+
+
+## the loading screen: the floating pictures of the menu behind (MenuBackdrop), a thin bar without a frame,
+## the stage of the generation under it
 func _build_loading() -> Control:
 	var c := CenterContainer.new()
 	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	c.visible = false
 	c.mouse_filter = Control.MOUSE_FILTER_STOP
-	var g := Ui.glass()
-	g.custom_minimum_size.x = 360
 	var bar := ProgressBar.new()
 	bar.show_percentage = false
-	bar.custom_minimum_size.y = 6
-	bar.add_theme_stylebox_override("background", Ui.box(Color(1, 1, 1, .07)))
+	bar.custom_minimum_size = Vector2(460, 4)
+	bar.max_value = 1.0
+	bar.step = 0.0
+	bar.add_theme_stylebox_override("background", Ui.box(Color(1, 1, 1, .1)))
 	bar.add_theme_stylebox_override("fill", Ui.box(Ui.ACCENT))
 	bar.name = "bar"
-	g.add_child(Ui.margin(Ui.vbox(12, [Ui.lbl("Генерація світу…"), bar]), 18))
-	c.add_child(g)
+	var title := Ui.lbl("Генерація світу")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var step := Ui.label("", 12, Ui.FG2, Ui.font("mono", 500))
+	step.name = "step"
+	var pct := Ui.label("", 12, Ui.MUTED, Ui.font("mono", 500))
+	pct.name = "pct"
+	var row := Ui.hbox(10, [step, Ui.spacer(), pct])
+	c.add_child(Ui.vbox(12, [title, bar, row]))
 	return c
+
+
+func _loading_step(delta: float) -> void:
+	_load_t += delta
+	# eases towards 96 % in about ten seconds; the world being ready hides the screen
+	var p := 0.96 * (1.0 - exp(-_load_t / 3.2))
+	var bar: ProgressBar = _loading.find_child("bar", true, false)
+	bar.value = p
+	var i := mini(int(p / 0.96 * LOAD_STEPS.size()), LOAD_STEPS.size() - 1)
+	var dots := ".".repeat(1 + int(_load_t * 3) % 3)
+	(_loading.find_child("step", true, false) as Label).text = LOAD_STEPS[i] + dots
+	(_loading.find_child("pct", true, false) as Label).text = "%d%%" % int(p * 100)
 
 
 func _create_world() -> void:
 	if menu != null:
 		menu.visible = false
 	_loading.visible = true
+	_load_t = 0.0
 	GameState.reset(_ng.seed)
 	_size_key = _args.get("size", _ng.size)
 	map.generate(_ng.seed, _size_key)
@@ -385,8 +427,9 @@ func _process(delta: float) -> void:
 func _process_t(delta: float) -> void:
 	_pace_frames()
 	if _loading.visible:
-		var bar: ProgressBar = _loading.find_child("bar", true, false)
-		bar.value = fmod(bar.value + delta * 40, 100)
+		_loading_step(delta)
+	if backdrop != null:
+		backdrop.visible = (menu != null and menu.visible) or _loading.visible
 	if session != null and session.sim != null:
 		# decisions of the game wait for the player
 		var sim := session.sim
