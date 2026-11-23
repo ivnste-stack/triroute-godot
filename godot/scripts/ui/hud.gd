@@ -537,10 +537,10 @@ func _ticker_back(c: Control, gap := true) -> void:
 	var end := _ticker_x + _ticker.get_combined_minimum_size().x
 	var edge := _ticker_clip.size.x - 14
 	if gap and _ticker.get_child_count() and end < edge:
-		var gap := Control.new()
-		gap.custom_minimum_size.x = edge - end
-		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_ticker.add_child(gap)   # no news: it leaves on the left and is gone
+		var spacer := Control.new()
+		spacer.custom_minimum_size.x = edge - end
+		spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_ticker.add_child(spacer)   # no news: it leaves on the left and is gone
 	_ticker.add_child(c)
 
 
