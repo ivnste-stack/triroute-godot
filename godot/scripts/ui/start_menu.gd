@@ -78,11 +78,11 @@ func _ready() -> void:
 		if not ResourceLoader.exists(path):
 			continue
 		var img: Image = (load(path) as Texture2D).get_image()
-		img.resize(img.get_width() / 6, img.get_height() / 6, Image.INTERPOLATE_LANCZOS)
+		img.resize(img.get_width() / 10, img.get_height() / 10, Image.INTERPOLATE_LANCZOS)
 		var bg := TextureRect.new()
 		bg.texture = ImageTexture.create_from_image(img)
 		bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		bg.self_modulate = Color(.9, .9, .9)
+		bg.self_modulate = Color(.7, .72, .76)   # darker than the game: the buttons stand out on the light land
 		bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
