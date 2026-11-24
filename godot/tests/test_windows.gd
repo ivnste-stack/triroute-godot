@@ -85,6 +85,7 @@ func test_consolidated_trip_from_the_board() -> String:
 	for p in Sim.D.PERM:
 		sim.CO.perm[p.id] = {"until": 1e9, "auto": false}
 	sim.CO.staff.driver += 4
+	sim.CO.tier = maxi(sim.CO.tier, 3)   # beyond the home market: a full board (market_k)
 	for vt in ["truck", "truck"]:
 		sim.CO.veh.append({"id": sim.CO.uid, "t": vt, "loc": sim.CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})
 		sim.CO.uid += 1
@@ -96,7 +97,11 @@ func test_consolidated_trip_from_the_board() -> String:
 	var w := Windows.new(sim)
 	var planned := []
 	w.plan_order.connect(func(k): planned.append(k))
-	var ks: Array = sim.CO.board.filter(func(k): return sim.cons_ok(k) and k.mode == "road" and sim.co_plan(k).ok and k.tons < 4)
+	# the two lightest road orders, together within one truck (20 t, 82 m³)
+	var ks: Array = sim.CO.board.filter(func(k): return sim.cons_ok(k) and k.mode == "road" and sim.co_plan(k).ok)
+	ks.sort_custom(func(a, b): return a.tons < b.tons)
+	if ks.size() >= 2 and (ks[0].tons + ks[1].tons > 20 or sim.k_vol(ks[0]) + sim.k_vol(ks[1]) > 82):
+		ks = []
 	if ks.size() < 2:
 		return "fewer than two road orders on the board: %s" % [sim.CO.board.map(func(k): return [k.mode, k.tons, sim.cons_ok(k), sim.co_plan(k).get("why", "ok")])]
 	w.cons_add(ks[0].id)

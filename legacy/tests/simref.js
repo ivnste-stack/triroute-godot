@@ -28,6 +28,9 @@ await p.evaluate(s=>{Math.pow=CRMATH.pow;SET.res=600;SEED=s;SET.roadGab=false;
   guard=function(n,f){f()}; /* errors must stop the run, not be swallowed */
   window.__inc=[incFrame,coJobsDay];incFrame=()=>{};coJobsDay=()=>{}; /* switched back on when the run starts */
   poDay=()=>{};poMonth=()=>{};
+  // the home market (market_k in sim_core.gd): while inside its own states the board holds fewer orders in a small state
+  coBoardMax=function(){if(CO.tier<1)return 0;const mx=8+CO.tier*2+Math.round(msk("cco")*4)+CO.hubs.reduce((a,h)=>a+h.lvl-1,0);if(CO.tier>=3)return mx;
+    const cids=new Set(CO.hubs.map(h=>PL[h.pid].cid));const n=PL.filter(p=>cids.has(p.cid)).length;return Math.max(3,Math.round(mx*Math.min(1.4,Math.max(.35,n/12))))};
   /* the game has no city deliveries any more (removed in the Godot version): the day of the company keeps only
      the upkeep and the morale (no local market, revenue, couriers' wear, service rating or city accidents) */
   coLocal=function(){let up=0;for(const v of CO.veh){up+=VT[v.t].up*[.8,1,1.35][CO.maint]}CO.cash-=up;CO.m.upkeep+=up;

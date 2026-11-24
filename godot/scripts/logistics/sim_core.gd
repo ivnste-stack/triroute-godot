@@ -178,7 +178,22 @@ func co_board_max() -> int:
 	var s := 0
 	for h in CO.hubs:
 		s += h.lvl - 1
-	return 8 + CO.tier * 2 + int(JS.round_js(msk("cco") * 4)) + s
+	var mx: int = 8 + CO.tier * 2 + int(JS.round_js(msk("cco") * 4)) + s
+	return maxi(3, int(JS.round_js(mx * market_k()))) if CO.tier < 3 else mx
+
+
+## the home market while the company works inside its own states (licences 1–2): the towns of the states
+## with its hubs against a dozen; a state of 3–4 towns gives about a third of the orders (no quick start by
+## shuttling short hops), a large one more than the base
+func market_k() -> float:
+	var cids := {}
+	for h in CO.hubs:
+		cids[PL[h.pid].cid] = true
+	var n := 0
+	for p in PL:
+		if cids.has(p.cid):
+			n += 1
+	return JS.clamp_js(n / 12.0, .35, 1.4)
 
 
 # ---------- routes (coRoute, cached) ----------

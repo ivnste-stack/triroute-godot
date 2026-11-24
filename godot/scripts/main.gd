@@ -519,6 +519,7 @@ func _process(delta: float) -> void:
 		map.camera.keys_on = hud != null and hud.visible and not modals.is_open() and not (fo is LineEdit or fo is TextEdit)
 	if _live_n % 6 == 0 and win.visible and session != null and session.sim != null:
 		Windows.tick_trips(session.sim, get_tree())
+	_pick_process()
 	Perf.begin("main._process")
 	_process_t(delta)
 	Perf.end("main._process")
@@ -632,6 +633,22 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.dist = map.camera.tdist
 	elif not (_args.has("shot") and not _args.has("pick")):
 		_pick_hq()
+		if _args.has("pickat") or _args.has("pickclick"):   # test: the world, then a state hovered or clicked
+			modals.clear()
+			map.camera.look_at_point(Vector2(0, .55), map.camera.world_size.x * 1.03)
+			map.camera.tx = map.camera.ttx
+			map.camera.tz = map.camera.ttz
+			map.camera.dist = map.camera.tdist
+			for i in 4:
+				await get_tree().process_frame
+			var c: PackedStringArray = String(_args.get("pickat", _args.get("pickclick"))).split(",")
+			var at := Vector2(float(c[0]), float(c[1]))
+			if _args.has("pickclick"):
+				_pick_click(at)
+			else:
+				Input.warp_mouse(at)
+			for i in 6:
+				await get_tree().process_frame
 	if _args.has("cam"):
 		var c: PackedStringArray = String(_args.cam).split(",")
 		map.camera.look_at_point(Vector2(float(c[0]), float(c[1])), float(c[2]))
@@ -754,18 +771,167 @@ func _on_world(w: Dictionary) -> void:
 
 
 ## «Де відкриємо перший хаб?»: five capitals from the poorest to the richest
+## the start (08l-start.js): on every difficulty the player picks a state on the map; the headquarters
+## opens in its capital. Hovering a state shows what starting there means, a click asks to confirm.
+var _picking := false
+var _pick_bar: Control = null
+var _pick_tip: PanelContainer = null
+var _pick_cid := -2
+var _demand := {}
+
+
 func _pick_hq() -> void:
 	var sim := session.sim
-	var ch := []
-	for p in session.choices:
-		var c: Dictionary = sim.states[p.cid]
-		var pid: int = p.id
-		ch.append({"t": "%s, %s" % [p.name, c.name], "d": "Населення міста %s · рівень цін ×%.2f · зарплати ×%.2f · ризики: %s" % [Ui.people(p.pop), sim.price_k(p.cid), sim.wage_k(p.cid), _risk_word(sim.co_risk(p.cid))],
-			"f": func(): _play(pid, false)})
-	modals.push({"icon": "truck", "eyebrow": "Логістична компанія", "title": "Де відкриємо перший хаб?",
-		"body": "У вас [b]%s[/b], одна вантажна машина і бажання доставляти. Оберіть столицю для штаб-квартири. Від неї залежать ціни, зарплати й те, куди ви зможете розширитися першими." % Ui.usd(sim.CO.cash),
-		"hint": "У [b]багатих[/b] країнах доставки дорожчі, але дорожчі й люди. У [b]бідних[/b] праця дешева, проте посилки коштують копійки, а ризики вищі.",
-		"choices": ch})
+	_picking = true
+	_demand = {}
+	if not map.camera.clicked.is_connected(_pick_click):
+		map.camera.clicked.connect(_pick_click)
+	var D_ := ["Навчальна складність", "Звичайна складність", "Жорстка складність"]
+	modals.push({"icon": "globe", "eyebrow": D_[clampi(sim.diff, 0, 2)], "title": "Оберіть країну старту",
+		"body": "У вас [b]%s[/b] і одна вантажна машина. Клікніть на мапі на будь-яку державу: штаб відкриється в її столиці. Наведіть на державу — покажемо, скільки в ній міст, який попит на перевезення й ризики." % Ui.usd(sim.CO.cash),
+		"hint": "У [b]малій[/b] державі на 3–4 міста біржа на старті скромна: замовлень менше, поки компанія не вийде за кордон. У [b]великій[/b] — більше міст, довші рейси й більше пропозицій.",
+		"choices": [{"t": "Обрати на мапі", "d": "Камера покаже весь світ", "f": func():
+			var ws: Vector2 = map.camera.world_size
+			map.camera.look_at_point(Vector2(0, .55), ws.x * 1.03)}]})
+	_pick_bar = Ui.glass(Ui.GLASS_HI, Ui.LINE_HI)
+	_pick_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pick_bar.add_child(Ui.margin(Ui.hbox(10, [Ui.icon("pin", 16, Ui.ACCENT), Ui.label("Клікніть на державу, щоб відкрити в ній штаб", 13)]), 16, 10))
+	_ui.add_child(_pick_bar)
+	_pick_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_pick_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 24)
+	_pick_tip = Ui.glass(Ui.GLASS_HI, Ui.LINE_HI)
+	_pick_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pick_tip.visible = false
+	_pick_tip.custom_minimum_size.x = 300
+	_ui.add_child(_pick_tip)
+
+
+## the capital of a state (or its largest town)
+func _pick_cap(cid: int) -> Variant:
+	var best: Variant = null
+	for p in session.sim.PL:
+		if p.cid != cid:
+			continue
+		if p.type == "cap":
+			return p
+		if best == null or p.pop > best.pop:
+			best = p
+	return best
+
+
+## coDemand: the freight demand of a state against the others (firms of its towns, their size, the wealth)
+func _pick_demand(cid: int) -> Array:
+	var sim := session.sim
+	if _demand.is_empty():
+		var v := []
+		v.resize(sim.states.size())
+		v.fill(0.0)
+		for p in sim.PL:
+			v[p.cid] += sim.firms_of(p.id).size() * sqrt(p.pop + .05)
+		for c in v.size():
+			v[c] *= .5 + sim.states[c].dev
+		var srt := v.duplicate()
+		srt.sort()
+		_demand = {"v": v, "q": [srt[int(srt.size() / 3.0)], srt[int(srt.size() * 2 / 3.0)]]}
+	var x: float = _demand.v[cid]
+	return ["Високий", Ui.GOOD] if x >= _demand.q[1] else (["Середній", Ui.WARN] if x >= _demand.q[0] else ["Низький", Ui.BAD])
+
+
+## how many orders the board holds at the start in a state (co_board_max with one hub there)
+func _pick_offers(cid: int) -> int:
+	var sim := session.sim
+	var n := 0
+	for p in sim.PL:
+		if p.cid == cid:
+			n += 1
+	return maxi(3, int(JS.round_js((8 + 2) * JS.clamp_js(n / 12.0, .35, 1.4))))
+
+
+func _pick_info(cid: int, p: Dictionary) -> Control:
+	var sim := session.sim
+	var n := 0
+	for q in sim.PL:
+		if q.cid == cid:
+			n += 1
+	var v := Ui.vbox(8)
+	v.add_child(Ui.hbox(10, [Flags.rect(sim.states[cid], 24, 16), MapUi._left(Ui.label(sim.states[cid].name, 15, Ui.FG, Ui.font("body", 700))), Ui.spacer(), Ui.label("%d міст" % n, 12, Ui.MUTED)]))
+	var kv := GridContainer.new()
+	kv.columns = 2
+	kv.add_theme_constant_override("h_separation", 14)
+	kv.add_theme_constant_override("v_separation", 4)
+	var dm := _pick_demand(cid)
+	var rw := Windows._risk_w(sim.co_risk(cid))
+	for r in [["Штаб у столиці", p.name, Ui.FG], ["Населення столиці", Ui.people(p.pop), Ui.FG], ["Біржа на старті", "до %d замовлень" % _pick_offers(cid), Ui.FG],
+			["Попит на перевезення", dm[0], dm[1]], ["Ризик перевезень", rw[0], Windows._tone_col(rw[1])]]:
+		var l := Ui.label(r[0], 13, Ui.FG2)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		kv.add_child(l)
+		var b := Ui.label(r[1], 13, r[2], Ui.font("body", 600))
+		b.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		kv.add_child(b)
+	v.add_child(kv)
+	return v
+
+
+func _pick_process() -> void:
+	if not _picking or _pick_tip == null:
+		return
+	var mp := get_viewport().get_mouse_position()
+	var cid := -1
+	if not modals.is_open() and get_viewport().gui_get_hovered_control() == null:
+		var w: Variant = map.camera.pick_plane(mp)
+		cid = map.state_at(w) if w != null else -1
+	var p: Variant = _pick_cap(cid) if cid >= 0 else null
+	if p == null:
+		_pick_tip.visible = false
+		_pick_cid = -2
+		return
+	if cid != _pick_cid:
+		_pick_cid = cid
+		for c in _pick_tip.get_children():
+			if not (c is ColorRect):   # the glass background stays
+				_pick_tip.remove_child(c)
+				c.queue_free()
+		var v := _pick_info(cid, p)
+		v.add_child(Ui.label("Клік — відкрити штаб тут", 12, Ui.MUTED))
+		_pick_tip.add_child(Ui.margin(v, 12, 10))
+		_pick_tip.reset_size()
+	_pick_tip.visible = true
+	var vs := get_viewport().get_visible_rect().size
+	var sz := _pick_tip.get_combined_minimum_size()
+	var x := mp.x + 18 if mp.x + 18 + sz.x < vs.x - 10 else mp.x - sz.x - 18
+	_pick_tip.position = Vector2(x, clampf(mp.y - sz.y / 2, 70, vs.y - sz.y - 10))
+
+
+func _pick_click(mp: Vector2) -> void:
+	if not _picking or modals.is_open():
+		return
+	var w: Variant = map.camera.pick_plane(mp)
+	var cid: int = map.state_at(w) if w != null else -1
+	if cid < 0:
+		toasts.push("warn", "Тут немає держави", "Клікніть на сушу")
+		return
+	var p: Variant = _pick_cap(cid)
+	if p == null:
+		toasts.push("warn", "У цій державі немає міст", "Оберіть іншу")
+		return
+	var pid: int = p.id
+	modals.push({"icon": "building", "eyebrow": "Країна старту", "title": "%s, %s" % [p.name, session.sim.states[cid].name],
+		"content": _pick_info(cid, p),
+		"choices": [{"t": "Відкрити штаб тут", "d": "Компанія стартує в цій столиці", "hl": true, "f": func(): _pick_done(pid)},
+			{"t": "Обрати іншу країну", "d": "Повернутися до мапи", "f": func(): pass}]})
+
+
+func _pick_done(pid: int) -> void:
+	_picking = false
+	for n in [_pick_bar, _pick_tip]:
+		if n != null:
+			n.queue_free()
+	_pick_bar = null
+	_pick_tip = null
+	_play(pid, false)
+	var hp: Dictionary = session.sim.PL[pid]
+	map.camera.look_at_point(Vector2(hp.x, hp.z + .3), 6.0)
 
 
 ## riskW
