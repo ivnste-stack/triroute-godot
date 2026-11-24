@@ -129,8 +129,13 @@ func _draw() -> void:
 			for x in [42, 152]:
 				_wheel(x, 60)
 		"tanker":
-			box = _holds([Rect2(10, 16, 132, 38)], fill, 19)
-			_cab(148)
+			# a tank lying on the chassis: rounded ends, saddles under it, two hatches on top
+			box = _holds([Rect2(10, 18, 134, 32)], fill, 13)
+			for x in [44, 110]:
+				_line([[x - 8, 18], [x - 8, 12], [x + 8, 12], [x + 8, 18]])
+			for x in [28, 126]:
+				_line([[x - 6, 50], [x, 56], [x + 6, 50]])
+			_cab(150)
 			_line([[8, 58], [188, 58]])
 			for x in [34, 60, 168]:
 				_wheel(x, 61)
@@ -149,16 +154,34 @@ func _draw() -> void:
 			for x in [14, 38, 62, 86, 110, 134, 160, 182]:
 				_wheel(x, 55, 4.5)
 		"ship":
-			box = _holds([Rect2(34, 14, 118, 32)], fill, 2)
-			_line([[6, 46], [190, 46], [174, 64], [22, 64]], true)   # the hull
-			_line([[156, 46], [156, 22], [176, 22], [176, 46]])      # the bridge
-			_line([[160, 28], [172, 28]])
-			_line([[0, 66], [200, 66]])
+			# a container ship: the bridge and the funnel at the stern, stacks of containers, a raked bow
+			box = _holds([Rect2(44, 20, 126, 22)], fill, 1)
+			for x in range(60, 170, 16):   # the container stacks
+				draw_line(_p(x, 21), _p(x, 41), Color(line_col, .55), 1.0, true)
+			_line([[10, 42], [180, 42], [196, 32], [184, 58], [22, 58]], true)   # the hull
+			_line([[14, 42], [14, 14], [38, 14], [38, 42]])   # the bridge
+			_line([[18, 20], [34, 20]])
+			_line([[20, 14], [22, 4], [30, 4], [30, 14]])     # the funnel
+			_line([[0, 63], [14, 61], [28, 63], [42, 61], [56, 63], [70, 61], [84, 63], [98, 61], [112, 63], [126, 61], [140, 63], [154, 61], [168, 63], [182, 61], [196, 63]])
 		"plane":
-			box = _holds([Rect2(40, 24, 112, 22)], fill, 10)
-			_line([[24, 22], [160, 22], [186, 30], [192, 36], [186, 42], [160, 48], [24, 48], [14, 40], [14, 14], [22, 14]], true)
-			_line([[86, 48], [70, 66], [92, 66], [112, 48]])   # the wing
-			_line([[18, 22], [10, 6], [24, 6], [40, 22]])      # the tail
+			# a cargo plane from the side: a long fuselage with a round nose and the cockpit window, a tall fin
+			# and a tailplane at the back, the wing with an engine under it
+			box = _holds([Rect2(46, 28, 124, 14)], fill, 7)
+			_line([[40, 24], [176, 24], [186, 27], [194, 35], [186, 43], [176, 46], [34, 46], [20, 38], [12, 30], [8, 10], [18, 10], [40, 24]])
+			_line([[178, 29], [186, 29], [190, 34], [180, 34]], true)   # the cockpit window
+			_line([[14, 30], [38, 30]])                                  # the tailplane
+			_line([[90, 46], [128, 46], [150, 56], [114, 56]], true)     # the wing, under the fuselage
+			var eng := StyleBoxFlat.new()
+			eng.draw_center = false
+			eng.border_color = line_col
+			eng.set_border_width_all(2)
+			eng.set_corner_radius_all(int(4 * _k))
+			eng.anti_aliasing = true
+			draw_style_box(eng, Rect2(_p(112, 58), Vector2(28, 8) * _k))   # the engine
+			_line([[62, 46], [62, 58]])
+			_wheel(62, 62, 4)
+			_line([[172, 46], [172, 58]])
+			_wheel(172, 62, 4)
 		_:   # truck
 			box = _holds([Rect2(8, 12, 136, 44)], fill)
 			_cab(150)
