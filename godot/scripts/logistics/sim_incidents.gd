@@ -7,6 +7,10 @@ extends SimCore
 ## from RX, a second RNG seeded from the world seed, so a game is reproducible (the reference run seeds
 ## Math.random the same way, legacy/tests/simref.js).
 
+## the situations on the road (trf): a short delay, no fine — [what happened, the least, the most days]
+const TRF := [["Затор на в'їзді в місто", .03, .12], ["Колона важкої техніки попереду", .02, .08], ["ДТП попереду: рух реверсом", .05, .2],
+	["Тварини на дорозі", .01, .04], ["Об'їзд через дорожні роботи", .04, .15], ["Сильний бічний вітер: швидкість знижено", .03, .1],
+	["Черга на ваговому контролі", .02, .08], ["Перевірка документів на посту", .01, .05], ["Евакуатор прибирає фуру зі смуги", .03, .1]]
 const INC_RED := {"acc": 1, "brk": 1, "fuel": 1, "cl": 1, "cxl": 1, "theft": 1, "pir": 1}   # red blinking; the rest is an amber delay
 const D8 := [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
 
@@ -367,7 +371,7 @@ func inc_roll(j: Dictionary, st: Dictionary, cc: Dictionary, cg: Dictionary) -> 
 	var P := []
 	if m == "road":
 		P.append_array([["acc", .006 * dk * sqrt(j.n) * saf * mor * dev * mt], ["brk", (.008 * j.n * mt) * brk_k()], ["pdr", .011 * mor * saf],
-			["fuel", .004 * dev * CO.fuel], ["dmg", .005 * frg * dev * mt], ["cxl", .0025]])
+			["fuel", .004 * dev * CO.fuel], ["dmg", .005 * frg * dev * mt], ["cxl", .0025], ["trf", .045]])
 		if st.seg == 1 and not j.lost:
 			P.append(["theft", .0016 * dk * theft_k * (bur(cc.id) / 40) * (1.6 - cc.stability / 100) * (2.5 if in_conf(cc.id) else 1.0) * (1 - .65 * msk("cso")) * inc_band_k(j, st)])
 	elif m == "rail":
@@ -472,6 +476,10 @@ func co_incident(j: Dictionary, type: String, st: Variant = null) -> void:
 					"choices": [{"t": "Викликати евакуатор і сервіс", "f": apply.bind(0)}, {"t": "Ремонт силами водія", "f": apply.bind(1)}, {"t": "Мобільна ремонтна бригада", "f": apply.bind(2)}]})
 			else:
 				apply.call(0)
+		"trf":
+			var v: Array = pick(TRF)
+			co_pause(j, rnd(v[1], v[2]), v[0], "trf")
+			j.ev.append(v[0])
 		"pdr":
 			var V := [["перевищення швидкості", 1, 0], ["перевантаження на вагах", 2.2, .2], ["порушення режиму праці й відпочинку (тахограф)", 1.6, .25],
 				["неправильна стоянка", .6, 0], ["рух смугою громадського транспорту", .8, 0], ["несправні фари", .5, .05]]
@@ -1011,7 +1019,7 @@ func rc_target() -> int:
 	for p in PL:
 		if p.type == "cap" or p.type == "big" or p.type == "city":
 			n += 1
-	return int(JS.clamp_js(JS.round_js(n * .9), 10, 80))
+	return int(JS.clamp_js(JS.round_js(n * 1.5), 12, 130))   # more closures than the original (×.9, 10…80)
 
 
 func _jam_put(T: float, n0: int, steps_f: float) -> bool:

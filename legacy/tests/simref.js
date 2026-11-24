@@ -28,6 +28,32 @@ await p.evaluate(s=>{Math.pow=CRMATH.pow;SET.res=600;SEED=s;SET.roadGab=false;
   guard=function(n,f){f()}; /* errors must stop the run, not be swallowed */
   window.__inc=[incFrame,coJobsDay];incFrame=()=>{};coJobsDay=()=>{}; /* switched back on when the run starts */
   poDay=()=>{};poMonth=()=>{};
+  // more situations on the roads (sim_incidents.gd): road closures ×1.5 (12…130) and two more kinds, and the
+  // road situation "trf" (a short delay, no fine)
+  RCK.push({k:"jam",n:"Затор на трасі",ic:"truck",sev:1,w:3,d:"Кілометри машин стоять на обох смугах: рух майже зупинився."},{k:"xing",n:"Аварія на переїзді",ic:"train",sev:2,w:.8,d:"Фура застрягла на залізничному переїзді: трасу й колію перекрито."});
+  incJams=function(T,dt){if(!BOARD.bits)return;let ch=false;
+  const before=JAM.length;JAM=JAM.filter(J=>J.until>T);if(JAM.length!==before)ch=true;
+  const D=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]],bits=BOARD.bits;
+  const put=(n0,steps)=>{let n=n0;steps=Math.round(steps*CST/BL.st);for(let s=0;s<steps;s++){const o=[];for(let d=0;d<8;d++)if(bits[n]&(1<<d))o.push((((n/BL.nx)|0)+D[d][1])*BL.nx+n%BL.nx+D[d][0]);if(!o.length)break;n=o[Math.floor(Math.random()*o.length)]}
+    if(!bits[n]||JAMN.has(n)||JAM.some(J=>Math.hypot(J.x-bXY(n)[0],J.z-bXY(n)[1])<CST*.6))return;let tw=0;for(const r of RCK)tw+=r.w;let r_=Math.random()*tw,K=RCK[0];for(const r of RCK){r_-=r.w;if(r_<=0){K=r;break}}
+    const [x,z]=bXY(n);if(PL.some(p=>Math.hypot(p.x-x,p.z-z)<JAM_R()*1.6+(typeof coRad==="function"?coRad(p):0)))return; // never inside a city: it always has other ways in
+    const t0=K.k==="repair"?T+rnd(2,5):T;JAM.push({id:CO.uid++,n,x,z,sev:K.sev,kind:K.k,t0,until:t0+rnd(2,3),on:t0<=T?1:0});if(t0<=T)JAMN.set(n,K.sev);ch=true};
+  const src=PL.filter(p=>p.node!=null&&p.type!=="vil"),tgt=clamp(Math.round(PL.filter(p=>p.type==="cap"||p.type==="big"||p.type==="city").length*1.5),12,130);
+  const spawn=()=>{const p=pick(src);if(p)put(p.node,rnd(.6,3.5))};
+  if(!JAM.length){for(let i=0;i<tgt*3&&JAM.length<tgt;i++){spawn();const J=JAM[JAM.length-1];if(J&&J.t0===T)J.until=T+rnd(.4,3);else if(J&&chance(.5)){J.t0=T-rnd(0,1.5);J.until=T+rnd(.4,3);J.on=1}}} // the world starts with closures already in place, at different stages
+  else if(JAM.length<tgt&&Math.random()<dt*tgt/2.5)spawn();
+  for(const J of JAM)if(!J.on&&J.t0<=T){J.on=1;ch=true}
+  if(ch){JAMN=new Map();for(const J of JAM)if(J.on)JAMN.set(J.n,Math.max(JAMN.get(J.n)||0,J.sev))}};
+  incRoll=function(j,st,cc,cg){const m=j.mode,dk=DFK(),mt=[1.4,1,.65][CO.maint],mor=1.35-CO.morale/100,dev=1.4-cc.dev*.6,saf=1-.45*msk("coo"),frg=cg.fr*4+.3;const P=[];
+  if(m==="road"){P.push(["acc",.006*dk*Math.sqrt(j.n)*saf*mor*dev*mt],["brk",(.008*j.n*mt)*brkK()],["pdr",.011*mor*saf],["fuel",.004*dev*CO.fuel],["dmg",.005*frg*dev*mt],["cxl",.0025],["trf",.045]);
+    if(st.seg===1&&!j.lost)P.push(["theft",.0016*dk*(cg.theft||.6)*(bur(cc.id)/40)*(1.6-cc.stability/100)*(inConf(cc.id)?2.5:1)*(1-.65*msk("cso"))*incBandK(j,st)])}
+  else if(m==="rail"){P.push(["acc",.0015*dk*saf],["brk",(.004*mt)*brkK()],["dmg",.003*frg],["cxl",.002]);if(st.seg===1&&!j.lost)P.push(["theft",.0006*dk*(cg.theft||.6)*(bur(cc.id)/40)*incBandK(j,st)])}
+  else if(m==="sea"){P.push(["brk",(.004*mt)*brkK()],["dmg",.003*frg],["cxl",.0015]);if(st.seg===1&&!j.lost&&CO.pir.some(z=>{const q=coPosAt(j,st.s);return Math.hypot(q[0]-z.x,q[1]-z.z)<z.r}))P.push(["pir",DFK()*.08*(1-.6*msk("cso"))])}
+  else if(m==="air")P.push(["brk",(.003*mt)*brkK()],["dmg",.002*frg],["cxl",.0015]);
+  P.push(["gps",(m==="air"?.002:.004)*gpsK()]);
+  for(const [k,p] of P)if(chance(p))return k;return null};
+  {const TRF=[["Затор на в'їзді в місто",.03,.12],["Колона важкої техніки попереду",.02,.08],["ДТП попереду: рух реверсом",.05,.2],["Тварини на дорозі",.01,.04],["Об'їзд через дорожні роботи",.04,.15],["Сильний бічний вітер: швидкість знижено",.03,.1],["Черга на ваговому контролі",.02,.08],["Перевірка документів на посту",.01,.05],["Евакуатор прибирає фуру зі смуги",.03,.1]];
+   const _ci=coIncident;coIncident=function(j,type,st){if(type!=="trf")return _ci.apply(this,arguments);const v=pick(TRF);coPause(j,rnd(v[1],v[2]),v[0],"trf");j.ev.push(v[0])}}
   // the home market (market_k in sim_core.gd): while inside its own states the board holds fewer orders in a small state
   coBoardMax=function(){if(CO.tier<1)return 0;const mx=8+CO.tier*2+Math.round(msk("cco")*4)+CO.hubs.reduce((a,h)=>a+h.lvl-1,0);if(CO.tier>=3)return mx;
     const cids=new Set(CO.hubs.map(h=>PL[h.pid].cid));const n=PL.filter(p=>cids.has(p.cid)).length;return Math.max(3,Math.round(mx*Math.min(1.4,Math.max(.35,n/12))))};
