@@ -38,6 +38,8 @@ var _insp_ic: Control
 var _insp_scroll: ScrollContainer
 var _card: PanelContainer
 var _card_t := 0.0
+var _card_hold := 0
+var _card_sz := Vector2.ZERO
 var _land_n := {}
 var _risk_q := []
 var _risk_k := ""
@@ -97,6 +99,7 @@ func _ready() -> void:
 	_insp_scroll.add_child(m)
 	# the trip card
 	_card = Ui.glass()
+	_card.clip_contents = true
 	_card.visible = false
 	_card.custom_minimum_size.x = 290
 	add_child(_card)
@@ -647,6 +650,7 @@ func ask_cancel(j: Dictionary) -> void:
 
 
 func close_card() -> void:
+	_card_sz = Vector2.ZERO
 	map.vehicles.selected = null
 	follow = false
 	_card.visible = false
@@ -677,7 +681,14 @@ func _place_card() -> void:
 	if not _card.visible:
 		return
 	var j: Variant = map.vehicles.selected
-	_card.size = _card.get_combined_minimum_size()
+	var ms := _card.get_combined_minimum_size()
+	# the first frames after a rebuild the new content is not laid out yet and can ask for the whole screen:
+	# the card keeps its last size until then (it was blinking down to the bottom while following a vehicle)
+	if _card_hold > 0 and _card_sz != Vector2.ZERO:
+		_card_hold -= 1
+		ms = _card_sz
+	_card_sz = ms
+	_card.size = ms
 	for h in map.vehicles.hits:
 		if h.has("j") and is_same(h.j, j):
 			var w := _card.size.x
@@ -699,6 +710,7 @@ func _build_card() -> void:
 ## the card of a trip into _card (also used by the tests for every trip)
 func build_card_for(j: Dictionary) -> void:
 	_card_t = Time.get_ticks_msec()
+	_card_hold = 2 if _card.visible else 0
 	for c in _card.get_children():
 		if not (c is ColorRect):
 			_card.remove_child(c)
@@ -788,6 +800,7 @@ func build_card_for(j: Dictionary) -> void:
 		var cap := Ui.label("Завантаження %d%% · %s%s" % [int(round(load * 100)), ltxt, (" · ×%d" % nv) if nv > 1 else ""], 12, Ui.FG2)
 		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		cap.custom_minimum_size.x = 240   # a wrapped label without a width is one letter wide for a frame
 		vbox.add_child(cap)
 	var vp := PanelContainer.new()
 	vp.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(10, 8, 10, 8)))
@@ -823,6 +836,7 @@ func build_card_for(j: Dictionary) -> void:
 		body.add_child(pr)
 	if j.get("ev", []).size():
 		var evn := W._note("\n".join(j.ev.slice(-3)), Ui.FG2, 12)
+		evn.custom_minimum_size.x = 260   # a width from the start: no one-letter column for a frame
 		evn.custom_minimum_size.x = 266
 		body.add_child(evn)
 	# a new course (08r-multi.js): highlighted when danger lies ahead
