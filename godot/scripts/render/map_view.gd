@@ -98,7 +98,8 @@ func _ready() -> void:
 
 ## Starts generating a world; world_ready fires when the map is on screen.
 ## size: "s" 2×1, "m" 3×2, "l" 4×3 sectors (a sector is 7.5 world units, 600 texture pixels)
-func generate(seed_value: int, size_key: String = "m") -> void:
+## fine_roads: the test road net (TRWorldGen.set_fine_roads)
+func generate(seed_value: int, size_key: String = "m", fine_roads: bool = false) -> void:
 	if _task >= 0:
 		return
 	_seed = seed_value
@@ -113,6 +114,7 @@ func generate(seed_value: int, size_key: String = "m") -> void:
 		_n_states = E.names.size()
 		_gen.set_earth(E.w, E.h, E.labels, E.seeds, E.names, E.pop, E.dev)
 	_is_earth = size_key == "earth"
+	_gen.set_fine_roads(fine_roads)
 	_task = WorkerThreadPool.add_task(_generate_in_thread, true, "world generation")
 
 

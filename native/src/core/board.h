@@ -39,6 +39,7 @@ struct Checkpoint {
 struct Board {
 	int nx = 0, nz = 0;           // lattice nodes (step 0.125 world units)
 	double st = .125;
+	bool fine = false;            // the test road net: nodes every 0.0625 (each lattice square in 4, both diagonals)
 	double wx = 0, wz = 0;        // world size
 	std::vector<Town> towns;
 	std::vector<uint8_t> bits, rbits;   // 8 direction bits per node: road / rail graph
@@ -57,6 +58,7 @@ std::vector<Crossing> board_crossings(const World &w, const Board &b, const std:
 std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<double> &pts, double eco);
 
 // state_pop: population of every state (G.C[i].pop in the HTML version, millions).
-Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop);
+// fine: the test road net (a node grid twice as dense, denser roads, more alternative ways between towns).
+Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine = false);
 
 } // namespace tr

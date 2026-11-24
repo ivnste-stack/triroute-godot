@@ -45,6 +45,8 @@ public:
 	//   roads (Array of {lv, p: PackedFloat32Array x,z pairs}), railways (Array of PackedFloat32Array),
 	//   checkpoints (Array of {x, z, a, b, rail}).
 	Dictionary generate_board(const PackedFloat64Array &state_pops = PackedFloat64Array());
+	// the test road net for the next generate_board(): nodes twice as dense, denser roads, more ways
+	void set_fine_roads(bool on) { fine_roads_ = on; }
 
 	// The states' starting characteristics for the last generated world, exactly like the HTML version
 	// (makeCountry + colours): Array of {id, name, full, gov, title, ideol, trait, leader, leader_age, pop, dev, gdp,
@@ -96,6 +98,7 @@ private:
 	std::shared_ptr<tr::Nav> nav_;
 	std::shared_ptr<tr::Blocks> blocks_;
 	int64_t seed_ = 0;
+	bool fine_roads_ = false;
 	int earth_w_ = 0, earth_h_ = 0;
 	std::vector<uint8_t> earth_;
 	std::vector<int> earth_seeds_;

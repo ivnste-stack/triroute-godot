@@ -461,8 +461,10 @@ std::vector<Crossing> board_crossings(const World &w, const Board &b, const std:
 	return board_crossings_t(w, b, pts, eco);
 }
 
-Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop) {
+Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine) {
 	Board B;
+	B.fine = fine;
+	if (fine) B.st = .0625;
 	Ctx C(w, B);
 	B.wx = C.WX;
 	B.wz = C.WZ;
@@ -513,7 +515,8 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 		for (int n = 0; n < N; n++)
 			if (comp[n] >= 0) B.csz[comp[n]]++;
 	}
-	auto tinyN = [&](int n) { return comp[n] < 0 || B.csz[comp[n]] < TINY_ISL; };
+	const int tinyMin = fine ? TINY_ISL * 4 : TINY_ISL;   // the same land area in nodes
+	auto tinyN = [&](int n) { return comp[n] < 0 || B.csz[comp[n]] < tinyMin; };
 	// a capital cut off from its towns moves to the biggest town of the state's main landmass
 	for (size_t cid = 0; cid < w.countries.size(); cid++) {
 		std::vector<Town *> ts;
@@ -573,6 +576,9 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 				if (!dx || !dy) {
 					double px = -dy, py = dx;
 					ok = OK2(mx + px * .2, my + py * .2, mx - px * .2, my - py * .2);
+				} else if (fine) {   // a diagonal of a quarter square: land on both sides of its middle, one state
+					double px = -dy / SQRT2, py = dx / SQRT2;
+					ok = OK2(mx + px * .25, my + py * .25, mx - px * .25, my - py * .25) && LD(mx, my);
 				} else {
 					int ci = std::min(x, x2), cj = std::min(y, y2);
 					int sd = (!w.sqd.empty() && ci < w.sqw && cj < w.sqh) ? w.sqd[size_t(cj) * w.sqw + ci] : (dx * dy > 0 ? 1 : 0);
@@ -630,7 +636,7 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 				if (terr[m] >= 1e9f || !eok[size_t(n) * 8 + d] || (lockC >= 0 && own[m] != lockC)) continue;
 				double base = (d & 1) ? 1.4142 : 1;
 				double mul;
-				if (U[size_t(n) * 8 + d]) mul = railMode ? .2 : .32;
+				if (U[size_t(n) * 8 + d]) mul = railMode ? .2 : (fine ? .62 : .32);   // the test net: roads merge less, more ways
 				else mul = double(terr[m]) * (railMode ? 1.15 * (usedE[size_t(n) * 8 + d] ? 6 : (B.bits[m] && m != b) ? 1.8 : 1) : 1);
 				double c = base * mul + (df == 1 ? (railMode ? 1.1 : .35) : df == 2 ? (railMode ? 9 : 1.6) : 0) + (own[m] != own[n] ? .6 : 0);
 				int ns = m * 9 + d;
@@ -708,8 +714,8 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 		for (int o : cities)
 			if (o != c) others.push_back(o);
 		std::stable_sort(others.begin(), others.end(), [&](int a, int b) { return dist(T[a], T[c]) - dist(T[b], T[c]) < 0; });
-		for (size_t q = 0; q < others.size() && q < 4; q++)
-			if (dist(T[others[q]], T[c]) < (q < 2 ? 7 : 4.5)) addL(c, others[q], 3);
+		for (size_t q = 0; q < others.size() && q < (fine ? 6u : 4u); q++)
+			if (dist(T[others[q]], T[c]) < (fine ? (q < 3 ? 8 : 5.5) : (q < 2 ? 7 : 4.5))) addL(c, others[q], 3);
 	}
 	for (auto &l : links) route(T[l.a].node, T[l.b].node, l.lv, -1);
 	// 2. towns: 2–4 links each; 3. villages
@@ -730,9 +736,9 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 		for (int t : towns) {
 			std::vector<int> nr = net;
 			std::stable_sort(nr.begin(), nr.end(), [&](int a, int b) { return dist(T[a], T[t]) - dist(T[b], T[t]) < 0; });
-			for (size_t q = 0; q < nr.size() && q < 4; q++) {
+			for (size_t q = 0; q < nr.size() && q < (fine ? 6u : 4u); q++) {
 				double d = dist(T[nr[q]], T[t]);
-				if (d < 1e8 && (q == 0 || (d < (q == 1 ? 3 : 2.4) && (q < 3 || rr2() < .5)))) link(t, nr[q], 2);
+				if (fine ? d < 1e8 && (q < 2 || d < 3.4) : d < 1e8 && (q == 0 || (d < (q == 1 ? 3 : 2.4) && (q < 3 || rr2() < .5)))) link(t, nr[q], 2);
 			}
 			net.push_back(t);
 		}
@@ -741,16 +747,16 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 			int v = int(vi);
 			std::vector<int> nr = net;
 			std::stable_sort(nr.begin(), nr.end(), [&](int a, int b) { return dist(T[a], T[v]) - dist(T[b], T[v]) < 0; });
-			for (size_t q = 0; q < nr.size() && q < 3; q++) {
+			for (size_t q = 0; q < nr.size() && q < (fine ? 4u : 3u); q++) {
 				double d = dist(T[nr[q]], T[v]);
-				if (d < 1e8 && (q == 0 || (d < (q == 1 ? 3 : 1.9) && (q < 2 || rr2() < .5)))) link(v, nr[q], 1.5);
+				if (fine ? d < 1e8 && (q < 2 || d < 2.4) : d < 1e8 && (q == 0 || (d < (q == 1 ? 3 : 1.9) && (q < 2 || rr2() < .5)))) link(v, nr[q], 1.5);
 			}
 			net.push_back(v);
 		}
 	}
 	// 4. the countryside web (never across a border)
 	{
-		auto web = road_web(C, seed, .4);
+		auto web = road_web(C, seed, fine ? .26 : .4);
 		std::set<int64_t> fk;
 		for (auto &e : web) {
 			const WebPt &p = e.first, &q = e.second;

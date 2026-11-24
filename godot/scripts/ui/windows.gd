@@ -628,6 +628,8 @@ func cons_add(id: int) -> void:
 			k = x
 	if not sim.cons_ok(k):
 		return
+	if sim.co_grade() < 1 and not st.cons.has(id):
+		return
 	if st.cons.has(id):
 		st.cons.erase(id)
 		_do({})
@@ -648,6 +650,12 @@ func cons_add(id: int) -> void:
 func _cons_btn(k: Dictionary, no_veh: bool, why: String) -> Button:
 	var inn: bool = st.cons.has(k.id)
 	var id: int = k.id
+	if sim.co_grade() < 1 and not inn:   # consolidated trips open with the grade «Експедитор»
+		var g: Dictionary = D.GRADES[1]
+		var bg := _btn("До збірного рейсу", "sm", "lock", func(): pass, true, "Збірний рейс недоступний\nВідкривається з грейду «%s» (%s досвіду). Зараз досвіду: %s." % [g.n, Ui.grp(g.xp), Ui.grp(floor(sim.CO.get("xp", 0)))])
+		bg.modulate.a = .45
+		bg.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN
+		return bg
 	if no_veh and not inn:
 		var b := _btn("До збірного рейсу", "sm", "plus", func(): pass, true, "Збірний рейс недоступний\n%s. Дочекайтеся, поки техніка звільниться, або купіть ще в «Автопарку»." % why)
 		b.modulate.a = .45

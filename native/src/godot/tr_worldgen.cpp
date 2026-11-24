@@ -71,6 +71,7 @@ PackedByteArray half_mips(const std::vector<float> &src, int w, int h, int ch) {
 
 void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate", "seed", "states", "mw", "mh"), &TRWorldGen::generate, DEFVAL(26), DEFVAL(1800), DEFVAL(1200));
+	ClassDB::bind_method(D_METHOD("set_fine_roads", "on"), &TRWorldGen::set_fine_roads);
 	ClassDB::bind_method(D_METHOD("set_earth", "w", "h", "labels", "seeds", "names", "pop", "dev"), &TRWorldGen::set_earth);
 	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board, DEFVAL(PackedFloat64Array()));
 	ClassDB::bind_method(D_METHOD("generate_states"), &TRWorldGen::generate_states);
@@ -192,7 +193,7 @@ Dictionary TRWorldGen::generate_board(const PackedFloat64Array &state_pops) {
 	}
 	pops.resize(world_->countries.size(), 1.0);
 	nav_.reset();
-	board_ = std::make_shared<tr::Board>(tr::generate_board(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops));
+	board_ = std::make_shared<tr::Board>(tr::generate_board(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops, fine_roads_));
 	nav_ = std::make_shared<tr::Nav>(*world_, *board_);
 	const tr::Board &B = *board_;
 	d["nx"] = B.nx;

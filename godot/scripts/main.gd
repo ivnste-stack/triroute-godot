@@ -27,7 +27,7 @@ var planner: Planner
 var course: Course
 var menu: StartMenu
 var _args := {}
-var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen"}
+var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "norm"}
 var _loading: Control
 var backdrop: MenuBackdrop
 var legend: Legend
@@ -372,6 +372,8 @@ func _new_game_dialog() -> void:
 	c.add_child(size_note)
 	map_vis.call()
 	c.add_child(field.call("Складність", Ui.seg(DIFF_N, _ng.diff, func(v): _ng.diff = v)))
+	c.add_child(field.call("Дороги", Ui.seg([["norm", "Звичайні"], ["fine", "Тест: дрібна сітка"]], _ng.roads, func(v): _ng.roads = v)))
+	c.add_child(Ui.note("Тестова мережа: кожна клітинка поділена на 4 з діагоналями, доріг більше, між містами кілька різних шляхів.", Ui.MUTED))
 	var seed_l := Ui.num(str(_ng.seed), 14, Ui.MUTED)
 	c.add_child(field.call("Зерно світу", Ui.hbox(12, [seed_l, Ui.btn("Інше", "sm", "dice", func():
 		_ng.seed = randi() % 1000000000
@@ -488,7 +490,9 @@ func _create_world() -> void:
 	MapVis.clear()   # a new world: everything shown
 	GameState.reset(_ng.seed)
 	_size_key = _args.get("size", "earth" if _ng.map == "earth" else _ng.size)
-	map.generate(_ng.seed, _size_key)
+	if _args.has("roads"):   # test: --roads=fine
+		_ng.roads = String(_args.roads)
+	map.generate(_ng.seed, _size_key, _ng.roads == "fine")
 
 
 var _perf_t := 0.0
@@ -543,10 +547,15 @@ func _process_t(delta: float) -> void:
 			sim.CO.cash = 1e12
 		if sim.auto_choice < 0 and sim.modals.size() and not modals.is_open():
 			modals.push(_decision(sim.modals.pop_front()))
-		if win.visible:
+		if win.visible and _live_n % 10 == 0:
 			# a trip ended or began between days: the windows that list trips are built again at once
-			var sig := [sim.CO.jobs.size(), sim.CO.get("cdel", 0), sim.CO.veh.size()]
-			if sig != _win_sig and hud.open_window in ["coTrips", "coFleet", "coHome"]:
+			# (and the board as soon as a vehicle comes back free: its orders can be planned again)
+			var idle := 0
+			for v in sim.CO.veh:
+				if v.st == "idle":
+					idle += 1
+			var sig := [sim.CO.jobs.size(), sim.CO.get("cdel", 0), sim.CO.veh.size(), idle, sim.CO.board.size()]
+			if sig != _win_sig and hud.open_window in ["coTrips", "coFleet", "coHome", "coJobs"]:
 				_win_day = -1
 			_win_sig = sig
 			_win_tick()
@@ -1014,7 +1023,7 @@ func _goto_place(pid: int) -> void:
 ## the game as a save: the world comes back from the seed and the size
 func _save_data() -> Dictionary:
 	var sim := session.sim
-	return {"data": {"v": 1, "seed": GameState.world_seed, "size": _size_key, "diff": sim.diff, "sim": sim.save_state()},
+	return {"data": {"v": 1, "seed": GameState.world_seed, "size": _size_key, "roads": _ng.roads, "diff": sim.diff, "sim": sim.save_state()},
 		"meta": {"name": sim.CO.name, "col": sim.CO.get("col", "#ffb347"), "date": Ui.date_str(sim.date), "mode": "Логістична компанія",
 			"when": Time.get_datetime_string_from_system(false, true).substr(5, 11).replace("T", " ")}}
 
@@ -1103,6 +1112,7 @@ func _load_slot(slot: String) -> void:
 	if _ng.size == "earth":
 		_ng.size = "l"
 	_ng.diff = int(d.get("diff", 1))
+	_ng.roads = String(d.get("roads", "norm"))
 	_args.erase("size")
 	hud.visible = false
 	_create_world()
