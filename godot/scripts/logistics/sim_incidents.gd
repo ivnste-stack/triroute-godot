@@ -436,8 +436,11 @@ func co_incident(j: Dictionary, type: String, st: Variant = null) -> void:
 				j.ev.append("ДТП%s: пошкоджено %d%% вантажу, затримка %s" % [" з вини водія" if fault else "", int(JS.round_js(d * 100)), _days(w)])
 			co_news("bad", "alert", "%s за участі техніки %s (%s): %s, маршрут %s" % ["Серйозна ДТП" if sev == 2 else "ДТП", CO.name, where, T.n.to_lower(), rt])
 			if sev == 2 and co_modal_ok() and j.mode == "road":
+				var t0: float = third * (.3 if CO.ins else 1.0)
+				var pay0 := fine + t0
 				co_modal({"kind": "acc", "title": "Серйозна аварія з вини вашого водія" if fault else "Серйозна аварія на трасі", "job": j.id,
-					"choices": [{"t": "Чекати поліцію", "f": apply.bind(0)}, {"t": "Викликати аварійних комісарів", "f": apply.bind(1)}]})
+					"choices": [{"t": "Чекати поліцію", "d": "%s · затримка %s" % [("штраф і збитки " + _usd(pay0)) if pay0 > 0 else "без витрат", _days(dl)], "f": apply.bind(0)},
+						{"t": "Викликати аварійних комісарів", "d": "%s · затримка %s" % [_usd(JS.round_js(900 * pk + fine + t0 * .75)) + (" (збитки на чверть менші)" if t0 > 0 else ""), _days(dl * .6)], "f": apply.bind(1)}]})
 			else:
 				apply.call(0)
 		"brk":
@@ -466,8 +469,10 @@ func co_incident(j: Dictionary, type: String, st: Variant = null) -> void:
 				co_pause(j, w, "%s: %s" % [nm, sv if o == 0 else "ремонт"], "brk")
 				j.ev.append("%s: %s, затримка %s" % [nm, _usd(c), _days(w)])
 			if j.mode == "road" and co_modal_ok() and chance(.4):
-				co_modal({"kind": "brk", "title": "%s зламався на трасі" % T.n, "job": j.id,
-					"choices": [{"t": "Викликати евакуатор і сервіс", "f": apply.bind(0)}, {"t": "Ремонт силами водія", "f": apply.bind(1)}, {"t": "Мобільна ремонтна бригада", "f": apply.bind(2)}]})
+				co_modal({"kind": "brk", "title": "Поломка на трасі: %s" % T.n.to_lower(), "job": j.id,
+					"choices": [{"t": "Викликати евакуатор і сервіс", "d": "%s · затримка %s" % [_usd(JS.round_js(ev + rep)), _days(dl)], "f": apply.bind(0)},
+						{"t": "Ремонт силами водія", "d": "55%%: %s і %s · інакше %s і %s" % [_usd(JS.round_js(rep * .3)), _days(dl * .6), _usd(JS.round_js(rep * .3 + ev + rep)), _days(dl * 1.8)], "f": apply.bind(1)},
+						{"t": "Мобільна ремонтна бригада", "d": "%s · затримка %s" % [_usd(JS.round_js(rep * 1.6)), _days(dl * .5)], "f": apply.bind(2)}]})
 			else:
 				apply.call(0)
 		"trf":
@@ -522,7 +527,9 @@ func co_incident(j: Dictionary, type: String, st: Variant = null) -> void:
 						j.lost = false
 						j.ev.append("Поліція повернула вантаж")
 				co_modal({"kind": "theft", "title": "Вантаж захопили на трасі", "job": j.id,
-					"choices": [{"t": "Найняти приватних детективів", "f": detect}, {"t": "Заява в поліцію", "f": police}, {"t": "Списати", "f": func() -> void: pass}]})
+					"choices": [{"t": "Найняти приватних детективів", "d": "%s · шанс повернути вантаж %d%%" % [_usd(JS.round_js(val * .05 + 8000)), int(round((.3 + msk("cso") * .4) * 100))], "f": detect},
+						{"t": "Заява в поліцію", "d": "безкоштовно · шанс %d%%" % int(round(stab / 4)), "f": police},
+						{"t": "Списати", "d": "вантаж %s втрачено" % _usd(val), "f": func() -> void: pass}]})
 		"pir":
 			j.seized = true
 			var p := co_pause(j, rint(6, 12), "Захоплено піратами: переговори про викуп", "pir", {"end": "free"})
@@ -550,7 +557,9 @@ func co_incident(j: Dictionary, type: String, st: Variant = null) -> void:
 				co_pause_to(j, p, 20)
 				CO.rating = JS.clamp_js(CO.rating - .12, 1, 5)
 			co_modal({"kind": "pir", "title": "Пірати захопили ваше судно", "job": j.id,
-				"choices": [{"t": "Заплатити викуп " + _usd(ransom), "f": pay_r}, {"t": "Чекати на військовий флот", "f": navy}, {"t": "Відмовитися від вантажу", "f": give}]})
+				"choices": [{"t": "Заплатити викуп", "d": "%s · судно звільнять за ~7 дн." % _usd(ransom), "f": pay_r},
+					{"t": "Чекати на військовий флот", "d": "безкоштовно · шанс %d%% за ~4 дн., інакше вантаж втрачено" % int(round((.35 + msk("cso") * .3) * 100)), "f": navy},
+					{"t": "Відмовитися від вантажу", "d": "вантаж втрачено, рейтинг −0,12", "f": give}]})
 		"gps":
 			j.gps = {"until": co_now() + rnd(.6, 2)}
 			var nm := "AIS-транспондера" if j.mode == "sea" else "GPS-навігації"
@@ -592,7 +601,7 @@ func inc_cancel_end(j: Dictionary) -> void:
 			j.payK = .4
 			j.ev.append("Замовник скасував рейс: вантаж залишать на складі в пункті призначення, оплата 40%")
 	if co_modal_ok() and j.k.pay > 3000:
-		var ch: Array = [{"t": "Повернути вантаж відправнику" if road else "Здати вантаж на склад", "f": do_back}]
+		var ch: Array = [{"t": "Повернути вантаж відправнику" if road else "Здати вантаж на склад", "d": ("компенсація %s" % _usd(comp)) if road else "оплата 40%% — %s" % _usd(JS.round_js(j.k.pay * .4)), "f": do_back}]
 		if CO.mgr.has("clo"):
 			var lawyer := func() -> void:
 				var fee := JS.round_js(j.k.pay * .08 + 500)
@@ -608,7 +617,7 @@ func inc_cancel_end(j: Dictionary) -> void:
 						inc_return(j, st, "Вантаж повертається відправнику", 0)
 				else:
 					do_back.call()
-			ch.append({"t": "Подати претензію через юриста", "f": lawyer})
+			ch.append({"t": "Подати претензію через юриста", "d": "%s · шанс %d%% отримати %s" % [_usd(JS.round_js(j.k.pay * .08 + 500)), int(round((.45 + msk("clo") * .4) * 100)), _usd(JS.round_js(j.k.pay * .8))], "f": lawyer})
 		co_modal({"kind": "cxl", "title": "Замовник відмовився від вантажу", "job": j.id, "choices": ch})
 	else:
 		do_back.call()

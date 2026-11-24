@@ -705,6 +705,20 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("decide") and session != null:   # test: an incident on the first trip of its mode until it asks a decision (--decide=brk|acc)
+		var sim_ := session.sim
+		sim_.auto_choice = -1
+		var js: Array = sim_.CO.jobs.filter(func(x): return x.mode == "road" and not x.get("ret"))
+		if js.size():
+			for i in 60:
+				if sim_.modals.size():
+					break
+				sim_.CO.mcd = 0
+				sim_.co_incident(js[0], String(_args.decide))
+		if sim_.modals.size():
+			modals.push(_decision(sim_.modals.pop_front()))
+		for i in 6:
+			await get_tree().process_frame
 	if _args.has("closecp") and session != null:   # test: the first border checkpoint closed, the camera on it (--closecp=dist)
 		var sim_ := session.sim
 		var c: Dictionary = sim_.board.checkpoints.filter(func(q): return not q.rail)[0]

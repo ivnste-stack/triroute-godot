@@ -2536,7 +2536,9 @@ func co_month_events() -> void:
 			CO.rating = JS.clamp_js(CO.rating - .1, 1, 5)
 			CO.morale -= 10
 		co_modal({"kind": "strike", "title": "Працівники погрожують страйком",
-			"choices": [{"t": "Підняти зарплати на 15%", "f": raise}, {"t": "Переговори", "f": talk}, {"t": "Звільнити заводіїв", "f": fire}]})
+			"choices": [{"t": "Підняти зарплати на 15%", "d": "зарплати в місяць більші, мораль +15", "f": raise},
+				{"t": "Переговори", "d": "безкоштовно · шанс %d%%, інакше страйк на 6 днів" % int(round((.3 + msk("hro") * .6) * 100)), "f": talk},
+				{"t": "Звільнити заводіїв", "d": "−10% персоналу, рейтинг −0,1, мораль −10", "f": fire}]})
 		return
 	# embezzlement caught
 	var thief: Variant = null
@@ -2556,7 +2558,8 @@ func co_month_events() -> void:
 		var warn := func() -> void:
 			g.honest = chance(.6)
 			g.loyal = mini(100, g.loyal + 20)
-		co_modal({"kind": "thief", "title": "%s краде" % _mg_name(id), "choices": [{"t": "Звільнити і подати до суду", "f": sue}, {"t": "Залишити з попередженням", "f": warn}]})
+		co_modal({"kind": "thief", "title": "%s краде" % _mg_name(id), "choices": [{"t": "Звільнити і подати до суду", "d": "суд поверне %s · посада звільниться" % Ui.usd(JS.round_js(loss * .5)), "f": sue},
+			{"t": "Залишити з попередженням", "d": "шанс 60%, що виправиться · лояльність +20", "f": warn}]})
 		return
 	# a manager asks for a raise
 	for id in CO.mgr.keys():
@@ -2579,7 +2582,9 @@ func co_month_events() -> void:
 					co_mgr_cand(id)
 					co_news("bad", "briefcase", "%s %s пішов до конкурентів" % [_mg_name(id), CO.name])
 			co_modal({"kind": "raise", "title": "%s просить підвищення" % _mg_name(id),
-				"choices": [{"t": "Погодитись", "f": agree}, {"t": "Компроміс", "f": half}, {"t": "Відмовити", "f": refuse}]})
+				"choices": [{"t": "Погодитись", "d": "%s → %s на місяць · лояльність +20" % [Ui.usd(g.sal), Ui.usd(ns)], "f": agree},
+					{"t": "Компроміс", "d": "50%%: %s на місяць · інакше лояльність −20" % Ui.usd(JS.round_js((g.sal + ns) / 2.0)), "f": half},
+					{"t": "Відмовити", "d": "лояльність −30 · при низькій піде до конкурентів", "f": refuse}]})
 			return
 	# tenders
 	co_tender_offers()

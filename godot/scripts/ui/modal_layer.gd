@@ -132,12 +132,12 @@ func _choice(c: Dictionary) -> Control:
 	b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT, 1, Vector4(13, 11, 13, 11)))
 	b.disabled = c.get("disabled", false)
 	var tl := Ui.label(c.get("t", ""), 14, Ui.FG, Ui.font("body", 600))
-	if c.get("center"):
-		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER   # the choices read centred on their buttons
 	var v := Ui.vbox(4, [tl])
 	if c.get("d", "") != "":
 		var d := Ui.note(c.d, Ui.FG2)
 		d.add_theme_font_size_override("font_size", 12)
+		d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(d)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for ch in v.get_children():
