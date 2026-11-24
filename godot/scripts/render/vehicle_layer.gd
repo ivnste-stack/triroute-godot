@@ -35,8 +35,18 @@ func _process(_delta: float) -> void:
 
 
 func _process_t(_delta: float) -> void:
-	if session != null and session.sim != null:
+	if session == null or session.sim == null:
+		return
+	# redrawn when something on it moves: the game's clock, the camera, the legend, or a blinking marker
+	# (paused with a still camera a fleet of hundreds cost 2+ ms a frame for the same picture)
+	var k := "%.6f|%s|%s|%d|%d" % [session.sim.co_now(), camera.global_transform, size, MapVis.ver, session.sim.CO.get("jobs", []).size()]
+	if k != _key or _anim or selected != null:
+		_key = k
 		queue_redraw()
+
+
+var _key := ""
+var _anim := false   # the last picture has blinking or pulsing markers: they need every frame
 
 
 func _P(x: float, y: float, z: float) -> Variant:
@@ -67,6 +77,7 @@ func _draw_t() -> void:
 	if CO.is_empty() or not CO.has("hubs"):
 		return
 	var now := session.anim_t
+	var anim := false
 	var zf := clampf(11.0 / camera.dist, 1, 1.8)
 	var T0 := sim.co_now()
 	var vw := size
@@ -94,14 +105,18 @@ func _draw_t() -> void:
 		var red: bool = j.get("hold", 0) > 0 or j.lost or (inc != null and INC_RED.has(inc.k))
 		var amb: bool = inc != null and not red
 		var rgb: Color = RED if red else MODE_RGB.get(j.mode, HUB_RGB)
-		# trail
-		if trails and st.seg >= 0 and inc == null:
+		if inc != null or gv < 1:
+			anim = true
+		# trail: full close up, shorter farther out, none at the far zoom (a dot or two of pixels there)
+		var tn := 6 if camera.dist < 9 else (3 if camera.dist < 17 else 0)
+		if trails and tn > 0 and st.seg >= 0 and inc == null:
 			var step: float = {"road": .05, "rail": .06, "sea": .08, "air": .12}[j.mode] * minf(1, camera.dist / 6 + .25) * sim.CO_DU / 1.6
 			# one polyline with fading colours instead of nine separate lines
 			var tp := PackedVector2Array([sp])
 			var tc := PackedColorArray([Color(rgb, .75 * gv)])
-			for k in range(1, 7):   # 6 points 1.5 steps apart: the same length as the original's 9
-				var s2: float = st.s - k * step * 1.5
+			var kk := 6.0 / tn
+			for k in range(1, tn + 1):   # 6 points 1.5 steps apart (the original's 9), or 3 points 3 steps apart
+				var s2: float = st.s - k * step * 1.5 * kk
 				if s2 < 0:
 					break
 				var pp := sim.co_pos_at(j, s2)
@@ -115,7 +130,7 @@ func _draw_t() -> void:
 				if q == null:
 					break
 				tp.append(q)
-				tc.append(Color(rgb, .75 * (1 - k * 1.5 / 10.0) * gv))
+				tc.append(Color(rgb, .75 * (1 - k * kk * 1.5 / 10.0) * gv))
 			if tp.size() > 1:
 				draw_polyline_colors(tp, tc, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8, true)
 		if j.mode == "air" and alt > 0:
@@ -143,6 +158,7 @@ func _draw_t() -> void:
 			_text("GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
 		hits.append({"j": j, "x": sp.x, "y": sp.y, "r": 14, "wx": pos[0], "wz": pos[1]})
 	_marks()
+	_anim = anim or not session.sim.CO.get("imk", []).is_empty()
 
 
 ## the fading trails behind moving vehicles (settings «Сліди техніки»)

@@ -687,6 +687,48 @@ func _co_gen_perm() -> Variant:
 	return k
 
 
+## where the orders come from: the cities of the lands and countries with a hub, each with the parts of its
+## weight that stay the same all day (the size, the nearest hub's level and distance, the waiting vehicles);
+## multiplied in the same order as the weight in one, so the same numbers
+func _gen_pool() -> Dictionary:
+	var HP: Array = CO.hubs.map(func(h): return PL[h.pid])
+	var lands := {}
+	for p in HP:
+		lands[p.land] = true
+	var Dref := 2.6
+	var hubC := {}
+	for p in HP:
+		hubC[p.cid] = true
+	var ownC := {}
+	for h in CO.hubs:
+		if not h.get("rent"):
+			ownC[PL[h.pid].cid] = true
+	var pool := PL.filter(func(p): return lands.has(p.land) and co_scope(p) and not in_conf(p.cid) and hubC.has(p.cid))
+	var base := []
+	if pool.size():
+		var waitAt: Dictionary = _gen_pre.wait if _gen_pre.has("wait") else _gen_wait()
+		var hx := PackedFloat64Array()
+		var hz := PackedFloat64Array()
+		var hl := PackedInt32Array()
+		for h in CO.hubs:
+			var q: Dictionary = PL[h.pid]
+			hx.append(q.x)
+			hz.append(q.z)
+			hl.append(h.lvl)
+		for p in pool:
+			var d := 1e9
+			var lv := 1
+			var px: float = p.x
+			var pz: float = p.z
+			for j in hx.size():
+				var dd := JS.hypot(hx[j] - px, hz[j] - pz)
+				if dd < d:
+					d = dd
+					lv = hl[j]
+			base.append([sqrt(p.pop) + .15, D.HUB_ORD[lv], 1 + (d / Dref) * (d / Dref), 3.0 if waitAt.has(p.id) else 1.0])
+	return {"HP": HP, "ownC": ownC, "pool": pool, "base": base}
+
+
 func _co_gen() -> Variant:
 	var modes := []
 	if CO.tier >= 1:
@@ -699,41 +741,34 @@ func _co_gen() -> Variant:
 		modes.append_array(["air", "air"])
 	var mode: String = pick(modes)
 	var aid_ok: bool = CO.tier >= 3
-	var HP: Array = CO.hubs.map(func(h): return PL[h.pid])
-	var lands := {}
-	for p in HP:
-		lands[p.land] = true
-	var Dref := 2.6
+	Perf.begin("day.g_pool")
+	var G: Variant = _gen_pre.get("pool")
+	if G == null:
+		G = _gen_pool()
+		if not _gen_pre.is_empty():   # filling the day's board: the same for every order of the day
+			_gen_pre.pool = G
+	var HP: Array = G.HP
+	var ownC: Dictionary = G.ownC
+	var pool: Array = G.pool
+	if pool.is_empty():
+		Perf.end("day.g_pool")
+		return null
 	var onB := {}
 	for q in CO.board:
 		onB[str(q.from)] = onB.get(str(q.from), 0) + 1
 		var kk := str(q.from) + ":" + str(q.to)
 		onB[kk] = onB.get(kk, 0) + 1
-	var hubC := {}
-	for p in HP:
-		hubC[p.cid] = true
-	var ownC := {}
-	for h in CO.hubs:
-		if not h.get("rent"):
-			ownC[PL[h.pid].cid] = true
-	var pool := PL.filter(func(p): return lands.has(p.land) and co_scope(p) and not in_conf(p.cid) and hubC.has(p.cid))
-	if pool.is_empty():
-		return null
 	var tw := 0.0
-	var waitAt: Dictionary = _gen_pre.wait if _gen_pre.has("wait") else _gen_wait()
 	var ws := []
-	for p in pool:
-		var d := 1e9
-		var lv := 1
-		for h in CO.hubs:
-			var q: Dictionary = PL[h.pid]
-			var dd := JS.hypot(q.x - p.x, q.z - p.z)
-			if dd < d:
-				d = dd
-				lv = h.lvl
-		var w: float = JS.pow(firms_of(p.id).size(), 1.25) * (sqrt(p.pop) + .15) * D.HUB_ORD[lv] / (1 + (d / Dref) * (d / Dref)) * (3.0 if waitAt.has(p.id) else 1.0) / (1 + 1.5 * onB.get(str(p.id), 0)) * (1.0 if ownC.has(p.cid) else .3)
+	var bw: Array = G.base
+	for i in pool.size():
+		var p: Dictionary = pool[i]
+		var b: Array = bw[i]
+		# the firms are counted every time: an order may add a firm to its city (firm_for)
+		var w: float = JS.pow(firms_of(p.id).size(), 1.25) * b[0] * b[1] / b[2] * b[3] / (1 + 1.5 * onB.get(str(p.id), 0)) * (1.0 if ownC.has(p.cid) else .3)
 		tw += w
 		ws.append(w)
+	Perf.end("day.g_pool")
 	var chosen := -1
 	# capitals ship about half of the freight, the other cities the rest
 	var has_own := pool.any(func(p): return ownC.has(p.cid))
@@ -786,6 +821,7 @@ func _co_gen() -> Variant:
 	var main: Variant = null
 	var B: Dictionary
 	var far := func(p, q, kk): return JS.hypot(p.x - q.x, p.z - q.z) * CO_DU > kk
+	Perf.begin("day.g_dest")
 	if mode == "road":
 		var c := PL.filter(func(p): return p.id != A.id and p.land == A.land and co_scope(p) and (CO.tier >= 3 or p.cid == A.cid) and (not in_conf(p.cid) or aid_ok))
 		if c.is_empty():
@@ -829,6 +865,7 @@ func _co_gen() -> Variant:
 		_stable_sort(nearL, func(a, b): return JS.hypot(a.x - P2.x, a.z - P2.z) - JS.hypot(b.x - P2.x, b.z - P2.z))
 		nearL = nearL.slice(0, 6)
 		B = P2 if chance(.35) else pick(nearL if nearL.size() else [P2])
+	Perf.end("day.g_dest")
 	var aid := (in_conf(B.cid) or in_conf(A.cid)) and aid_ok
 	var cgs := D.CARGO.filter(func(cg): return (cg.get("aid", false) if aid else not cg.get("aid", false)) and cg.t[1] >= rng_[0] and cg.t[0] <= rng_[1] and (mode != "air" or cg.val >= 2500 or cg.get("aid", false)))
 	if cgs.is_empty():
@@ -846,6 +883,7 @@ func _co_gen() -> Variant:
 	var legs: Variant
 	var p_in: Variant = null
 	var p_out: Variant = null
+	Perf.begin("day.g_legs")
 	if mode == "road":
 		legs = ch_land(A, B, tons, true)
 		if legs == null or legs.is_empty():
@@ -869,6 +907,7 @@ func _co_gen() -> Variant:
 				p_out = P2.id
 			post = []
 		legs = pre + [main] + post
+	Perf.end("day.g_legs")
 	var from: int = legs[0].a
 	var to: int = legs[legs.size() - 1].b
 	var F: Dictionary = PL[from]
@@ -1354,30 +1393,48 @@ func co_plan1(k: Dictionary) -> Dictionary:
 		if free[T.role] + mini(n, ret_n) * crew < crew * n:
 			why = "Бракує персоналу: " + D.ROLE[T.role].n.to_lower()
 			continue
-		# the nearest first (as a stable sort by distance: ties keep the fleet order), taken one at a time
-		# only as far as needed: a plan wants a few vehicles, sorting a fleet of hundreds cost milliseconds
-		var dist := PackedFloat64Array()
-		dist.resize(idle.size())
-		var dl := {}   # the distance once per city: a fleet stands in a few hubs
+		# the nearest first (as a stable sort by distance: ties keep the fleet order), taken only as far as
+		# needed. A fleet stands in a few cities: the cities are sorted by distance (ties merged back into
+		# fleet order) instead of the whole fleet, and a city with no route from it (another continent, a
+		# closed border) is passed over at once instead of trying every vehicle in it
+		var dl := {}   # the distance once per city
+		var at := {}   # the vehicles of each city, in fleet order
 		for i in idle.size():
 			var lc: int = idle[i].loc
 			if not dl.has(lc):
 				dl[lc] = JS.hypot(PL[lc].x - A.x, PL[lc].z - A.z)
-			dist[i] = dl[lc]
-		var used := PackedByteArray()
-		used.resize(idle.size())
+				at[lc] = []
+			at[lc].append(i)
+		var locs: Array = dl.keys()
+		locs.sort_custom(func(x, y): return dl[x] < dl[y])
+		var order := []
+		var gi := 0
+		while gi < locs.size():
+			var gj := gi + 1
+			while gj < locs.size() and dl[locs[gj]] == dl[locs[gi]]:
+				gj += 1
+			if gj - gi == 1:
+				order.append_array(at[locs[gi]])
+			else:   # cities at the very same distance: their vehicles in fleet order, as the stable sort had them
+				var m := []
+				for q in range(gi, gj):
+					m.append_array(at[locs[q]])
+				m.sort()
+				order.append_array(m)
+			gi = gj
 		var sel := []
 		var lead := 0.0
 		var lead_r: Variant = null
-		for _take in idle.size():
-			var bi := -1
-			for i in idle.size():
-				if not used[i] and (bi < 0 or dist[i] < dist[bi]):
-					bi = i
-			used[bi] = 1
+		var dead := {}
+		for bi in order:
 			var v: Dictionary = idle[bi]
-			var r: Variant = ret_lead(v, k.from) if v.st == "trip" else co_route(mode, v.loc, k.from)
+			var on_trip: bool = v.st == "trip"
+			if not on_trip and dead.has(v.loc):
+				continue
+			var r: Variant = ret_lead(v, k.from) if on_trip else co_route(mode, v.loc, k.from)
 			if r == null:
+				if not on_trip:
+					dead[v.loc] = true   # the same route for every vehicle standing there
 				continue
 			sel.append(v)
 			if lead_r == null or r.len >= lead:

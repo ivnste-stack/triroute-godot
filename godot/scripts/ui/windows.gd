@@ -46,19 +46,65 @@ func _init(sim_: Sim) -> void:
 var _idle_by_t := {}
 
 
-func build(id: String, body: VBoxContainer) -> void:
+## the plans shown on the exchange, kept while what a plan reads stays the same (the day, the trips, the
+## free vehicles, the fleet, the rating, licences and permits, closures): a window rebuilt for a new trip
+## elsewhere does not plan every order again
+var _plan_c := {}
+var _plan_k := ""
+
+
+## the fleet window of a big company (hundreds of rows and cards) is built over a few frames when `slice` is
+## set: the window updating itself in the background does not hold up a frame (the old content stays on
+## screen until the new one is ready)
+var _slice := false
+var _bt := 0
+
+
+var slices := 0      # the frames the last build took, and the longest part of it (µs), for --perf
+var slice_max := 0
+
+
+func _pause() -> void:
+	var dt := Time.get_ticks_usec() - _bt
+	if _slice and dt > 6000:
+		slices += 1
+		slice_max = maxi(slice_max, dt)
+		Perf.end("window.build")
+		await Engine.get_main_loop().process_frame
+		Perf.begin("window.build")
+		_bt = Time.get_ticks_usec()
+
+
+func build(id: String, body: VBoxContainer, slice := false) -> void:
+	_slice = slice
+	_bt = Time.get_ticks_usec()
+	slices = 1
+	slice_max = 0
 	Perf.acc.erase("co_plan")
 	sim.plan_batch(true)   # building changes nothing: the fleet is counted once for all the plans shown
 	_idle_by_t = {}
+	var CO := sim.CO
+	var idle := 0
+	for v in CO.veh:
+		if v.st == "idle":
+			idle += 1
+	var pk := "%d|%d|%d|%d|%d|%.3f|%d|%d|%d|%d|%d" % [sim.day, CO.jobs.size(), idle, CO.veh.size(), CO.hubs.size(), CO.rating, CO.tier,
+		CO.get("clV", 0), sim.blk_v, CO.get("perm", {}).size(), CO.strike]
+	if pk != _plan_k:
+		_plan_k = pk
+		_plan_c = {}
 	match id:
 		"coHome": _home(body)
 		"coJobs": _jobs(body)
 		"coTrips": _trips(body)
-		"coFleet": _fleet(body)
+		"coFleet":
+			sim.plan_batch(false)   # no plans here, and the build may wait for the next frame
+			await _fleet(body)
 		"coNet": _net(body)
 		"coStaff": _staff(body)
 		"coFin": _fin(body)
 	sim.plan_batch(false)
+	slice_max = maxi(slice_max, Time.get_ticks_usec() - _bt)
 
 
 func _do(res: Variant) -> void:
@@ -748,7 +794,8 @@ func _board_card(k: Dictionary) -> PanelContainer:
 	var B: Dictionary = sim.PL[k.to]
 	var cg: Dictionary = sim.cargo_i[k.cg]
 	Perf.begin("co_plan")
-	var P: Dictionary = sim.co_plan(k)
+	var P: Dictionary = _plan_c[k.id] if _plan_c.has(k.id) else sim.co_plan(k)
+	_plan_c[k.id] = P
 	Perf.end("co_plan")
 	var info := Ui.vbox(2)
 	info.add_child(Ui.hbox(6, [_place(k.from), Ui.label("→", 14), _place(k.to)]))
@@ -1074,6 +1121,9 @@ static func _table_rows(rows: Array, cols: Array) -> VBoxContainer:
 
 
 # ====================================================================== coFleet
+var _mb_sb := {}
+
+
 func _fleet(body: VBoxContainer) -> void:
 	var CO := sim.CO
 	var ff: String = st.ffl
@@ -1090,13 +1140,20 @@ func _fleet(body: VBoxContainer) -> void:
 		groups[k].append(v)
 	var rows: Array = order.map(func(k): return groups[k])
 	rows.sort_custom(func(a, b): return D.VT[b[0].t].cost < D.VT[a[0].t].cost)
+	# the value, the condition, the free ones and the counts by mode in one pass over the fleet
 	var val := 0.0
 	var cs := 0.0
+	var n_idle := 0
+	var by_m := {}
 	for v in CO.veh:
-		val += D.VT[v.t].cost * (.35 + .4 * v.cond / 100)
+		var T: Dictionary = D.VT[v.t]
+		val += T.cost * (.35 + .4 * v.cond / 100)
 		cs += v.cond
+		if v.st == "idle":
+			n_idle += 1
+		by_m[T.mode] = by_m.get(T.mode, 0) + 1
 	body.add_child(_grid(3, [
-		_stat("Техніка", str(CO.veh.size()), "%d вільні" % CO.veh.filter(func(v): return v.st == "idle").size()),
+		_stat("Техніка", str(CO.veh.size()), "%d вільні" % n_idle),
 		_stat("Вартість парку", Ui.usd(val), "за ринковою оцінкою"),
 		_stat("Середній стан", "%.0f%%" % (cs / CO.veh.size() if CO.veh.size() else 100.0), "зношена техніка частіше ламається", _tip("Стан техніки", "Знижується з кожним кілометром. Нижче 45% — більше аварій і поломок, ризик штрафу на техогляді."))]))
 	var hubs := []
@@ -1114,12 +1171,13 @@ func _fleet(body: VBoxContainer) -> void:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_child(Ui.hbox(12, [left, Ui.vbox(6, [Ui.lbl("Нова техніка прибуває в"), dd])]))
 	body.add_child(_note("Економне: дешевше утримання, але техніка зношується швидше й частіше ламається. Преміальне — навпаки."))
-	body.add_child(_mode_seg("ffl", func(m): return CO.veh.size() if m == "all" else CO.veh.filter(func(v): return D.VT[v.t].mode == m).size()))
+	body.add_child(_mode_seg("ffl", func(m): return CO.veh.size() if m == "all" else by_m.get(m, 0)))
 	body.add_child(_sect("Ваша техніка"))
 	var ST := {"idle": ["Вільна", "good"], "trip": ["У рейсі", "acc"], "tender": ["Тендер", "warn"]}
 	var trs := []
 	var nmax: int = st.fmore
 	for g in rows.slice(0, nmax):
+		await _pause()
 		var v: Dictionary = g[0]
 		var Ty: Dictionary = D.VT[v.t]
 		var cond := 0.0
@@ -1134,11 +1192,14 @@ func _fleet(body: VBoxContainer) -> void:
 			var mtip := _tip("Перемістити в інший хаб", "Покаже на мапі всі ваші хаби — клікніть, щоб приписати техніку туди. Лише по дорозі%s: на інший континент не перемістити.%s" % [" (залізниці)" if Ty.mode == "rail" else "", (" Зараз приписана: %s." % _pl(home)) if home != null else ""])
 			var mb := _btn("", "sm", "updown", func(): move(v), true, mtip)
 			mb.custom_minimum_size = Vector2(0, 22)   # .btn.sm.icon: padding 3px 5px
-			for k in ["normal", "hover", "pressed"]:
-				var sb: StyleBoxFlat = mb.get_theme_stylebox(k).duplicate()
-				sb.content_margin_left = 5
-				sb.content_margin_right = 5
-				mb.add_theme_stylebox_override(k, sb)
+			if _mb_sb.is_empty():   # the styles are shared by every row's button
+				for k in ["normal", "hover", "pressed"]:
+					var sb: StyleBoxFlat = mb.get_theme_stylebox(k).duplicate()
+					sb.content_margin_left = 5
+					sb.content_margin_right = 5
+					_mb_sb[k] = sb
+			for k in _mb_sb:
+				mb.add_theme_stylebox_override(k, _mb_sb[k])
 			mb.add_theme_constant_override("icon_max_width", 14)
 			name_c.add_child(mb)
 		var acts := _right([])
@@ -1159,6 +1220,7 @@ func _fleet(body: VBoxContainer) -> void:
 	types.sort_custom(func(a, b): return D.VT[a].tier < D.VT[b].tier or (D.VT[a].tier == D.VT[b].tier and D.VT[a].cost < D.VT[b].cost))
 	var cards := []
 	for t in types:
+		await _pause()
 		var T: Dictionary = D.VT[t]
 		var lock: bool = CO.tier < T.tier
 		var sub: String = D.MODE_N[T.mode]
@@ -1177,7 +1239,7 @@ func _fleet(body: VBoxContainer) -> void:
 			c.add_child(Ui.hbox(0, [_btn("Купити", "pri sm" if CO.cash >= T.cost else "sm", "plus", func(): _do(sim.act_buy(tt)), CO.cash >= T.cost)]))
 		cards.append(_blk(c, Ui.LINE, .5 if lock else 1.0))
 	body.add_child(_grid(2, cards))
-	_upg_sect(body, ff)
+	await _upg_sect(body, ff)
 
 
 ## upgSect: upgrades of the company
@@ -1187,6 +1249,7 @@ func _upg_sect(body: VBoxContainer, ff: String) -> void:
 	body.add_child(_sect("Модернізація"))
 	var cards := []
 	for u in D.UPG:
+		await _pause()
 		if m != null and u.get("fx") != null and not u.fx.has(m) and not u.get("rep") and not u.get("brk"):
 			continue
 		var got := sim.has_u(u.id)

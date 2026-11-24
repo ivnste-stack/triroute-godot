@@ -575,9 +575,13 @@ func _process_t(delta: float) -> void:
 				if v.st == "idle":
 					idle += 1
 			var sig := [sim.CO.jobs.size(), sim.CO.get("cdel", 0), sim.CO.veh.size(), idle, sim.CO.board.size()]
-			if sig != _win_sig and hud.open_window in ["coTrips", "coFleet", "coHome", "coJobs"]:
-				_win_day = -1
-			_win_sig = sig
+			# at most every 1.5 s: with dozens of trips something changes several times a second, and building
+			# the exchange (a plan per order) or a fleet of hundreds each time cost 40–150 ms
+			var now_ms := Time.get_ticks_msec()
+			if sig != _win_sig and hud.open_window in ["coTrips", "coFleet", "coHome", "coJobs"] and now_ms - _win_sig_t >= 1500:
+				_win_dirty = true   # built again in the background, like a new day (not cleared first)
+				_win_sig = sig
+				_win_sig_t = now_ms
 			_win_tick()
 		while sim.toasts.size():
 			var t: Dictionary = sim.toasts.pop_front()
@@ -627,6 +631,13 @@ func _on_world(w: Dictionary) -> void:
 			if not CO.mgr.has("cto") and CO.cand.has("cto"):
 				CO.mgr.cto = CO.cand.cto[0].duplicate()
 			CO.auto = true
+			if _args.has("hubs"):   # --hubs=N: a hub network of N cities (the biggest ones it may open)
+				var sm := session.sim
+				var ps: Array = sm.PL.filter(func(p): return sm.hub_at(p.id) == null and sm.co_scope(p))
+				ps.sort_custom(func(a, b): return a.pop > b.pop)
+				for p in ps.slice(0, maxi(0, int(_args.hubs) - CO.hubs.size())):
+					CO.cash = maxf(CO.cash, sm.hub_cost(p) * 2)
+					sm.act_hub(p.id, false)
 		if _args.has("days"):
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
@@ -1074,18 +1085,24 @@ func _toggle_window(id: String) -> void:
 
 var _win_day := -1.0
 var _win_sig: Array = []
+var _win_sig_t := 0
+var _win_building := false
+var _win_dirty := false
 
 
 ## the content of the open window, built again every game day and after every action
 func _win_tick(force: bool = false) -> void:
 	var sim := session.sim
-	if not force and sim.day == _win_day:
+	if not force and sim.day == _win_day and not _win_dirty:
 		return
 	if not force and _win_day >= 0 and (win.scroll as SmoothScroll).busy():
 		return   # later: the content does not change under the reader's hand
 	# a new day: the window changes in small steps over a few frames; opening it or an action: at once
 	var smooth := not force and _win_day >= 0 and hud.open_window == _win_id
+	if smooth and _win_building:
+		return   # the update before is still being built: this one comes after it
 	_win_day = sim.day
+	_win_dirty = false
 	var id := hud.open_window
 	_win_id = id
 	if smooth and _args.has("perf"):
@@ -1113,8 +1130,15 @@ func _win_tick(force: bool = false) -> void:
 		if sim.news.is_empty():
 			off.add_child(Ui.note("Поки що новин немає.", Ui.MUTED))
 	else:
-		wins.build(id, off)
+		_win_building = smooth
+		await wins.build(id, off, smooth)
+		_win_building = false
+		if smooth and hud.open_window != id:   # closed or switched while it was built over several frames
+			Perf.end("window.build")
+			off.free()
+			return
 	Perf.end("window.build")
+	var t_build := Time.get_ticks_usec() - t0
 	_swap_gen += 1
 	if smooth:
 		var gen := _swap_gen
@@ -1134,7 +1158,8 @@ func _win_tick(force: bool = false) -> void:
 	off.free()
 	get_viewport().update_mouse_cursor_state()   # the button under the pointer lights up again
 	if _args.has("perf"):
-		print("PERF window %s %s in %.1f ms" % [id, "swapped" if smooth else "built", (Time.get_ticks_usec() - t0) / 1000.0])
+		print("PERF window %s %s: build %.1f ms%s (plans %.1f) · until shown %.1f ms" % [id, "swapped" if smooth else "built", t_build / 1000.0,
+			(" in %d frames, the longest %.1f ms" % [wins.slices, wins.slice_max / 1000.0]) if wins.slices > 1 else "", Perf.acc.get("co_plan", 0) / 1000.0, (Time.get_ticks_usec() - t0) / 1000.0])
 
 
 var _win_id := ""
