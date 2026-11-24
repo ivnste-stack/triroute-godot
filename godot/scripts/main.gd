@@ -483,6 +483,7 @@ func _loading_step(delta: float) -> void:
 
 
 func _create_world() -> void:
+	map.detach_session()
 	if menu != null:
 		menu.visible = false
 	_loading.visible = true

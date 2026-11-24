@@ -367,6 +367,18 @@ func attach_session(session: GameSession) -> void:
 var _session: GameSession
 
 
+## a new world: the layers forget the old game (its zones, trips and headquarters) until the new one starts
+func detach_session() -> void:
+	towns.sim = null
+	towns._key = ""
+	for L in [inc_base, inc_top]:
+		L.session = null
+		L.queue_redraw()
+	vehicles.session = null
+	vehicles.queue_redraw()
+	_session = null
+
+
 ## the map colours of the company mode (coColors + the closed-country tint of 08f): states with a hub are tinted
 ## orange, states within the licence are muted, the rest darkened, closed countries reddened
 ## the map layer (UI.mode): "co" the company's network, "grid" logistic routes, "risk" transport risks,

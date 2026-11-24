@@ -140,44 +140,18 @@ func _draw_base() -> void:
 			var c: Variant = _P(z.x, z.z)
 			if c != null and camera.dist < 26:
 				_badge(c, "skull", _c(e[1]))
-	# weather zones: a tinted disc with diagonal hatching
+	# weather zones: drawn like the bandit zones (a faint disc, a thin rim, the badge), in the colour of the weather
 	for w in (CO.get("wx", []) if MapVis.vis("wx") else []):
 		var K: Dictionary = GameData.WXK[w.k]
 		var pts := _circle(w.x, w.z, w.r, 40)
 		if pts.size() < 10:
 			continue
-		# a light zone (fog, snow, ice) vanishes on the light land of the logistics layers: its lines and
-		# hatching take a darker shade of the same hue, and the fill a grey veil
 		var col := _c(K.col)
-		var light := col.get_luminance() > .62
-		var ink := col.darkened(.58) if light else col
-		draw_colored_polygon(pts, Color(col.darkened(.42), .32) if light else Color(col, .17))
-		var bb := Rect2(pts[0], Vector2.ZERO)
-		for q in pts:
-			bb = bb.expand(q)
-		# only the part on the screen: close up a zone is many screens wide, and hatching all of it cost
-		# thousands of lines a redraw; the 45° lines keep their phase (x from a fixed origin) when it is cut
-		bb = bb.intersection(Rect2(-20, -20, W + 40, H + 40))
-		if bb.size.x > 0 and bb.size.y > 0:
-			var sp := 14 * dpr
-			var hatch := PackedVector2Array()
-			# the lines x + y = k·sp: the same lines whatever part of the zone is cut by the screen
-			var k := floorf((bb.position.x + bb.position.y) / sp) * sp
-			while k < bb.end.x + bb.end.y:
-				var seg := PackedVector2Array([Vector2(k - bb.end.y, bb.end.y), Vector2(k - bb.position.y, bb.position.y)])
-				for piece in Geometry2D.intersect_polyline_with_polygon(seg, pts):
-					for i in piece.size() - 1:
-						hatch.append(piece[i])
-						hatch.append(piece[i + 1])
-				k += sp
-			if hatch.size():
-				draw_multiline(hatch, Color(ink, .6 if light else .3), (1.6 if light else 1.3) * dpr, true)
-		if light:   # a light rim inside the dark one: seen on land and on water alike
-			draw_polyline(pts, Color(col, .9), 3.6 * dpr, true)
-		draw_polyline(pts, Color(ink, .95), (2.2 if light else 1.8) * dpr, true)
+		draw_colored_polygon(pts, Color(col, .1))
+		draw_polyline(pts, Color(col, .75), 1.5 * dpr, true)
 		var c: Variant = _P(w.x, w.z)
 		if c != null and camera.dist < 26:
-			_badge(c, K.ic, _c("150,160,172") if w.t0 > sim.co_now() else _c(K.col))
+			_badge(c, K.ic, _c("150,160,172") if w.t0 > sim.co_now() else col)
 	# closed borders: red lines along the border
 	var zw := clampf(13 / camera.dist, 1, 3.2)
 	for cl in (CO.get("cls", []) if MapVis.vis("clb") else []):
