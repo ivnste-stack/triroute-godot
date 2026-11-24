@@ -1,89 +1,61 @@
 extends RefCounted
-## Game logic (scripts/logistics/sim.gd) against the HTML version. A new game is deterministic up to the first
-## order board, so these compare exactly: places' continents, the company name, the headquarters, competitors,
-## manager candidates and every field of every order on the starting board (company_fingerprints.json, made
-## from legacy/tests/companyref.js).
-## Then the simulation itself, day by day, against legacy/tests/simref.js (sim_fingerprints.json): trips,
-## border checkpoints, deliveries, returns, the city, the board, the dispatcher, prices, the month.
+## Game logic (scripts/logistics/sim.gd) against its references (tests/ref.gd, recorded from the game by
+## tests/record_refs.gd). A new game is deterministic: places' continents, the company name, the headquarters,
+## competitors, manager candidates and every field of every order on the starting board
+## (company_fingerprints.json); then the simulation itself, day by day for 150 days in six scenarios
+## (sim_fingerprints.json): trips, border checkpoints, deliveries, returns, the city, the board, the
+## dispatcher, prices, incidents, the planner, the month.
 
-func _fp() -> Dictionary:
-	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/company_fingerprints.json"))
-
-
-func _f64(hex: String) -> float:
-	return hex.hex_decode().decode_double(0)
-
-
-func _same(got: Variant, want: Variant) -> bool:
-	if want is String and want.length() == 16 and want.is_valid_hex_number():
-		return got is float and got == _f64(want) or (got is int and float(got) == _f64(want))
-	if want is float or want is int:
-		return (got is int or got is float) and float(got) == float(want)
-	return got == want
+const Ref = preload("res://tests/ref.gd")
+const COMPANY_SEEDS := [777, 303, 123456]
+const SIM_SEEDS := [777, 303]
+const SCENARIOS := ["start", "fleet", "abroad", "staff", "ocean", "air"]
+const SIM_DAYS := 150
 
 
-func _new_game(seed_value: int) -> Sim:
+static func _new_game(seed_value: int) -> Sim:
 	var gen: Object = ClassDB.instantiate("TRWorldGen")
 	var world: Dictionary = gen.generate(seed_value)
 	var states: Array = gen.generate_states()
 	var board: Dictionary = gen.generate_board()
 	var sim := Sim.new()
 	sim.setup(gen, seed_value, states, board, world)
-	sim.road_rules = false   # toll motorways and heavy-vehicle bans are not in the HTML version
 	var choices := sim.start_choices()
 	sim.co_init(choices[0].id)
 	sim.co_set_hq(choices[0].id)
 	return sim
 
 
-func test_company_start_matches_html() -> String:
+## the start of a new game, as it is stored
+static func company_fp(seed_value: int) -> Dictionary:
+	var sim := _new_game(seed_value)
+	var cand := {}
+	for id in sim.CO.cand:
+		cand[id] = sim.CO.cand[id].map(func(m): return [m.name, m.age, m.skill, m.sal, m.trait, m.honest, m.loyal])
+	return Ref.norm({"name": sim.CO.name, "hq": sim.CO.hq, "lands": sim.PL.map(func(p): return p.land),
+		"comp": sim.CO.comp.map(func(c): return [c.n, Ref.h(c.rev), Ref.h(c.g)]),
+		"board": Ref.enc(sim.CO.board), "cand": cand})
+
+
+func test_company_start_matches_reference() -> String:
 	if not ClassDB.class_exists("TRWorldGen"):
 		return "no native module"
-	var fp := _fp()
-	for seed_str in fp.keys():
-		var want: Dictionary = fp[seed_str]
+	var fp: Dictionary = Ref.read("company_fingerprints.json")
+	for seed_str in fp:
 		var t := Time.get_ticks_msec()
-		var sim := _new_game(int(seed_str))
-		var ms := Time.get_ticks_msec() - t
-		for i in sim.PL.size():
-			if sim.PL[i].land != int(want.lands[i]):
-				return "seed %s: continent of place %d: %d, want %d" % [seed_str, i, sim.PL[i].land, want.lands[i]]
-		if sim.CO.name != want.name or sim.CO.hq != int(want.hq):
-			return "seed %s: company %s at %d, want %s at %d" % [seed_str, sim.CO.name, sim.CO.hq, want.name, want.hq]
-		for i in want.comp.size():
-			var c: Dictionary = sim.CO.comp[i]
-			if c.n != want.comp[i][0] or c.rev != _f64(want.comp[i][1]) or c.g != _f64(want.comp[i][2]):
-				return "seed %s: competitor %d differs" % [seed_str, i]
-		if sim.CO.board.size() != want.board.size():
-			return "seed %s: %d orders on the board, want %d" % [seed_str, sim.CO.board.size(), want.board.size()]
-		for i in want.board.size():
-			var w: Dictionary = want.board[i]
-			var g: Dictionary = sim.CO.board[i]
-			for key in w.keys():
-				if not g.has(key) or not _same(g[key], w[key]):
-					return "seed %s: order %d, %s = %s, want %s" % [seed_str, i, key, g.get(key), (_f64(w[key]) if w[key] is String and w[key].length() == 16 else w[key])]
-			for key in g.keys():
-				if not w.has(key):
-					return "seed %s: order %d has an extra field %s" % [seed_str, i, key]
-		for id in want.cand.keys():
-			for i in 3:
-				var m: Dictionary = sim.CO.cand[id][i]
-				var e: Array = want.cand[id][i]
-				if m.name != e[0] or m.age != int(e[1]) or m.skill != int(e[2]) or m.sal != int(e[3]) or m.trait != e[4] or m.honest != e[5] or m.loyal != int(e[6]):
-					return "seed %s: manager candidate %s #%d: %s, want %s" % [seed_str, id, i, m, e]
-		print("       seed %s: «%s», %d orders on the board, %d manager candidates — identical to HTML (%d ms)" % [seed_str, sim.CO.name, sim.CO.board.size(), sim.CO.cand.size() * 3, ms])
+		var d := Ref.diff(company_fp(int(seed_str)), fp[seed_str], "seed " + seed_str)
+		if d != "":
+			return d
+		print("       seed %s: «%s», %d orders on the board — as recorded (%d ms)" % [seed_str, fp[seed_str].name, fp[seed_str].board.size(), Time.get_ticks_msec() - t])
 	return ""
 
 
 static func _h(x: float) -> String:
-	var b := PackedByteArray()
-	b.resize(8)
-	b.encode_double(0, x)
-	return b.hex_encode()
+	return Ref.h(x)
 
 
-## the same day record as simref.js
-func _record(sim: Sim, sent: int) -> Dictionary:
+## what a day leaves: money, the board, the trips, the fleet, incidents, managers…
+static func _record(sim: Sim, sent: int) -> Dictionary:
 	var CO: Dictionary = sim.CO
 	var m := PackedStringArray()
 	for k in CO.m:
@@ -146,8 +118,9 @@ func _record(sim: Sim, sent: int) -> Dictionary:
 		"board": " ".join(bd), "jobs": " ".join(jb), "veh": " ".join(vh), "hubs": " ".join(hb), "conf": " ".join(cf), "comp": " ".join(cp), "pool": " ".join(pl)}
 
 
-## the dispatch policy of simref.js: the best-paying single-leg orders that can be done on time
-func _policy(sim: Sim, scenario: String = "") -> int:
+## the player of the test: the best-paying single-leg orders that can be done on time, chains, multi-drop
+## flights, consolidated trips and reroutes depending on the scenario
+static func _policy(sim: Sim, scenario: String = "") -> int:
 	var n := 0
 	if scenario == "fleet" and sim.CO.tenders.is_empty() and sim.CO.get("toff", []).size():
 		sim.co_tender_take(sim.CO.toff[0].id)
@@ -205,8 +178,8 @@ func _policy(sim: Sim, scenario: String = "") -> int:
 	return n
 
 
-## the planner's estimates for the first orders on the board (simref.js lpRec)
-func _lp_rec(sim: Sim) -> String:
+## the planner's estimates for the first orders on the board
+static func _lp_rec(sim: Sim) -> String:
 	var out := PackedStringArray()
 	for k in sim.CO.board.slice(0, 4):
 		var legs: bool = k.get("legs") != null
@@ -217,83 +190,76 @@ func _lp_rec(sim: Sim) -> String:
 	return " ".join(out)
 
 
-func _readable(key: String, v: Variant) -> String:
-	if v is String and v.length() == 16 and v.is_valid_hex_number():
-		return str(_f64(v))
-	return str(v).left(400)
+## a scenario played for `days` days: the record of every day
+static func sim_run(seed_value: int, scenario: String, days: int) -> Dictionary:
+	var sim := _new_game(seed_value)
+	var SC: Dictionary = {"fleet": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
+		"abroad": {"cash": 2e6, "tier": 4, "staff": {"driver": 12, "rail": 6}, "veh": ["truck", "truck", "truck", "rtrain", "reefer", "ltruck", "van", "train", "train"]},
+		"staff": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
+		"ocean": {"cash": 5e7, "tier": 5, "staff": {"driver": 16, "rail": 8, "sailor": 40}, "veh": ["truck", "truck", "truck", "truck", "train", "train"]},
+		"air": {"cash": 2e8, "tier": 6, "staff": {"driver": 16, "pilot": 30}, "veh": ["plane", "plane", "turbo", "truck", "truck", "truck"]}}.get(scenario, {})
+	if SC:
+		sim.CO.cash = SC.cash
+		sim.CO.tier = SC.tier
+		sim.CO.staff.merge(SC.staff, true)
+		for vt in SC.veh:
+			sim.CO.veh.append({"id": sim.CO.uid, "t": vt, "loc": sim.CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})
+			sim.CO.uid += 1
+		sim.CO.mgr.cto = sim.CO.cand.cto[0].duplicate()
+		sim.CO.cand.erase("cto")
+		sim.CO.auto = true
+	if scenario == "ocean":
+		var H: Dictionary = sim.PL[sim.CO.hq]
+		var P: Variant = H if H.port != null else null
+		if P == null:
+			var L: Array = sim.PL.filter(func(p): return p.port != null and p.land == H.land)
+			Sim._stable_sort(L, func(a, b): return JS.hypot(a.x - H.x, a.z - H.z) - JS.hypot(b.x - H.x, b.z - H.z))
+			P = L[0] if L.size() else null
+		if P != null:
+			if P.id != sim.CO.hq:
+				sim.CO.hubs.append({"pid": P.id, "lvl": 1, "share": .04, "mk": 0})
+			for vt in ["feeder", "ship", "feeder"]:
+				sim.CO.veh.append({"id": sim.CO.uid, "t": vt, "loc": P.id, "st": "idle", "cond": 100.0, "km": 0.0})
+				sim.CO.uid += 1
+	if scenario == "staff":
+		sim.auto_choice = 1
+		sim.CO.wageLv = .7
+		sim.CO.mgr.cfo = sim.CO.cand.cfo[0].duplicate()
+		sim.CO.mgr.cfo.honest = true
+		sim.CO.cand.erase("cfo")
+		sim.CO.mgr.coo = sim.CO.cand.coo[0].duplicate()
+		sim.CO.mgr.coo.honest = false
+		sim.CO.mgr.coo.sal = 500
+		sim.CO.cand.erase("coo")
+	var rec := []
+	for n in days:
+		if sim.over:
+			break
+		var sent := _policy(sim, scenario)
+		for f in 8:
+			sim.co_frame(f / 8.0)
+		sim.co_day()
+		var got := _record(sim, sent)
+		got.lp = _lp_rec(sim) if n % 10 == 9 else ""
+		rec.append(got)
+	return Ref.norm({"seed": seed_value, "scenario": scenario, "name": sim.CO.name, "hq": sim.CO.hq, "over": sim.over,
+		"cdel": sim.CO.cdel, "cash": int(sim.CO.cash), "rec": rec})
 
 
-func test_simulation_days_match_html() -> String:
+func test_simulation_days_match_reference() -> String:
 	if not ClassDB.class_exists("TRWorldGen"):
 		return "no native module"
-	var fp: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/sim_fingerprints.json"))
-	for run in fp.runs:
+	var fp: Dictionary = Ref.read("sim_fingerprints.json")
+	for want in fp.runs:
 		var t := Time.get_ticks_msec()
-		var sim := _new_game(int(run.seed))
-		if sim.CO.name != run.name or sim.CO.hq != int(run.hq):
-			return "seed %s: company %s at %d, want %s at %d" % [run.seed, sim.CO.name, sim.CO.hq, run.name, run.hq]
-		var SC: Dictionary = {"fleet": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
-			"abroad": {"cash": 2e6, "tier": 4, "staff": {"driver": 12, "rail": 6}, "veh": ["truck", "truck", "truck", "rtrain", "reefer", "ltruck", "van", "train", "train"]},
-			"staff": {"cash": 250000.0, "tier": 2, "staff": {"driver": 8}, "veh": ["ltruck", "ltruck", "van", "van", "van", "truck", "truck"]},
-			"ocean": {"cash": 5e7, "tier": 5, "staff": {"driver": 16, "rail": 8, "sailor": 40}, "veh": ["truck", "truck", "truck", "truck", "train", "train"]},
-			"air": {"cash": 2e8, "tier": 6, "staff": {"driver": 16, "pilot": 30}, "veh": ["plane", "plane", "turbo", "truck", "truck", "truck"]}}.get(run.scenario, {})
-		if SC:
-			sim.CO.cash = SC.cash
-			sim.CO.tier = SC.tier
-			sim.CO.staff.merge(SC.staff, true)
-			for vt in SC.veh:
-				sim.CO.veh.append({"id": sim.CO.uid, "t": vt, "loc": sim.CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})
-				sim.CO.uid += 1
-			sim.CO.mgr.cto = sim.CO.cand.cto[0].duplicate()
-			sim.CO.cand.erase("cto")
-			sim.CO.auto = true
-		if run.scenario == "ocean":
-			var H: Dictionary = sim.PL[sim.CO.hq]
-			var P: Variant = H if H.port != null else null
-			if P == null:
-				var L: Array = sim.PL.filter(func(p): return p.port != null and p.land == H.land)
-				Sim._stable_sort(L, func(a, b): return JS.hypot(a.x - H.x, a.z - H.z) - JS.hypot(b.x - H.x, b.z - H.z))
-				P = L[0] if L.size() else null
-			if P != null:
-				if P.id != sim.CO.hq:
-					sim.CO.hubs.append({"pid": P.id, "lvl": 1, "share": .04, "mk": 0})
-				for vt in ["feeder", "ship", "feeder"]:
-					sim.CO.veh.append({"id": sim.CO.uid, "t": vt, "loc": P.id, "st": "idle", "cond": 100.0, "km": 0.0})
-					sim.CO.uid += 1
-		if run.scenario == "staff":
-			sim.auto_choice = 1
-			sim.CO.wageLv = .7
-			sim.CO.mgr.cfo = sim.CO.cand.cfo[0].duplicate()
-			sim.CO.mgr.cfo.honest = true
-			sim.CO.cand.erase("cfo")
-			sim.CO.mgr.coo = sim.CO.cand.coo[0].duplicate()
-			sim.CO.mgr.coo.honest = false
-			sim.CO.mgr.coo.sal = 500
-			sim.CO.cand.erase("coo")
-		var n := 0
-		for want in run.rec:
-			if sim.over:
-				return "seed %s %s: bankrupt before day %d" % [run.seed, run.scenario, want.day]
-			var sent := _policy(sim, run.scenario)
-			for f in 8:
-				sim.co_frame(f / 8.0)
-			sim.co_day()
-			var got := _record(sim, sent)
-			got.lp = _lp_rec(sim) if n % 10 == 9 else ""
-			for key in want.keys():
-				var g: Variant = got[key]
-				var w: Variant = want[key]
-				var same: bool = (float(g) == float(w)) if (w is float or w is int) else (str(g) == str(w))
-				if not same:
-					if g is String and w is String and " " in w:
-						var gs: PackedStringArray = g.split(" ")
-						var ws: PackedStringArray = w.split(" ")
-						for i in maxi(gs.size(), ws.size()):
-							var a: String = gs[i] if i < gs.size() else "—"
-							var b: String = ws[i] if i < ws.size() else "—"
-							if a != b:
-								return "seed %s %s, day %d, %s #%d: %s, want %s" % [run.seed, run.scenario, want.day, key, i, a, b]
-					return "seed %s %s, day %d: %s = %s, want %s" % [run.seed, run.scenario, want.day, key, _readable(key, g), _readable(key, w)]
-			n += 1
-		print("       seed %d «%s»: %d days, %d deliveries, cash %d — identical to HTML (%d ms)" % [int(run.seed), run.scenario, n, sim.CO.cdel, int(sim.CO.cash), Time.get_ticks_msec() - t])
+		var got := sim_run(int(want.seed), want.scenario, want.rec.size())
+		var where := "seed %d %s" % [int(want.seed), want.scenario]
+		for i in mini(got.rec.size(), want.rec.size()):
+			var d := Ref.diff(got.rec[i], want.rec[i], "%s, day %d" % [where, int(want.rec[i].day)])
+			if d != "":
+				return d
+		var d := Ref.diff(got, want, where)
+		if d != "":
+			return d
+		print("       %s «%s»: %d days, %d deliveries, cash %d — as recorded (%d ms)" % [where, want.name, want.rec.size(), int(want.cdel), int(want.cash), Time.get_ticks_msec() - t])
 	return ""

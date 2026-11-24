@@ -1,14 +1,31 @@
 extends RefCounted
-## Core tests: the RNG and noise must match the HTML version bit for bit (vectors in rng_vectors.json
-## were produced by the legacy JS code; RNG values are stored as raw 32-bit integers), plus the calendar.
+## Core tests: the RNG and the noise give the recorded values bit for bit (rng_vectors.json, recorded by
+## tests/record_refs.gd; RNG values are stored as raw 32-bit integers), plus the calendar.
+
+const RNG_SEEDS := ["0", "1", "777", "123456789", "-5", "4294967295"]
+const PERLIN_AT := [[0.3, 0.7], [12.25, -3.5], [100.1, 55.9], [-7.77, 0.01]]
+
+
+## the values as they are stored
+static func rng_fp() -> Dictionary:
+	var o := {}
+	for seed_str in RNG_SEEDS:
+		var r := Mulberry.new(int(seed_str))
+		var a := []
+		for i in 6:
+			a.append(int(r.next() * 4294967296.0))
+		o[seed_str] = a
+	var p := Perlin.new(Mulberry.new((777 ^ 0x77) & 0xFFFFFFFF))
+	o.perlin = PERLIN_AT.map(func(xy): return [xy[0], xy[1], p.noise(xy[0], xy[1])])
+	return o
 
 func _vectors() -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/rng_vectors.json"))
 
 
-func test_mulberry_matches_legacy() -> String:
+func test_mulberry_matches_reference() -> String:
 	var v := _vectors()
-	for seed_str in ["0", "1", "777", "123456789", "-5", "4294967295"]:
+	for seed_str in RNG_SEEDS:
 		var r := Mulberry.new(int(seed_str))
 		var want: Array = v[seed_str]
 		for i in want.size():
@@ -18,7 +35,7 @@ func test_mulberry_matches_legacy() -> String:
 	return ""
 
 
-func test_perlin_matches_legacy() -> String:
+func test_perlin_matches_reference() -> String:
 	var v := _vectors()
 	var p := Perlin.new(Mulberry.new((777 ^ 0x77) & 0xFFFFFFFF))
 	for row in v["perlin"]:

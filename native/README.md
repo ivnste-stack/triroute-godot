@@ -16,7 +16,9 @@ scons platform=linux target=template_debug
 scons platform=windows use_mingw=yes target=template_debug
 ```
 
-## Test against the HTML version
+## History: how the port was checked against the HTML version
+
+No longer used: the Godot version is the reference now (`godot/tests/record_refs.gd` records it).
 
 ```bash
 bash legacy/build.sh
@@ -29,4 +31,4 @@ python3 -c "import json;print('\n'.join('%.17g'%s['pop'] for s in json.load(open
 ./board_dump 777 pops.txt board.json && python3 native/tests/board_compare.py legacy/tests/ref/777 board.json
 ```
 
-In Godot: `godot --headless --path godot -s res://tests/run_tests.gd` (test_worldgen checks MD5 fingerprints).
+In Godot: `godot --headless --path godot -s res://tests/run_tests.gd` (test_worldgen compares the generator with its recorded fingerprints; record them again after a deliberate change with `godot --headless --path godot -s res://tests/record_refs.gd`).

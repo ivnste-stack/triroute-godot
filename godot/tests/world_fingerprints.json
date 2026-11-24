@@ -1,230 +1,114 @@
 {
  "777": {
-  "own": "a36b4d3de959050326045ed55c21e5b1",
-  "height": "a9a753569630c3f19d3070e95fb8d617",
-  "sqd": "bd74f533ecfae219c10cb52ce9d42bd1",
-  "T": 0.5572265982627869,
-  "land": 645954,
-  "countries": 35,
-  "first_country": {
-   "lx": 1396,
-   "ly": 532,
-   "neighbors": [
-    10,
-    12,
-    3
-   ]
-  },
-  "board": {
-   "pops": [
-    "cffa4e8a4b4f2b40",
-    "09f663dbec514540",
-    "69558b7a23fd2540",
-    "bf26f03839552540",
-    "9162652e61432340",
-    "0cbdd9e224624740",
-    "c70ed2daa8b15040",
-    "b2465996d6a31c40",
-    "1dc863f26a593b40",
-    "37dce80b35b33740",
-    "ab65962ded192e40",
-    "020f1ab826762040",
-    "44891f0a14022840",
-    "9c98f09105033740",
-    "4f3b23ca2bd72a40",
-    "2d5a9b4f17373e40",
-    "1fb32e61c4303740",
-    "da4e90265a912a40",
-    "29b94625e42e4540",
-    "e6ccdb0fb9be2d40",
-    "848e93392f3f4040",
-    "75fb1bb06e163040",
-    "71a5914cbc8a4140",
-    "cadb1b4849e11940",
-    "f45f531abd392940",
-    "b0c7938efb0c4440",
-    "a20b10b9dd813740",
-    "a05da005e9512c40",
-    "3c759998c1343040",
-    "257e4b9be20a2140",
-    "bde880bacca42040",
-    "d54d9a06954f0a40",
-    "0000000000000040",
-    "7d07f0ea89310a40",
-    "0000000000000040"
-   ],
-   "towns": 201,
-   "towns_md5": "89db14cc13c5f9e7adbd19cd4d5dd507",
-   "bits": "021b93c8573629b421514b04cf387279",
-   "rbits": "8fa10d56a7417fa45f6201ae353c7029",
-   "roads": 987,
-   "railways": 60,
-   "checkpoints": 91,
-   "first_town": {
-    "name": "\u0413\u0440\u0430\u043d\u0456\u044f",
-    "type": "cap",
-    "pop": "101d60cd7508f93f"
+  "world": {
+   "own": "a36b4d3de959050326045ed55c21e5b1",
+   "height": "a9a753569630c3f19d3070e95fb8d617",
+   "sqd": "bd74f533ecfae219c10cb52ce9d42bd1",
+   "T": "000000e0ccd4e13f",
+   "land": 645954.0,
+   "countries": 35.0,
+   "first_country": {
+    "lx": 1396.0,
+    "ly": 532.0,
+    "neighbors": [
+     10.0,
+     12.0,
+     3.0
+    ]
    }
   },
   "states": {
-   "n": 35,
-   "md5": "5326f5580ba6c7b60654cedfd1796021",
-   "pop0": "cffa4e8a4b4f2b40",
-   "dev0": "33332b0486c0ea3f",
-   "stab0": "0080649b53d54a40"
+   "n": 35.0,
+   "md5": "c52e8248dd4b67b6dc720af0966d7ae2",
+   "first": "Аурент"
+  },
+  "board": {
+   "towns": 201.0,
+   "towns_md5": "89db14cc13c5f9e7adbd19cd4d5dd507",
+   "pops_md5": "6ecd3a7b4b58233fdd0d0f23d8851dee",
+   "bits": "021b93c8573629b421514b04cf387279",
+   "rbits": "8fa10d56a7417fa45f6201ae353c7029",
+   "roads": 987.0,
+   "railways": 60.0,
+   "checkpoints": 91.0
   },
   "routes": {
-   "n": 67,
+   "n": 67.0,
    "md5": "d2eecd952a119982367659581b17e27d"
   }
  },
  "303": {
-  "own": "4b81b1568ef0c86368b4f1c5519d6237",
-  "height": "2b1f4b0fc84b035a777fea337dec3c06",
-  "sqd": "8d005317e69ebb8a78a1250fbce99d43",
-  "T": 0.6493669152259827,
-  "land": 653981,
-  "countries": 31,
-  "first_country": {
-   "lx": 1116,
-   "ly": 615,
-   "neighbors": [
-    3,
-    7,
-    21
-   ]
-  },
-  "board": {
-   "pops": [
-    "4a2189ba17543a40",
-    "685e639d80a24640",
-    "5c9a11e520303b40",
-    "235151f379df4d40",
-    "bedf6db981404f40",
-    "d784604f73cd4440",
-    "13dcad3b4b703a40",
-    "dcb673f595843d40",
-    "4e75574b4eff3340",
-    "31b882647aac3d40",
-    "57696fa0433c1c40",
-    "58750813037b2040",
-    "878329d7b60a0640",
-    "02b885d4a83d4e40",
-    "b89fbe6506363940",
-    "f4633019c5496040",
-    "dae571e95a8d3140",
-    "ff456c280d3e4040",
-    "6ed96363bcb13540",
-    "9503a99f89e12640",
-    "2769cf508c243a40",
-    "49aedeb061452340",
-    "4ba86499481d3a40",
-    "0eb20fb705854b40",
-    "4fc14876e1221540",
-    "b52645b5dee65b40",
-    "4499f31a13e43340",
-    "fbb6360974a42d40",
-    "4b13b2d723062940",
-    "0000000000000040",
-    "bd04328a2c981440"
-   ],
-   "towns": 192,
-   "towns_md5": "720beaf80022510fd4d5f5a4ad0d9284",
-   "bits": "9b7ae572375d4bedb72a440ad0a7a507",
-   "rbits": "a62eee4d943ad40ec14a48544832efff",
-   "roads": 951,
-   "railways": 67,
-   "checkpoints": 106,
-   "first_town": {
-    "name": "\u041a\u043e\u0440\u0441\u044c\u043a",
-    "type": "cap",
-    "pop": "0e5cd62883de0240"
+  "world": {
+   "own": "4b81b1568ef0c86368b4f1c5519d6237",
+   "height": "2b1f4b0fc84b035a777fea337dec3c06",
+   "sqd": "8d005317e69ebb8a78a1250fbce99d43",
+   "T": "000000209dc7e43f",
+   "land": 653981.0,
+   "countries": 31.0,
+   "first_country": {
+    "lx": 1116.0,
+    "ly": 615.0,
+    "neighbors": [
+     3.0,
+     7.0,
+     21.0
+    ]
    }
   },
   "states": {
-   "n": 31,
-   "md5": "e57c533f6c1a73dc660eb79686972210",
-   "pop0": "4a2189ba17543a40",
-   "dev0": "333353f7a090e43f",
-   "stab0": "00c0f05dbf445040"
+   "n": 31.0,
+   "md5": "6c7093d992601123b413193f5977463c",
+   "first": "Торсерада"
+  },
+  "board": {
+   "towns": 192.0,
+   "towns_md5": "720beaf80022510fd4d5f5a4ad0d9284",
+   "pops_md5": "864e67c54bb40f679dd71513b4cc3896",
+   "bits": "9b7ae572375d4bedb72a440ad0a7a507",
+   "rbits": "a62eee4d943ad40ec14a48544832efff",
+   "roads": 951.0,
+   "railways": 67.0,
+   "checkpoints": 106.0
   },
   "routes": {
-   "n": 64,
+   "n": 64.0,
    "md5": "0cb51462bba78f8534c2a424db62e6ee"
   }
  },
  "123456": {
-  "own": "34fd607e6a390d44ea9c8244913cedf1",
-  "height": "320ffa8382ad17ef1f7886b859d19d03",
-  "sqd": "7d3bf2d46f81e7fe72effd2a1c001c18",
-  "T": 0.6776928901672363,
-  "land": 642336,
-  "countries": 32,
-  "first_country": {
-   "lx": 1110,
-   "ly": 828,
-   "neighbors": [
-    3,
-    5
-   ]
-  },
-  "board": {
-   "pops": [
-    "509b586154fa3940",
-    "a7e17cc8d3653440",
-    "aa379ad3ec782440",
-    "0358f74f1bbe3e40",
-    "5afa5677de753340",
-    "5934af91533c4740",
-    "7bc8b4f6cd2d3940",
-    "464681a3b9213240",
-    "c0c5560103de3140",
-    "edf5baec65613e40",
-    "bf6c175d7cf22e40",
-    "0b48f999fe214940",
-    "737c2fe594bb2a40",
-    "88360548dfaa4340",
-    "53aadd9d38143640",
-    "833828db613f2b40",
-    "e3a4ecd0a2f71e40",
-    "45aa60f93f704940",
-    "9a74926e1b4d3940",
-    "08fc1282eb0f3740",
-    "23a966f8f69e4b40",
-    "9ed3153a20534a40",
-    "5b4ac73c6da64540",
-    "1bc34d4e26962540",
-    "cb14563970c23140",
-    "54832000b2483e40",
-    "dc13ffc96f673840",
-    "d28dd5933dce3140",
-    "d81ae3a2ca942b40",
-    "0000000000000040",
-    "0000000000000040",
-    "55dc7a127cc10a40"
-   ],
-   "towns": 189,
-   "towns_md5": "df924df1f35bf32dc92fb16e61c4eb87",
-   "bits": "322d6707a80287eb381055c361660e41",
-   "rbits": "d1bd39222eca33ea980b58040b0eab43",
-   "roads": 958,
-   "railways": 57,
-   "checkpoints": 82,
-   "first_town": {
-    "name": "\u041b\u0456\u043c\u0456\u044f",
-    "type": "cap",
-    "pop": "f442022e16770640"
+  "world": {
+   "own": "34fd607e6a390d44ea9c8244913cedf1",
+   "height": "320ffa8382ad17ef1f7886b859d19d03",
+   "sqd": "7d3bf2d46f81e7fe72effd2a1c001c18",
+   "T": "00000000a9afe53f",
+   "land": 642336.0,
+   "countries": 32.0,
+   "first_country": {
+    "lx": 1110.0,
+    "ly": 828.0,
+    "neighbors": [
+     3.0,
+     5.0
+    ]
    }
   },
   "states": {
-   "n": 32,
-   "md5": "9be0c5f9237dd8e35220c4493dac5cae",
-   "pop0": "509b586154fa3940",
-   "dev0": "cdcc8c3c0b47ec3f",
-   "stab0": "0000431b70ea4e40"
+   "n": 32.0,
+   "md5": "f1eaa5b090e72ca2d0795bb4e109d093",
+   "first": "Хелтирія"
+  },
+  "board": {
+   "towns": 189.0,
+   "towns_md5": "df924df1f35bf32dc92fb16e61c4eb87",
+   "pops_md5": "3ff4306573aa9f4156ecea558abcb821",
+   "bits": "322d6707a80287eb381055c361660e41",
+   "rbits": "d1bd39222eca33ea980b58040b0eab43",
+   "roads": 958.0,
+   "railways": 57.0,
+   "checkpoints": 82.0
   },
   "routes": {
-   "n": 63,
+   "n": 63.0,
    "md5": "bfba0ed5526a53e7179932ba66474c70"
   }
  }
