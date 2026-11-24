@@ -761,6 +761,38 @@ func build_card_for(j: Dictionary) -> void:
 	rt.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(10, 10, 10, 10)))
 	rt.add_child(Ui.vbox(2, [Ui.hbox(8, [_flag(A.cid, 24, 16), Ui.label(A.name, 14)]), _left(Ui.margin(Ui.icon("down", 14, Ui.MUTED), 4, 0, 0, 0)), Ui.hbox(8, [_flag(B.cid, 24, 16), Ui.label(B.name, 14)])]))
 	body.add_child(rt)
+	# the vehicle and its hold: empty on the way to the cargo, filling while it loads, full on the road,
+	# emptying while it unloads
+	var nv: int = j.get("n", 1)
+	var load := 0.0
+	var ltxt := ""
+	if not ret:
+		var lw: float = j.k.tons / maxf(.01, T.cap * nv)
+		var lv: float = sim.k_vol(j.k) / maxf(.01, T.get("vol", 1e9) * nv) if T.get("vol", 0) else 0.0
+		load = clampf(maxf(lw, lv), 0, 1)
+		ltxt = "%s т з %s т%s" % [Ui.loc(j.k.tons), Ui.loc(T.cap * nv), (" · %s м³ з %s м³" % [Ui.loc(sim.k_vol(j.k)), Ui.loc(T.vol * nv)]) if T.get("vol", 0) else ""]
+	var ph := 0.0
+	var hs: float = j.get("hs", 0.0)
+	var tl: float = j.get("tl", 0.0)
+	if ret or e < tl:
+		ph = 0.0
+	elif hs > 0 and e < tl + hs:
+		ph = (e - tl) / hs
+	elif hs > 0 and e > j.tot - hs:
+		ph = clampf((j.tot - e) / hs, 0, 1)
+	else:
+		ph = 1.0
+	var vd := VehicleDiagram.make(j.t, load * ph)
+	var vbox := Ui.vbox(4, [vd])
+	if ltxt != "":
+		var cap := Ui.label("Завантаження %d%% · %s%s" % [int(round(load * 100)), ltxt, (" · ×%d" % nv) if nv > 1 else ""], 12, Ui.FG2)
+		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(cap)
+	var vp := PanelContainer.new()
+	vp.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(10, 8, 10, 8)))
+	vp.add_child(vbox)
+	body.add_child(vp)
 	var kv := GridContainer.new()
 	kv.columns = 2
 	kv.add_theme_constant_override("h_separation", 12)
