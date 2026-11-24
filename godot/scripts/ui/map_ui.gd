@@ -779,7 +779,7 @@ func build_card_for(j: Dictionary) -> void:
 		vv.custom_minimum_size.x = 150
 		kv.add_child(vv)
 	body.add_child(kv)
-	var pr := Ui.vbox(6, [_row_sp(Ui.lbl("Маршрут" if ret else "Маршрут · відкрити замовлення ›"), Ui.num("%d%%" % int(prog * 100), 12, Ui.MUTED)), W._meter(prog)])
+	var pr := Ui.vbox(6, [_row_sp(Ui.lbl("Маршрут" if ret else "Маршрут · відкрити замовлення ›"), Ui.num("%d%%" % int(prog * 100), 12, Ui.MUTED)), W._meter(prog, Ui.ACCENT, 0, j.get("hold", 0) <= 0 and (st.seg < 0 or st.get("inc") != null))])
 	if not ret:
 		var op := PanelContainer.new()
 		op.add_theme_stylebox_override("panel", Ui.box(Color.TRANSPARENT, Color.TRANSPARENT, 1, Vector4(8, 8, 8, 8)))

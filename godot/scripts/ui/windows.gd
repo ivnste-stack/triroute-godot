@@ -156,14 +156,15 @@ static func _tt(title: String, sub: String = "", ic: String = "", ic_col: Color 
 
 
 ## .meter: a thin bar, frac 0..1
-static func _meter(frac: float, col: Color = Ui.ACCENT, w: float = 0) -> Control:
+static func _meter(frac: float, col: Color = Ui.ACCENT, w: float = 0, hand := false) -> Control:
 	var bg := ColorRect.new()
 	bg.color = Color(1, 1, 1, .07)
 	bg.custom_minimum_size = Vector2(w, 6)
 	bg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var fg := ColorRect.new()
+	var fg := MeterFill.new()
 	fg.color = col
+	fg.hand = hand
 	fg.anchor_bottom = 1
 	fg.anchor_right = clampf(frac, 0, 1)
 	bg.add_child(fg)
@@ -950,7 +951,7 @@ func _job_row(j: Dictionary) -> PanelContainer:
 	var head := Ui.hbox(8, [_place(j.k.from, 14, true, false), Ui.label("→", 14), _place(j.k.to, 14, true, false), Ui.spacer(),
 		Ui.label("%s%s · %s · %s т" % [T.n, (" ×%d" % j.n) if j.get("n", 1) > 1 else "", cg_n, j.k.tons], 13, Ui.FG2)])
 	var bad: bool = j.get("hold", 0) > 0 or j.get("lost", false)
-	var mt := _meter(prog, Ui.BAD if bad else Ui.ACCENT)
+	var mt := _meter(prog, Ui.BAD if bad else Ui.ACCENT, 0, j.get("hold", 0) <= 0 and (stt.seg < 0 or stt.get("inc") != null))
 	var parts := []
 	if j.get("hold", 0) > 0:
 		parts.append("[color=#f0625f]%s · ще %d дн.[/color]" % ["Захоплено піратами" if j.get("seized") else "Затримано", j.hold])
@@ -999,10 +1000,11 @@ static func tick_trips(sim: Sim, tree: SceneTree) -> void:
 			if n.text != txt:
 				n.text = txt
 		else:
-			var fg: ColorRect = n.get_child(0)
+			var fg: MeterFill = n.get_child(0)
 			fg.anchor_right = clampf(e / j.tot, 0, 1)
 			var stt := sim.co_job_state(j, e)
 			fg.color = Ui.BAD if j.get("lost", false) or (stt.get("inc") != null and SimIncidents.INC_RED.has(stt.inc.k)) else Ui.ACCENT
+			fg.hand = stt.seg < 0 or stt.get("inc") != null   # loading, unloading or held up: running stripes
 
 
 func _trips(body: VBoxContainer) -> void:
