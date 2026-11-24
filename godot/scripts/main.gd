@@ -306,6 +306,43 @@ func _show_menu() -> void:
 	win.visible = false
 
 
+## the flags are drawn ahead, one a frame, so no window waits for them
+func _warm_flags(sim: Sim) -> void:
+	for st in sim.states:
+		if session == null or session.sim != sim:
+			return
+		Flags.texture(st)
+		await get_tree().process_frame
+
+
+## the company's new name (the pencil in the Company window)
+func _rename_dialog() -> void:
+	var sim := session.sim
+	var e := LineEdit.new()
+	e.text = sim.CO.name
+	e.max_length = 40
+	e.custom_minimum_size = Vector2(360, 38)
+	e.add_theme_font_size_override("font_size", 15)
+	e.select_all_on_focus = true
+	var ok := func() -> void:
+		var n := e.text.strip_edges()
+		if n == "":
+			return
+		modals.clear()
+		if n != sim.CO.name:
+			sim.CO.name = n
+			toasts.push("good", "Компанію перейменовано", n)
+		_win_tick(true)
+	e.text_submitted.connect(func(_t): ok.call())
+	var save := Ui.btn("Зберегти", "pri", "check", ok)
+	var no := Ui.btn("Скасувати", "", "", func(): modals.clear())
+	e.text_changed.connect(func(t): save.disabled = t.strip_edges() == "")
+	var c := Ui.vbox(14, [Ui.note("Назву видно в шапці вікон, у збереженнях і новинах."), e, Ui.hbox(10, [Ui.spacer(), no, save])])
+	modals.push({"icon": "edit", "eyebrow": "Компанія", "title": "Назва компанії", "content": c, "close": true, "width": 460})
+	e.call_deferred("grab_focus")
+	e.call_deferred("select_all")
+
+
 func _new_game_dialog() -> void:
 	var c := Ui.vbox(12)
 	c.add_child(Ui.note("Ви — засновник логістичної компанії. Від однієї вантажної машини до потягів, кораблів і літаків на всіх континентах."))
@@ -488,6 +525,11 @@ func _process_t(delta: float) -> void:
 		if sim.auto_choice < 0 and sim.modals.size() and not modals.is_open():
 			modals.push(_decision(sim.modals.pop_front()))
 		if win.visible:
+			# a trip ended or began between days: the windows that list trips are built again at once
+			var sig := [sim.CO.jobs.size(), sim.CO.get("cdel", 0), sim.CO.veh.size()]
+			if sig != _win_sig and hud.open_window in ["coTrips", "coFleet", "coHome"]:
+				_win_day = -1
+			_win_sig = sig
 			_win_tick()
 		while sim.toasts.size():
 			var t: Dictionary = sim.toasts.pop_front()
@@ -597,6 +639,10 @@ func _on_world(w: Dictionary) -> void:
 		if _args.has("settings"):   # test: the settings on a tab
 			SettingsPanel.tab = String(_args.settings) if _args.settings != "" else "gfx"
 			_settings()
+			for i in 6:
+				await get_tree().process_frame
+		if _args.has("rename"):   # test: the company's name dialog
+			_rename_dialog()
 			for i in 6:
 				await get_tree().process_frame
 		if _args.has("gmenu"):   # test: the game menu
@@ -716,6 +762,8 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 	if not map_ui.reroute.is_connected(_reroute):
 		map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
+	wins.rename_requested.connect(_rename_dialog)
+	_warm_flags(session.sim)
 	wins.show_order.connect(func(k):
 		map_ui.show_order(k)
 		_win_tick(true))
@@ -764,6 +812,7 @@ func _toggle_window(id: String) -> void:
 
 
 var _win_day := -1.0
+var _win_sig: Array = []
 
 
 ## the content of the open window, built again every game day and after every action

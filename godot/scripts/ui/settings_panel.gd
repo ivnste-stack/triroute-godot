@@ -38,6 +38,7 @@ func _ready() -> void:
 ## a section tab: the icon and the name, the open one with an accent underline
 func _tab_btn(t: Array) -> Button:
 	var b := Button.new()
+	b.set_meta("silent", true)   # moving between the sections makes no sound
 	b.text = t[1]
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

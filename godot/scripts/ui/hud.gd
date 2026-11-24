@@ -263,7 +263,10 @@ func _build_rail() -> void:
 		b.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT))
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		var id: String = r[0]
+		b.set_meta("silent", true)   # a click when a window opens, none when it closes
 		b.pressed.connect(func():
+			if open_window != id:
+				Sfx.play("click", -4.0)
 			window_requested.emit(id)
 			_rail_state())
 		v.add_child(b)

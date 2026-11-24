@@ -179,12 +179,8 @@ func _day_date(t: float) -> String:
 	return "%d %s, %02d:00" % [d.d, Ui.MONTHS_FULL[d.m], h]
 
 
-func _flag(cid: int, w: float = 18, h: float = 12) -> ColorRect:
-	var sw := ColorRect.new()
-	sw.custom_minimum_size = Vector2(w, h)
-	sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	sw.color = Color(sim.states[cid].color)
-	return sw
+func _flag(cid: int, w: float = 18, h: float = 12) -> Control:
+	return Flags.rect(sim.states[cid], w, h)
 
 
 # ====================================================================== frame
@@ -851,8 +847,7 @@ func refresh() -> void:
 func _draw_insp_icon() -> void:
 	if sel_p >= 0:
 		return
-	_insp_ic.draw_rect(Rect2(Vector2.ZERO, _insp_ic.size), Color(sim.states[sel_c].color))
-	_insp_ic.draw_rect(Rect2(Vector2.ZERO, _insp_ic.size), Ui.LINE_HI, false, 1)
+	Flags.draw(_insp_ic, sim.states[sel_c], Rect2(Vector2.ZERO, _insp_ic.size), Ui.LINE_HI)
 
 
 func _build_insp(keep: bool = false) -> void:

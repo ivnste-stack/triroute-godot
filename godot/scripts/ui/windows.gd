@@ -11,6 +11,7 @@ signal select_job(j: Dictionary)
 signal plan_order(k: Dictionary)    # ACT.lpPlan: open the route planner
 signal move_vehicle(v: Dictionary)  # ACT.coMove: pick a new home hub on the map
 signal show_order(k: Variant)       # ACT.coShow: the order's A and B on the map (null: hide)
+signal rename_requested             # the pencil by the company's name
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -349,14 +350,10 @@ func _cn(cid: int) -> String:
 	return sim.states[cid].name
 
 
-## plName with the flag: the flag is a swatch of the country's colour until the flags are ported
+## plName with the country's flag
 func _place(pid: int, size: int = 14, bold: bool = true, flag: bool = true) -> HBoxContainer:
 	var p: Dictionary = sim.PL[pid]
-	var sw := ColorRect.new()
-	sw.custom_minimum_size = Vector2(18, 12)
-	sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var c: Variant = sim.states[p.cid].get("color")
-	sw.color = Color(c) if c is String else (c if c is Color else Ui.MUTED)
+	var sw := Flags.rect(sim.states[p.cid], 18, 12)
 	sw.visible = flag
 	var h := Ui.hbox(5, [sw, _b(p.name, size) if bold else Ui.label(p.name, size)])
 	return h
@@ -461,7 +458,23 @@ func _home(body: VBoxContainer) -> void:
 	logo.custom_minimum_size = Vector2(48, 32)
 	logo.draw.connect(func(): Hud.paint_logo(logo, sim))
 	logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	body.add_child(Ui.hbox(10, [logo, Ui.vbox(2, [_b(CO.name, 16), sub])]))
+	var ed := Button.new()   # a square with a pencil: the company's name can be changed
+	ed.icon = Icons.tex("edit", Ui.MUTED, 15)
+	ed.add_theme_constant_override("icon_max_width", 15)
+	ed.custom_minimum_size = Vector2(26, 26)
+	ed.focus_mode = Control.FOCUS_NONE
+	ed.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ed.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	ed.tooltip_text = "Редагувати\nЗмінити назву компанії."
+	ed.add_theme_stylebox_override("normal", Ui.box(Color.TRANSPARENT, Ui.LINE))
+	ed.add_theme_stylebox_override("hover", Ui.box(Ui.ACCENT_SOFT, Ui.LINE_HI))
+	ed.add_theme_stylebox_override("pressed", Ui.box(Ui.ACCENT_SOFT, Ui.ACCENT))
+	ed.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	ed.mouse_entered.connect(func(): ed.icon = Icons.tex("edit", Ui.FG, 15))
+	ed.mouse_exited.connect(func(): ed.icon = Icons.tex("edit", Ui.MUTED, 15))
+	ed.pressed.connect(func(): rename_requested.emit())
+	ed.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	body.add_child(Ui.hbox(10, [logo, Ui.vbox(2, [Ui.hbox(8, [_b(CO.name, 16), ed]), sub])]))
 	var rat: float = CO.rating
 	body.add_child(_grid(4, [
 		_stat("Гроші", Ui.usd(CO.cash), "вартість компанії " + Ui.usd(sim.co_value()), _tip("Гроші", "Готівка. Вартість компанії — гроші плюс техніка і хаби мінус кредити."), "bad" if CO.cash < 0 else ""),

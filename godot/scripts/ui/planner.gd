@@ -637,12 +637,8 @@ func _cons_plan(B: VBoxContainer, C: Dictionary) -> void:
 	B.add_child(Ui.margin(W._blk(v), 0, 10, 0, 0))
 
 
-func _flag(cid: int) -> ColorRect:
-	var sw := ColorRect.new()
-	sw.custom_minimum_size = Vector2(14, 10)
-	sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	sw.color = Color(sim.states[cid].color)
-	return sw
+func _flag(cid: int) -> Control:
+	return Flags.rect(sim.states[cid], 15, 10)
 
 
 ## lpAuto: the dispatcher's plan and route
@@ -817,8 +813,7 @@ func draw_tags(n: CanvasItem, tags: Array) -> void:
 		var x := bx + 10
 		n.draw_string(f1, Vector2(x, by + 3 + 4 + 9), top, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, col)
 		var y2 := by + 3 + 4 + 13 + 13
-		n.draw_rect(Rect2(x, y2 - 10, 18, 12), Color(sim.states[p.cid].color))
-		n.draw_rect(Rect2(x, y2 - 10, 18, 12), Color(1, 1, 1, .35), false, 1)
+		Flags.draw(n, sim.states[p.cid], Rect2(x, y2 - 10, 18, 12))
 		n.draw_string(f2, Vector2(x + 24, y2), p.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
 		if ex != "":
 			n.draw_string(f1, Vector2(x + 24 + f2.get_string_size(p.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 8, y2), ex, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)

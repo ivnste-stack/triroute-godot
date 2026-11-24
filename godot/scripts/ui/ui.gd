@@ -250,6 +250,7 @@ static func btn(text: String, kind: String = "", ic: String = "", cb: Callable =
 ## .xbtn: 30×30, transparent; under the pointer a thin border and the icon in fg
 static func xbtn(cb: Callable) -> Button:
 	var x := Button.new()
+	x.set_meta("silent", true)   # closing makes no sound
 	x.icon = Icons.tex("close", MUTED, 18)
 	x.add_theme_constant_override("icon_max_width", 18)
 	x.custom_minimum_size = Vector2(30, 30)
