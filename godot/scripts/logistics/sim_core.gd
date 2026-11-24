@@ -707,26 +707,64 @@ func _gen_pool() -> Dictionary:
 	var base := []
 	if pool.size():
 		var waitAt: Dictionary = _gen_pre.wait if _gen_pre.has("wait") else _gen_wait()
-		var hx := PackedFloat64Array()
-		var hz := PackedFloat64Array()
-		var hl := PackedInt32Array()
-		for h in CO.hubs:
-			var q: Dictionary = PL[h.pid]
-			hx.append(q.x)
-			hz.append(q.z)
-			hl.append(h.lvl)
+		var near := _nearest_hubs(pool)
 		for p in pool:
-			var d := 1e9
-			var lv := 1
-			var px: float = p.x
-			var pz: float = p.z
-			for j in hx.size():
-				var dd := JS.hypot(hx[j] - px, hz[j] - pz)
-				if dd < d:
-					d = dd
-					lv = hl[j]
+			var nh: Array = near[p.id]
+			var d: float = nh[0]
+			var lv: int = nh[1]
 			base.append([sqrt(p.pop) + .15, D.HUB_ORD[lv], 1 + (d / Dref) * (d / Dref), 3.0 if waitAt.has(p.id) else 1.0])
 	return {"HP": HP, "ownC": ownC, "pool": pool, "base": base}
+
+
+## the nearest hub of the cities orders come from (its distance and level), counted once for a city and kept
+## while the hubs stay the same
+var _nh_key := ""
+var _nh := {}
+
+
+func _nearest_hubs(cities: Array) -> Dictionary:
+	var key := ""
+	for h in CO.hubs:
+		key += "%d:%d " % [h.pid, h.lvl]
+	if key != _nh_key:
+		_nh_key = key
+		_nh = {}
+	var hx := PackedFloat64Array()
+	var hz := PackedFloat64Array()
+	var hl := PackedInt32Array()
+	for p in cities:
+		if _nh.has(p.id):
+			continue
+		if hx.is_empty():
+			for h in CO.hubs:
+				var q: Dictionary = PL[h.pid]
+				hx.append(q.x)
+				hz.append(q.z)
+				hl.append(h.lvl)
+		var d := 1e9
+		var lv := 1
+		var px: float = p.x
+		var pz: float = p.z
+		for j in hx.size():
+			var dd := JS.hypot(hx[j] - px, hz[j] - pz)
+			if dd < d:
+				d = dd
+				lv = hl[j]
+		_nh[p.id] = [d, lv]
+	return _nh
+
+
+## the weight of a city's firms (their number to the power 1.25), kept while the number stays the same
+var _fw := {}
+
+
+func _firm_w(pid: int) -> float:
+	var n: int = firms_of(pid).size()
+	var c: Variant = _fw.get(pid)
+	if c == null or c[0] != n:
+		c = [n, JS.pow(n, 1.25)]
+		_fw[pid] = c
+	return c[1]
 
 
 func _co_gen() -> Variant:
@@ -765,7 +803,7 @@ func _co_gen() -> Variant:
 		var p: Dictionary = pool[i]
 		var b: Array = bw[i]
 		# the firms are counted every time: an order may add a firm to its city (firm_for)
-		var w: float = JS.pow(firms_of(p.id).size(), 1.25) * b[0] * b[1] / b[2] * b[3] / (1 + 1.5 * onB.get(str(p.id), 0)) * (1.0 if ownC.has(p.cid) else .3)
+		var w: float = _firm_w(p.id) * b[0] * b[1] / b[2] * b[3] / (1 + 1.5 * onB.get(str(p.id), 0)) * (1.0 if ownC.has(p.cid) else .3)
 		tw += w
 		ws.append(w)
 	Perf.end("day.g_pool")
@@ -1862,35 +1900,48 @@ func lp_drop_pay(j: Dictionary, d: Dictionary) -> void:
 
 # ---------- the dispatcher (coAuto) ----------
 func co_auto() -> void:
+	var st := {"stage": "auto0"}
+	_day_run(st, "returns", 1 << 60)
+
+
+## the dispatcher, first step: the board by pay, the best first
+func _auto0(st: Dictionary) -> void:
+	st.stage = "returns"
 	if not CO.auto or not CO.mgr.has("cto") or CO.strike > day:
 		return
-	var n := 0
-	var lim := 4
-	var sk := msk("cto")
 	var L: Array = CO.board.duplicate()
 	_stable_sort(L, func(a, b): return b.pay - a.pay)
-	_plan_fleet = true   # the fleet by type once for every plan; the free crews counted again after a dispatch
-	for k in L:
-		if n >= lim:
-			break
-		Perf.begin("day.auto_plan")
-		var P := co_plan(k)
-		Perf.end("day.auto_plan")
-		var guess: float = P.get("profit", NAN) * (1 + (R.next() - .5) * (1 - sk) * .9)   # a weak dispatcher misjudges orders
-		if P.ok and (not P.late and guess > k.pay * .15):
-			var extra := JS.round_js(P.fuel * (1 - sk) * .45)   # and plans longer, costlier routes
-			CO.cash -= extra
-			CO.m.fuel += extra
-			k.how = "mgr"
-			Perf.begin("day.auto_disp")
-			co_dispatch(k, P, true)
-			Perf.end("day.auto_disp")
-			_plan_free_dirty = true
-			n += 1
-	_plan_fleet = false
-	_plan_pre = {}
-	if n:
-		co_news("", "cpu", "Диспетчерська %s відправила %d %s" % [CO.name, n, "рейс" if n == 1 else "рейси"])
+	st.L = L
+	st.n = 0
+	st.sk = msk("cto")
+	st.pre = {}
+	st.stage = "auto"
+
+
+## the dispatcher looks at one order; false when it has sent enough or seen them all
+func _auto1(st: Dictionary) -> bool:
+	var L: Array = st.L
+	if st.n >= 4 or L.is_empty():
+		if st.n:
+			co_news("", "cpu", "Диспетчерська %s відправила %d %s" % [CO.name, st.n, "рейс" if st.n == 1 else "рейси"])
+		return false
+	var k: Dictionary = L.pop_front()
+	var sk: float = st.sk
+	Perf.begin("day.auto_plan")
+	var P := co_plan(k)
+	Perf.end("day.auto_plan")
+	var guess: float = P.get("profit", NAN) * (1 + (R.next() - .5) * (1 - sk) * .9)   # a weak dispatcher misjudges orders
+	if P.ok and (not P.late and guess > k.pay * .15):
+		var extra := JS.round_js(P.fuel * (1 - sk) * .45)   # and plans longer, costlier routes
+		CO.cash -= extra
+		CO.m.fuel += extra
+		k.how = "mgr"
+		Perf.begin("day.auto_disp")
+		co_dispatch(k, P, true)
+		Perf.end("day.auto_disp")
+		_plan_free_dirty = true
+		st.n += 1
+	return true
 
 
 # ---------- trip state (driveAt, segW, coJobState, coJobState0) ----------
@@ -2189,6 +2240,8 @@ func co_returns() -> void:
 			continue
 		_ret_trip(v, v.home, r)
 		cnt[v.loc] -= 1
+	var memo := {}
+	var now := co_now()
 	for v in CO.veh:
 		var T: Dictionary = D.VT[v.t]
 		if v.st != "idle" or T.mode == "local":
@@ -2198,19 +2251,26 @@ func co_returns() -> void:
 			v.idle0 = null
 			continue
 		if v.get("idle0") == null:
-			v.idle0 = co_now()
+			v.idle0 = now
 			continue
-		if co_now() - v.idle0 < 1:
+		if now - v.idle0 < 1:
 			continue   # a day in the unloading city waiting for a new order
+		# the nearest hub with room, once per city and mode: the hubs' counts do not change in this pass (only
+		# the cities the vehicles leave are counted down), so every vehicle there would find the same one
+		var mk: String = T.mode + str(v.loc)
 		var best: Variant = null
-		var bl := 1e9
-		for h in CO.hubs:
-			if not mode_ok(T.mode, PL[h.pid]) or cnt.get(h.pid, 0) >= hub_veh_cap(h):
-				continue
-			var r: Variant = co_route(T.mode, v.loc, h.pid)
-			if r != null and r.len < bl:
-				bl = r.len
-				best = {"h": h, "r": r}
+		if memo.has(mk):
+			best = memo[mk]
+		else:
+			var bl := 1e9
+			for h in CO.hubs:
+				if not mode_ok(T.mode, PL[h.pid]) or cnt.get(h.pid, 0) >= hub_veh_cap(h):
+					continue
+				var r: Variant = co_route(T.mode, v.loc, h.pid)
+				if r != null and r.len < bl:
+					bl = r.len
+					best = {"h": h, "r": r}
+			memo[mk] = best
 		if best == null:
 			v.idle0 = co_now() + 30
 			continue
@@ -2271,9 +2331,14 @@ func _gen_sum(field: String) -> float:
 
 
 func co_board_day() -> void:
+	var st := {"stage": "board0"}
+	_day_run(st, "auto0", 1 << 60)
+
+
+## the board of the day, first step: what every order's generation reads from the fleet, the old orders gone
+func _board0(st: Dictionary) -> void:
 	Perf.begin("day.gen_pre")
-	# the road fleet's capacity, volume and the largest truck in one pass (three passes before; the sums in
-	# fleet order, so the same numbers)
+	# the road fleet's capacity, volume and the largest truck in one pass (the sums in fleet order)
 	var own := 0.0
 	var ov := 0.0
 	var mx := -INF
@@ -2286,25 +2351,43 @@ func co_board_day() -> void:
 	_gen_pre = {"wait": _gen_wait(), "own": own, "ov": ov}
 	_gen_pre.rlim = mx * 8 if mx > -INF else road_lim()
 	Perf.end("day.gen_pre")
-	_co_board_day()
-	_gen_pre = {}
-
-
-func _co_board_day() -> void:
 	CO.board = CO.board.filter(func(k): return k.exp > day)
-	var mx := co_board_max()
-	var i := 0
-	while i < maxi(3, int(ceil(mx / 5.0))) and CO.board.size() < mx:
-		i += 1
+	st.mx = co_board_max()
+	st.i = 0
+	st.a = -1
+	st.stage = "pool" if CO.board.size() < st.mx else "board"
+
+
+## the cities orders come from, counted once for the day (no randomness in it: the same as counting it at the
+## first order)
+func _board_pool() -> void:
+	Perf.begin("day.g_pool")
+	_gen_pre.pool = _gen_pool()
+	Perf.end("day.g_pool")
+
+
+## a step of the board: a new attempt at an order (up to five tries, one try a step); false when the board is
+## full or the attempts are spent
+func _board1(st: Dictionary) -> bool:
+	if st.a < 0:   # a new attempt
+		var mx: int = st.mx
+		if not (st.i < maxi(3, int(ceil(mx / 5.0))) and CO.board.size() < mx):
+			_gen_pre = {}
+			return false
+		st.i += 1
 		if not chance(.65):
-			continue
-		for a in 5:
-			Perf.begin("day.gen")
-			var k: Variant = co_gen()
-			Perf.end("day.gen")
-			if k != null:
-				CO.board.append(k)
-				break
+			return true
+		st.a = 0
+	Perf.begin("day.gen")
+	var k: Variant = co_gen()
+	Perf.end("day.gen")
+	st.a += 1
+	if k != null:
+		CO.board.append(k)
+		st.a = -1
+	elif st.a >= 5:
+		st.a = -1
+	return true
 
 
 # ---------- world prices, permits (08g) ----------
@@ -2376,8 +2459,18 @@ func biz_month() -> void:
 
 # ---------- the day (coDay) ----------
 func co_day() -> void:
+	var st := co_day_begin()
+	co_day_run(st, 1 << 60)
+
+
+## A game day in steps, so that a big company's day does not hold up one frame: co_day_begin() moves the
+## date on and does the light part; co_day_run(st, µs) goes on with the day for at most that long (at least
+## one step) and says when it is done. The steps in a row are exactly co_day(); between frames the game may
+## act (the player sends an order, buys a vehicle): the dispatcher then counts the fleet again and passes
+## over the orders that have left the board.
+func co_day_begin() -> Dictionary:
 	if over:
-		return
+		return {"stage": "done"}
 	day += 1
 	date.d += 1
 	var dim: int = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][date.m]
@@ -2397,23 +2490,77 @@ func co_day() -> void:
 	Perf.begin("day._jobs_day")
 	_jobs_day()
 	Perf.end("day._jobs_day")
-	Perf.begin("day.co_board_day")
-	co_board_day()
-	Perf.end("day.co_board_day")
-	Perf.begin("day.co_auto")
-	co_auto()
-	Perf.end("day.co_auto")
-	Perf.begin("day.co_returns")
-	co_returns()
-	Perf.end("day.co_returns")
-	Perf.begin("day.biz_prices")
-	biz_prices()
-	Perf.end("day.biz_prices")
-	Perf.begin("day.perm_day")
-	perm_day()
-	Perf.end("day.perm_day")
-	if nm:
-		co_month()
+	return {"stage": "board0", "nm": nm}
+
+
+func co_day_run(st: Dictionary, budget_us: int) -> bool:
+	return _day_run(st, "done", budget_us)
+
+
+## the fleet, the trips and the board as the game leaves them between two steps
+func _day_sig() -> Array:
+	return [CO.veh.size(), CO.jobs.size(), CO.board.size(), CO.hubs.size()]
+
+
+func _day_run(st: Dictionary, until: String, budget_us: int) -> bool:
+	var t0 := Time.get_ticks_usec()
+	# what a step keeps for the next one is held in st between runs, not in the shared caches the windows use
+	_gen_pre = st.get("gp", {})
+	if st.stage == "auto":
+		if st.has("sig") and st.sig != _day_sig():   # the game acted in between
+			var ids := {}
+			for q in CO.board:
+				ids[q.id] = true
+			st.L = st.L.filter(func(q): return ids.has(q.id))
+			st.pre = {}
+		_plan_fleet = true   # the fleet by type once for every plan; the free crews counted again after a dispatch
+		_plan_pre = st.pre
+	while st.stage != until:
+		match st.stage:
+			"board0":
+				_board0(st)
+			"pool":
+				_board_pool()
+				st.stage = "board"
+			"board":
+				if not _board1(st):
+					st.stage = "auto0"
+			"auto0":
+				_auto0(st)
+				if st.stage == "auto":
+					_plan_fleet = true
+					_plan_pre = {}
+			"auto":
+				if not _auto1(st):
+					_plan_fleet = false
+					_plan_pre = {}
+					st.stage = "returns"
+			"returns":
+				Perf.begin("day.co_returns")
+				co_returns()
+				Perf.end("day.co_returns")
+				st.stage = "prices"
+			"prices":
+				Perf.begin("day.biz_prices")
+				biz_prices()
+				Perf.end("day.biz_prices")
+				Perf.begin("day.perm_day")
+				perm_day()
+				Perf.end("day.perm_day")
+				st.stage = "month" if st.get("nm") else "done"
+			"month":
+				co_month()
+				st.stage = "done"
+		if Time.get_ticks_usec() - t0 >= budget_us:
+			break
+	st.gp = _gen_pre
+	_gen_pre = {}
+	if st.stage == "auto":
+		st.pre = _plan_pre
+		st.sig = _day_sig()
+		_plan_fleet = false
+		_plan_pre = {}
+	return st.stage == until
 
 
 # ---------- the month (coMonth + bizMonth) ----------

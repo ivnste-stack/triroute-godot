@@ -108,7 +108,10 @@ func _draw_t() -> void:
 		if inc != null or gv < 1:
 			anim = true
 		# trail: full close up, shorter farther out, none at the far zoom (a dot or two of pixels there)
-		var tn := 6 if camera.dist < 9 else (3 if camera.dist < 17 else 0)
+		# fewer trail points as the camera goes back, and none from far for road and rail (hundreds of them); planes
+		# and ships keep theirs at any distance (few of them, and the trail shows where they head over open sea)
+		var far_ok: bool = j.mode == "air" or j.mode == "sea"
+		var tn := 6 if camera.dist < 9 else (3 if camera.dist < 17 or far_ok else 0)
 		if trails and tn > 0 and st.seg >= 0 and inc == null:
 			var step: float = {"road": .05, "rail": .06, "sea": .08, "air": .12}[j.mode] * minf(1, camera.dist / 6 + .25) * sim.CO_DU / 1.6
 			# one polyline with fading colours instead of nine separate lines

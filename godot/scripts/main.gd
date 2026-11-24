@@ -1093,8 +1093,8 @@ var _win_dirty := false
 ## the content of the open window, built again every game day and after every action
 func _win_tick(force: bool = false) -> void:
 	var sim := session.sim
-	if not force and sim.day == _win_day and not _win_dirty:
-		return
+	if not force and ((sim.day == _win_day and not _win_dirty) or session.day_busy()):
+		return   # nothing new, or the new day is still being worked out
 	if not force and _win_day >= 0 and (win.scroll as SmoothScroll).busy():
 		return   # later: the content does not change under the reader's hand
 	# a new day: the window changes in small steps over a few frames; opening it or an action: at once
@@ -1280,6 +1280,7 @@ func _goto_place(pid: int) -> void:
 # ---------- saving ----------
 ## the game as a save: the world comes back from the seed and the size
 func _save_data() -> Dictionary:
+	session.finish_day()   # a day half done is not saved
 	var sim := session.sim
 	return {"data": {"v": 1, "seed": GameState.world_seed, "size": _size_key, "roads": _ng.roads, "diff": sim.diff, "sim": sim.save_state()},
 		"meta": {"name": sim.CO.name, "col": sim.CO.get("col", "#ffb347"), "date": Ui.date_str(sim.date), "mode": "Логістична компанія",

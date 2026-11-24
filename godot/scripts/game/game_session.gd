@@ -96,6 +96,7 @@ func fraction() -> float:
 
 ## runs days at once (tests, fast-forward); the trips are stepped 8 times a day
 func run_days(n: int) -> void:
+	finish_day()
 	for d in n:
 		for f in 8:
 			sim.co_frame(f / 8.0)
@@ -110,36 +111,65 @@ func _process(delta: float) -> void:
 	Perf.end("game_session._process")
 
 
+## the game day under way (sim.co_day_begin / co_day_run): a big company's day goes on over a few frames
+## instead of holding up one; null between days
+var _day: Variant = null
+const DAY_BUDGET_US := 4000   # the part of a frame the day may take
+
+
 func _process_t(delta: float) -> void:
 	if sim == null:
 		return
+	if _day != null:   # the day before goes on, even on pause
+		_day_step()
 	var dt := minf(delta * 1000.0, 250.0)
 	if speed > 0 and not sim.over and not hold:
 		anim_t += dt / 1000.0
 		acc += dt
 		var n := 0
-		while acc >= DUR[speed] and n < 4:
+		while _day == null and acc >= DUR[speed] and n < 4:
 			acc -= DUR[speed]
 			n += 1
 			Perf.acc.erase("co_day")
 			Perf.begin("co_day")
-			sim.co_day()
+			_day = sim.co_day_begin()   # the date and the light part now, the rest from the next frame on
 			Perf.end("co_day")
-			if Perf.verbose:
-				var parts := []
-				for k in Perf.acc:
-					if String(k).begins_with("day."):
-						parts.append("%s %.1f" % [String(k).substr(4), Perf.acc[k] / 1000.0])
-						Perf.acc[k] = 0
-				print("PERF day %d: %.1f ms · jobs %d · board %d · vehicles %d · %s" % [sim.day, Perf.acc.get("co_day", 0) / 1000.0, sim.CO.jobs.size(), sim.CO.board.size(), sim.CO.veh.size(), ", ".join(parts)])
-			day_passed.emit(int(sim.day))
 	# the game logic of a frame (incidents, arrivals) up to 60 times a second, like the HTML version at 60 Hz;
 	# in between only the moment of the day moves on, so vehicles still glide at any frame rate
 	_logic_t += delta
-	if _logic_t >= 1.0 / 60.0 or n_days_done(sim.day):
+	if _day == null and (_logic_t >= 1.0 / 60.0 or n_days_done(sim.day)):   # not while a day is under way
 		_logic_t = 0.0
 		Perf.begin("sim.frame")
 		sim.co_frame(fraction())
 		Perf.end("sim.frame")
 	else:
 		sim.CO.lastFr = fraction()
+
+
+func _day_step() -> void:
+	Perf.begin("co_day")
+	var done := sim.co_day_run(_day, DAY_BUDGET_US)
+	Perf.end("co_day")
+	if not done:
+		return
+	_day = null
+	if Perf.verbose:
+		var parts := []
+		for k in Perf.acc:
+			if String(k).begins_with("day."):
+				parts.append("%s %.1f" % [String(k).substr(4), Perf.acc[k] / 1000.0])
+				Perf.acc[k] = 0
+		print("PERF day %d: %.1f ms · jobs %d · board %d · vehicles %d · %s" % [sim.day, Perf.acc.get("co_day", 0) / 1000.0, sim.CO.jobs.size(), sim.CO.board.size(), sim.CO.veh.size(), ", ".join(parts)])
+	day_passed.emit(int(sim.day))
+
+
+func day_busy() -> bool:
+	return _day != null
+
+
+## the day under way done at once (before a save, a fast-forward)
+func finish_day() -> void:
+	if _day != null:
+		sim.co_day_run(_day, 1 << 60)
+		_day = null
+		day_passed.emit(int(sim.day))

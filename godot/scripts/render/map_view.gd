@@ -43,8 +43,11 @@ func _ready() -> void:
 	env.environment.background_mode = Environment.BG_COLOR
 	env.environment.background_color = BG
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	# the distance haze: the engine's depth fog in the colour of the background - zoomed out the board sinks
-	# into the dark, the far side of a tilted view fades first; a gentle curve, no hard band
+	# zoomed out the board sinks into the dark — the engine's own means, set from the zoom every frame
+	# (_haze): the depth fog in the colour of the background, its start and end measured from the camera's
+	# distance (so the far side fades the same way at any zoom and on any map size, and no dark band sweeps
+	# across the sea while zooming), and the brightness of the whole 3D picture going down as the camera goes
+	# back. The lines, towns and labels are drawn over it in 2D and keep their brightness
 	var e := env.environment
 	e.fog_enabled = true
 	e.fog_mode = Environment.FOG_MODE_DEPTH
@@ -52,9 +55,9 @@ func _ready() -> void:
 	e.fog_light_energy = 1.0
 	e.fog_density = 1.0
 	e.fog_sky_affect = 0.0
-	e.fog_depth_begin = 12.0
-	e.fog_depth_end = 40.0
-	e.fog_depth_curve = 1.6
+	e.fog_depth_curve = 1.0
+	e.adjustment_enabled = true
+	_env = e
 	add_child(env)
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://shaders/map.gdshader")
@@ -281,8 +284,32 @@ func _day_night() -> void:
 	night_lights.night = n
 
 
+var _env: Environment
+var _haze_k := -1.0
+
+
+## how far the camera has gone back: 0 close up (no haze), 1 at the whole map
+func zoom_out() -> float:
+	var mx: float = camera.world_size.x * 1.05   # the whole map in view
+	return smoothstep(mx * .3, mx * .95, camera.dist)
+
+
+func _haze() -> void:
+	var z := zoom_out()
+	if absf(z - _haze_k) < .002:
+		return
+	_haze_k = z
+	var d: float = camera.dist
+	# the near edge of a tilted view is about 0.8 of the distance away, the far edge 1.3; close up the fog starts
+	# beyond the board
+	_env.fog_depth_begin = d * lerpf(2.5, .75, z)
+	_env.fog_depth_end = d * lerpf(4.0, 1.9, z)
+	_env.adjustment_brightness = lerpf(1.0, .62, z)
+
+
 func _process_t(_delta: float) -> void:
 	_day_night()
+	_haze()
 	if _plane.visible:
 		_mat.set_shader_parameter("wall_h", walls.update(camera))
 

@@ -872,6 +872,9 @@ func load_state(d: Dictionary) -> void:
 	RX._a = c.RX
 	_cps_road = null   # caches over the places and the board: built again for the loaded game
 	_rc_t = -1
+	_nh_key = ""   # the nearest hubs and the firms' weights of the old game
+	_nh = {}
+	_fw = {}
 	_jam_src = null
 	routes.clear()
 	_lp_rc = {}
