@@ -903,9 +903,6 @@ func _build_insp(keep: bool = false) -> void:
 	kv.add_theme_constant_override("v_separation", 6)
 	var facts := [["Материк", _land_n.get(pls[0].land, "—") if pls.size() else "—", Ui.FG, ""],
 		["Населення", _fmt_pop(c.pop), Ui.FG, ""],
-		["Ціни на доставку", "×%.2f" % sim.price_k(k), Ui.FG, W._tip("Рівень цін", "Скільки платять за доставку відносно середнього світового рівня.")],
-		["Зарплати", "×%.2f" % sim.wage_k(k), Ui.FG, ""],
-		["Стабільність", "%.0f%%" % c.stability, Ui.FG, ""],
 		["Ризик перевезень", rw[0], W._tone_col(rw[1]), W._tip("Ризик", "Ймовірність крадіжок і затримок на кордонах.")]]
 	for f in facts:
 		var l := Ui.label(f[0], 13, Ui.FG2)
