@@ -27,6 +27,9 @@ var _n_states := 26
 var overlay: MapOverlay
 var _ov_vp: SubViewport
 var _ov_rect: TextureRect
+var night_lights: NightLights
+## the test day and night: -1 follows the game's clock, 0…24 holds this hour (tests)
+var night_hour := -1.0
 var _tw_vp: SubViewport
 var towns: TownLayer
 var inc_base: IncidentLayer
@@ -80,6 +83,9 @@ func _ready() -> void:
 	pm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA   # the buffer holds premultiplied colour
 	_ov_rect.material = pm
 	cl.add_child(_ov_rect)
+	night_lights = NightLights.new()
+	night_lights.camera = camera
+	cl.add_child(night_lights)
 	inc_base = IncidentLayer.new()
 	inc_base.camera = camera
 	cl.add_child(inc_base)
@@ -247,7 +253,26 @@ var render_k := 1.0
 var line_ss := 1.0
 
 
+## 0 by day … 1 at night: dusk 18:00–20:30, dawn 5:00–7:30
+static func night_at(h: float) -> float:
+	return clampf(1.0 - smoothstep(5.0, 7.5, h) + smoothstep(18.0, 20.5, h), 0.0, 1.0)
+
+
+func _day_night() -> void:
+	var n := 0.0
+	if Settings.get_value("daynight") and _session != null and _session.sim != null:
+		var h := night_hour if night_hour >= 0 else fposmod(_session.sim.co_now(), 1.0) * 24.0
+		n = night_at(h) * .9
+	_mat.set_shader_parameter("night", n)
+	if walls != null and walls._mat != null:
+		walls._mat.set_shader_parameter("night", n)
+	_ov_rect.modulate = Color.WHITE.lerp(Color(.6, .64, .78), n)
+	night_lights.sim = _session.sim if _session != null else null
+	night_lights.night = n
+
+
 func _process_t(_delta: float) -> void:
+	_day_night()
 	if _plane.visible:
 		_mat.set_shader_parameter("wall_h", walls.update(camera))
 	# the overlay buffer: the size of the screen in real pixels

@@ -21,6 +21,8 @@ uniform float glint = 1.0;
 // well below them, so land in front of a wall hides it and water lets it show
 uniform float wall_h = 0.0;   // slow glints on the water triangles (settings)
 
+uniform float night = 0.0;   // the test day and night: 0 day … 1 night
+
 varying vec3 wp;
 
 void vertex() {
@@ -157,6 +159,7 @@ void fragment() {
 	}
 	float fd = length(wp - CAMERA_POSITION_WORLD);
 	c = mix(c, bg, smoothstep(14., 34., fd));
+	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	// the depth: land where it is, water far below (3 world units, the tallest wall is ~.4): a wall shows
 	// wherever the ray to it meets water first, as drawWalls did, and land in front hides it

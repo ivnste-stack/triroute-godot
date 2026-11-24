@@ -690,6 +690,8 @@ func _on_world(w: Dictionary) -> void:
 	if _args.has("yaw"):   # test: the camera turned
 		map.camera.yaw = float(_args.yaw)
 		map.camera.tyaw = map.camera.yaw
+	if _args.has("hour"):   # test: the day and night at this hour (--hour=22)
+		map.night_hour = float(_args.hour)
 	if _args.has("noui"):   # test: the map alone (the main menu's backgrounds)
 		_ui.visible = false
 	if _args.has("mode"):   # test: a map layer

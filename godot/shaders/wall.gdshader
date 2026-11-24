@@ -9,6 +9,7 @@ render_mode unshaded, cull_disabled, depth_draw_never, fog_disabled;
 
 uniform float wall_h = 0.0625;    // the height, following the view like the original (set by MapView)
 
+uniform float night = 0.0;   // the test day and night
 varying float v_face;
 varying vec3 v_wp;
 
@@ -48,6 +49,7 @@ void fragment() {
 	float fd = length(v_wp - CAMERA_POSITION_WORLD);
 	float fog = smoothstep(14., 34., fd);
 	c = mix(c, vec3(.022, .038, .055), fog);
+	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	ALPHA = a;
 }
