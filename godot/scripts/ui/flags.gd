@@ -12,12 +12,12 @@ static var _cache := {}   # flag dictionary's hash → Texture2D
 
 static func texture(st: Dictionary) -> Texture2D:
 	var f: Variant = st.get("flag")
-	if not (f is Dictionary) or not f.has("cols"):
+	if not (f is Dictionary) or not (f.has("cols") or f.has("ops")):
 		return null
-	var key := hash([f.cols, f.type, f.emblem])
+	var key := hash(f.ops) if f.has("ops") else hash([f.cols, f.type, f.emblem])
 	if _cache.has(key):
 		return _cache[key]
-	var tex := ImageTexture.create_from_image(_render(f))
+	var tex := ImageTexture.create_from_image(_render_ops(f.ops) if f.has("ops") else _render(f))
 	_cache[key] = tex
 	return tex
 
@@ -89,6 +89,29 @@ static func _fill(img: Image, s: Array, c: Color, k: float) -> void:
 				for i in range(0, xs.size() - 1, 2):
 					var x0 := int(round(xs[i]))
 					img.fill_rect(Rect2i(x0, y, int(round(xs[i + 1])) - x0, 1), c)
+
+
+## the Earth's flags (tools/earth_flags.py): rectangles, polygons and discs on 120×80, painted in order
+static func _render_ops(ops: Array) -> Image:
+	var K := 4.0 * W / 120.0
+	var img := Image.create(int(120 * K), int(80 * K), false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for o in ops:
+		var c := Color(String(o[1]))
+		match String(o[0]):
+			"r":
+				_fill(img, ["r", float(o[2]), float(o[3]), float(o[4]), float(o[5])], c, K)
+			"c":
+				_fill(img, ["c", float(o[2]), float(o[3]), float(o[4])], c, K)
+			"p":
+				var P := PackedVector2Array()
+				var a: Array = o[2]
+				for i in range(0, a.size() - 1, 2):
+					P.append(Vector2(a[i], a[i + 1]))
+				_fill(img, ["p", P], c, K)
+	img.resize(W, H, Image.INTERPOLATE_LANCZOS)
+	img.generate_mipmaps()
+	return img
 
 
 static func _render(f: Dictionary) -> Image:

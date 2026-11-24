@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The Earth map (the "Земля" world): Natural Earth country polygons (public domain, naturalearthdata.com,
-ne_50m_admin_0_countries.geojson) drawn in the Miller projection onto the 4×3 board (2400×1800 texture
+ne_10m_admin_0_countries_ukr.geojson) drawn in the Miller projection onto the 4×3 board (2400×1800 texture
 pixels), the same data the HTML version's EARTH_DATA held (04b-earth.js), with more states:
 
   near   a label per pixel of a half-resolution grid (1200×900): state id + 1 on land, (id + 1) | 128 on the
@@ -13,8 +13,15 @@ At most 119 states (the generator keeps owners in an int8, 120+ is neutral land)
 smaller country gives its land to the neighbour nearest to each pixel, tiny islands far from any kept state
 become sea.
 
-the source: https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson
-usage: python3 tools/make_earth.py ne_50m_admin_0_countries.geojson assets/maps/earth.json [preview.png]
+the source: https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries_ukr.geojson
+(the borders as Ukraine recognises them: Crimea is Ukrainian)
+  cities a state's real cities (ne_10m_populated_places, NAME_UK): [name, x, y (texture pixels), population
+         in millions, capital 0/1], the largest 120; the game gives every generated town the nearest one of a
+         like size (MapView.earth_names)
+  flags  simplified real flags (tools/earth_flags.py)
+
+the places: https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places.geojson
+usage: python3 tools/make_earth.py countries.geojson places.geojson assets/maps/earth.json [preview.png]
 """
 import base64
 import json
@@ -33,7 +40,7 @@ LON0 = -169.0                # the map's west edge: Chukotka stays whole, the Al
 LAT_N, LAT_S = 84.0, -56.0
 MX = 24                      # side margins (pixels)
 SKIP = {"ATA", "ATF", "HMD", "SGS", "IOA", "ATC", "CSI", "CLP", "BVT"}
-MERGE = {"SOL": "SOM", "CYN": "CYP", "KAS": "IND", "KOS": "SRB", "SAH": "SAH", "PSX": "ISR", "BJN": "COL", "SER": "COL",
+MERGE = {"SSD": "SDS", "SOL": "SOM", "CYN": "CYP", "KAS": "IND", "KOS": "SRB", "SAH": "SAH", "PSX": "ISR", "BJN": "COL", "SER": "COL",
          "USG": "CUB", "ESB": "CYP", "WSB": "CYP", "SCR": "CHN", "CNM": "CYP", "KAB": "KAZ", "ALD": "FIN"}
 SHORT = {"CHN": "Китай", "COD": "ДР Конго", "COG": "Республіка Конго", "CAF": "ЦАР", "USA": "США", "GBR": "Велика Британія", "ARE": "ОАЕ",
          "DOM": "Домініканська Республіка", "BIH": "Боснія і Герцеговина", "PRK": "Північна Корея", "KOR": "Південна Корея",
@@ -65,7 +72,7 @@ def rings(geom):
 		yield poly[0]   # the outer ring: holes are filled by the countries inside them, drawn later
 
 
-def main(src, out):
+def main(src, places, out):
 	feats = json.load(open(src, encoding="utf-8"))["features"]
 	groups = {}   # code → {props, rings}
 	for f in feats:
@@ -168,19 +175,71 @@ def main(src, out):
 		pc = groups[c]["gdp"] / max(groups[c]["pop"], 1) * 1e6   # US$ per head
 		devs.append(round(min(1.0, max(.15, math.sqrt(max(0.0, (pc / 1000 - 3) / 59)))), 3))
 		isos.append(c)
+	# the cities of every kept state
+	idx = {c: k for k, c in enumerate(isos)}
+	cities = [[] for _ in isos]
+	for f in json.load(open(places, encoding="utf-8"))["features"]:
+		p = f["properties"]
+		c = MERGE.get(p["ADM0_A3"], p["ADM0_A3"])
+		if c not in idx:   # a country left out (merged into a neighbour): its cities are not used
+			continue
+		x, y = proj(float(p["LONGITUDE"]), float(p["LATITUDE"]))
+		if not (0 <= x < W and 0 <= y < H):
+			continue
+		# Crimea is Ukraine (the borders of the Ukrainian point of view): its cities too, although the places
+		# file lists them under Russia
+		lon, lat = float(p["LONGITUDE"]), float(p["LATITUDE"])
+		if c == "RUS" and 32.0 < lon < 36.7 and 44.2 < lat < 46.3 and "UKR" in idx:
+			c = "UKR"
+		nm = (p.get("NAME_UK") or p["NAME"]).strip()
+		cities[idx[c]].append([nm, int(round(x)), int(round(y)), round(max(float(p["POP_MAX"] or 0), 1000) / 1e6, 3), 1 if p.get("ADM0CAP") else 0])
+	for k in range(len(cities)):
+		seen = set()
+		L = []
+		for e in sorted(cities[k], key=lambda e: (-e[4], -e[3])):
+			if e[0] not in seen:
+				seen.add(e[0])
+				L.append(e)
+		cities[k] = sorted(L, key=lambda e: (-e[4], -e[3]))[:120]
+	# every state's seed (its capital town) at its real capital, when that stands on the state's own land
+	moved = 0
+	for k in range(len(isos)):
+		caps = [e for e in cities[k] if e[4]]
+		if not caps:
+			continue
+		cx, cy = caps[0][1] // 2, caps[0][2] // 2
+		own = g == k + 1
+		if not own.any():
+			continue
+		if not own[min(GH - 1, cy), min(GW - 1, cx)]:
+			ys, xs = np.nonzero(own)
+			j = int(np.argmin((xs - cx) ** 2 + (ys - cy) ** 2))
+			if (xs[j] - cx) ** 2 + (ys[j] - cy) ** 2 > 100:
+				continue
+			cx, cy = int(xs[j]), int(ys[j])
+		seeds[k] = [int(cx), int(cy)]
+		moved += 1
+	print("capitals as seeds: %d" % moved)
+	import os
+	sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+	from earth_flags import F as FLAGS
+	flags = [FLAGS.get(c) for c in isos]
+	print("cities: %d, states without any: %s; flags missing: %s" % (sum(len(c) for c in cities), [names[k] for k in range(len(isos)) if not cities[k]],
+		[isos[k] for k in range(len(isos)) if not flags[k]]))
 	data = {"w": GW, "h": GH, "mw": W, "mh": H, "names": names, "iso": isos, "seeds": seeds, "pop": pops, "dev": devs,
+		"cities": cities, "flags": flags,
 		"near": base64.b64encode(bytes(buf)).decode("ascii"),
-		"source": "Natural Earth 1:50m admin 0 countries (public domain), Miller projection"}
+		"source": "Natural Earth 1:10m admin 0 countries, Ukrainian point of view, and populated places (public domain), Miller projection"}
 	with open(out, "w", encoding="utf-8") as fo:
 		json.dump(data, fo, ensure_ascii=False, separators=(",", ":"))
 	print("%s: %d bytes, %d states" % (out, len(json.dumps(data, ensure_ascii=False)), len(names)))
-	if len(sys.argv) > 3:   # a preview of the grid
+	if len(sys.argv) > 4:   # a preview of the grid
 		pal = np.random.RandomState(3).randint(60, 255, (256, 3)).astype(np.uint8)
 		pal[0] = (10, 30, 50)
 		rgb = pal[np.where(near >= 128, 0, near)]
 		rgb[(near >= 128)] = (20, 50, 80)
-		Image.fromarray(rgb).save(sys.argv[3])
+		Image.fromarray(rgb).save(sys.argv[4])
 
 
 if __name__ == "__main__":
-	main(sys.argv[1], sys.argv[2])
+	main(sys.argv[1], sys.argv[2], sys.argv[3])

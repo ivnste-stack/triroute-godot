@@ -112,10 +112,12 @@ func generate(seed_value: int, size_key: String = "m") -> void:
 		var E := MapView.earth_data()
 		_n_states = E.names.size()
 		_gen.set_earth(E.w, E.h, E.labels, E.seeds, E.names, E.pop, E.dev)
+	_is_earth = size_key == "earth"
 	_task = WorkerThreadPool.add_task(_generate_in_thread, true, "world generation")
 
 
 static var _earth := {}
+var _is_earth := false
 
 
 ## assets/maps/earth.json: the label grid (run-length coded), a seed, a name, the population and the
@@ -136,14 +138,74 @@ static func earth_data() -> Dictionary:
 		seeds.append(int(s[0]))
 		seeds.append(int(s[1]))
 	_earth = {"w": int(d.w), "h": int(d.h), "labels": lab, "seeds": seeds, "names": PackedStringArray(d.names),
-		"pop": PackedFloat64Array(d.pop), "dev": PackedFloat64Array(d.dev)}
+		"pop": PackedFloat64Array(d.pop), "dev": PackedFloat64Array(d.dev), "cities": d.get("cities", []), "flags": d.get("flags", [])}
 	return _earth
+
+
+## the Earth: the states' simplified real flags, and real names for the towns. The capital takes the real
+## capital; every other town (the largest first) the real city of its state that is near it and of a like size
+## (the map is a real projection, so a town in the north-west of a country gets a city of the north-west);
+## a town with no real city of its state within reach keeps its invented name.
+static func earth_apply(w: Dictionary, mw: int, mh: int) -> void:
+	var E := earth_data()
+	for i in w.states.size():
+		if i < E.flags.size() and E.flags[i] != null:
+			w.states[i]["flag"] = {"ops": E.flags[i]}
+	var RANK := {"cap": 0, "big": 1, "city": 2, "town": 3, "vil": 4}
+	var by_state := {}
+	for t in w.board.towns:
+		if not by_state.has(t.cid):
+			by_state[t.cid] = []
+		by_state[t.cid].append(t)
+	var WX := mw / 80.0
+	var WZ := mh / 80.0
+	for cid in by_state:
+		if cid < 0 or cid >= E.cities.size():
+			continue
+		var real: Array = E.cities[cid]
+		if real.is_empty():
+			continue
+		var used := {}
+		var T: Array = by_state[cid]
+		T.sort_custom(func(a, b): return RANK.get(a.type, 5) < RANK.get(b.type, 5) or (RANK.get(a.type, 5) == RANK.get(b.type, 5) and a.pop > b.pop))
+		const S := 50.0     # texture pixels a tenfold difference in size is worth
+		const MAXD := 130.0  # texture pixels (≈ 1.6 lattice cells): no real city nearer, the invented name stays
+		for t in T:
+			var px: float = (float(t.x) + WX / 2) * 80
+			var py: float = (float(t.z) + WZ / 2) * 80
+			var best := -1
+			var bc := INF
+			for k in real.size():
+				if used.has(k):
+					continue
+				var r: Array = real[k]
+				if t.type == "cap":   # the capital: the real one (the largest when a country has several)
+					if int(r[4]) == 1:
+						best = k
+						break
+					continue
+				var dl := Vector2(px - float(r[1]), py - float(r[2])).length()
+				if dl > (MAXD if t.type == "town" or t.type == "vil" else MAXD * 1.6):   # too far from where the city really is
+					continue
+				var d := dl / S
+				var c := d + absf(log(maxf(float(t.pop), .001) / maxf(float(r[3]), .001)) / log(10.0)) * .6
+				if c < bc:
+					bc = c
+					best = k
+			if best < 0 and t.type == "cap":
+				best = 0 if not used.has(0) else -1
+			if best < 0:
+				continue
+			used[best] = true
+			t["name"] = String(real[best][0])
 
 
 func _generate_in_thread() -> void:
 	var w: Dictionary = _gen.generate(_seed, _n_states, _mw, _mh)
 	w["states"] = _gen.generate_states()
 	w["board"] = _gen.generate_board()
+	if _is_earth:
+		MapView.earth_apply(w, _mw, _mh)
 	w["textures"] = _gen.build_textures()
 	w["lines"] = _gen.lines()
 	_result = w
