@@ -193,22 +193,6 @@ func _grade_tip_ui() -> Control:
 	return v
 
 
-## grTip as plain text (kept for logs)
-func _grade_tip() -> String:
-	var sim := session.sim
-	var g := sim.co_grade()
-	var x := int(floor(sim.CO.get("xp", 0)))
-	var G0: Dictionary = GameData.GRADES[g]
-	var nx: Variant = GameData.GRADES[g + 1] if g + 1 < GameData.GRADES.size() else null
-	var t := "Грейд: %s\nДосвід %s%s\n" % [G0.n, Ui.grp(x), (" · до «%s» ще %s" % [nx.n, Ui.grp(nx.xp - x)]) if nx != null else " · найвищий грейд"]
-	for i in GameData.GRADES.size():
-		var q: Dictionary = GameData.GRADES[i]
-		t += "\n%s %s — %s" % ["●" if i == g else ("✓" if i < g else "○"), q.n, Ui.grp(q.xp)]
-		if i == g + 1:
-			t += "\n      " + " · ".join(q.u)
-	return t + "\n\nДосвід дають успішні доставки: за маршрут, прокладений вручну, — повний, за маршрут диспетчера-логіста — 8%."
-
-
 ## coLogo: the company colour, a darker wedge, an arrow and the initials
 func _draw_logo() -> void:
 	paint_logo(_logo, session.sim if session != null else null)

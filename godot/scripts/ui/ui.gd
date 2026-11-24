@@ -31,12 +31,14 @@ static var _fonts := {}
 static var _theme: Theme
 static var _glass: Shader
 static var blur := true
+static var blur_q := 2   # 1 light, 2 full (glass.gdshader «quality»)
 static var _glass_rects: Array = []   # weak refs to the backgrounds, to switch the blur off and on
 
 
 ## the blur of every glass panel on or off (off: a flat tint, no copy of the screen)
-static func set_blur(on: bool) -> void:
-	blur = on
+static func set_blur(q: int) -> void:
+	blur = q > 0
+	blur_q = maxi(1, q)
 	var keep := []
 	for w in _glass_rects:
 		var r: Variant = w.get_ref()
@@ -49,6 +51,7 @@ static func set_blur(on: bool) -> void:
 
 static func _glass_style(bg: ColorRect) -> void:
 	var m: ShaderMaterial = bg.get_meta("glass")
+	m.set_shader_parameter("quality", blur_q)
 	bg.material = m if blur else null
 	var t: Color = m.get_shader_parameter("tint")
 	bg.color = Color(t.r, t.g, t.b, minf(1.0, t.a + .22))
@@ -268,22 +271,6 @@ static func xbtn(cb: Callable) -> Button:
 	return x
 
 
-## the list of a dropdown (OptionButton) styled like .ddlist: no radio marks, small icons, accent on hover
-static func style_popup(pm: PopupMenu) -> void:
-	pm.add_theme_stylebox_override("panel", box(Color(12 / 255.0, 19 / 255.0, 28 / 255.0, .97), LINE_HI, 1, Vector4(4, 4, 4, 4)))
-	pm.add_theme_stylebox_override("hover", box(ACCENT_SOFT))
-	pm.add_theme_color_override("font_color", FG2)
-	pm.add_theme_color_override("font_hover_color", FG)
-	pm.add_theme_font_size_override("font_size", 13)
-	pm.add_theme_constant_override("icon_max_width", 14)
-	pm.add_theme_constant_override("v_separation", 8)
-	pm.add_theme_constant_override("h_separation", 8)
-	pm.add_theme_constant_override("item_start_padding", 8)
-	var none := ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RGBA8))
-	for k in ["radio_checked", "radio_unchecked", "radio_checked_disabled", "radio_unchecked_disabled", "checked", "unchecked"]:
-		pm.add_theme_icon_override(k, none)
-
-
 ## .pill (tone: "", "good", "warn", "bad", "acc")
 static func pill(text: String, tone: String = "", ic: String = "") -> PanelContainer:
 	var col: Color = {"good": GOOD, "warn": WARN, "bad": BAD, "acc": ACCENT}.get(tone, FG2)
@@ -420,11 +407,6 @@ static func loc(x: float, dec: int = 3) -> String:
 	if fr == "." or fr == "0":
 		fr = ""
 	return ("−" if x < 0 else "") + grp(ip).trim_prefix("−") + fr.replace(".", ",")
-
-
-## a number as JS prints it (String(x)): 19, 1.1, 0.25
-static func js_num(x: float) -> String:
-	return String.num(x)
 
 
 static func km(len_: float) -> String:

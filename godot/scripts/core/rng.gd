@@ -33,10 +33,6 @@ func range_f(a: float, b: float) -> float:
 	return a + next() * (b - a)
 
 
-func range_i(a: int, b: int) -> int:   # inclusive, like legacy rint(a,b)
-	return int(floor(range_f(a, b + 1)))
-
-
 func chance(p: float) -> bool:
 	return next() < p
 

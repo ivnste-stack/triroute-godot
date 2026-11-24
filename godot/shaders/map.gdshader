@@ -91,16 +91,13 @@ void fragment() {
 		uv = clamp(uv, 0., 1.);
 		vec4 t = texture(t0, uv);
 		float h = t.r, bd = texture(tb, uv).r;
-		vec2 tcuv = uv;
-		float tH = .5;
-		{
-			vec3 ti_ = triInfo(uv);
-			vec2 fl = floor(uv * MWH / triS);
-			float up = ti_.z;
-			tcuv = ti_.xy;
-			tH = hsh(fl * vec2(1.13, .91) + up * vec2(.37, .71));
-			h = texture(t0, tcuv).r;
-		}
+		// the lattice triangle of this pixel, once (the glints use it too)
+		vec3 ti_ = triInfo(uv);
+		vec2 tfl = floor(uv * MWH / triS);
+		float tup = ti_.z;
+		vec2 tcuv = ti_.xy;
+		float tH = hsh(tfl * vec2(1.13, .91) + tup * vec2(.37, .71));
+		h = texture(t0, tcuv).r;
 		float land = step(0., h);
 		// ---- sea
 		float depth = clamp(-h, 0., 1.);
@@ -113,9 +110,7 @@ void fragment() {
 		// Every triangle has its own slow cycle (26…46 s) and is lit only in a short part of it (4…8 s);
 		// only one in five takes part, so at any moment just a few are changing
 		if (glint > 0.) {
-			vec2 fl = floor(uv * MWH / triS);
-			float up = triInfo(uv).z;
-			vec2 k = fl + up * vec2(.5, .25);
+			vec2 k = tfl + tup * vec2(.5, .25);
 			float g1 = hsh(k * vec2(3.17, 1.93) + 11.3), g2 = hsh(k * vec2(7.31, 4.77) + 2.9), g3 = hsh(k * vec2(2.71, 8.13) + 5.7);
 			float per = 26. + 20. * g1;
 			float ph = fract(TIME / per + g2);

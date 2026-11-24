@@ -1283,6 +1283,7 @@ func co_plan1(k: Dictionary) -> Dictionary:
 		pre = _plan_pre
 		if not _plan_batch and _plan_free_dirty:   # the dispatcher sent a trip: who is on a trip has changed
 			pre.free = co_crew_free()
+			pre.idle = {}
 			_plan_free_dirty = false
 	else:
 		pre = _plan_prepare()
@@ -1300,20 +1301,34 @@ func co_plan1(k: Dictionary) -> Dictionary:
 		if sw != null:
 			why = sw
 			continue
+		# the vehicles of this type that can take an order now, in fleet order: the same for every order of a
+		# batch (kept in pre until a dispatch changes who is free)
+		if not pre.has("idle"):
+			pre.idle = {}
+		if not pre.idle.has(t):
+			var base := []
+			for v in by_t.get(t, []):
+				if (v.st == "idle" and (hub_pid.has(v.loc) or (v.get("idle0") != null and now - v.idle0 < 1))) or is_ret_v(v):
+					base.append(v)
+			pre.idle[t] = base
 		var idle := []
-		for v in by_t.get(t, []):
-			var ok_st: bool = (v.st == "idle" and (hub_pid.has(v.loc) or (v.get("idle0") != null and now - v.idle0 < 1))) or is_ret_v(v)
-			if not ok_st:
-				continue
-			if k.get("_ctry") != null and v_cid(v) != k._ctry:
-				continue
-			if ex.has(v.id):
-				continue
-			if k.get("_veh") != null and v.id != k._veh:
-				continue
-			if v.get("resv") and v.id != k.get("_veh"):
-				continue
-			idle.append(v)
+		var kc: Variant = k.get("_ctry")
+		var kv: Variant = k.get("_veh")
+		if kc == null and kv == null and ex.is_empty():   # the common case: only the reserved ones drop out
+			for v in pre.idle[t]:
+				if not v.get("resv"):
+					idle.append(v)
+		else:
+			for v in pre.idle[t]:
+				if kc != null and v_cid(v) != kc:
+					continue
+				if ex.has(v.id):
+					continue
+				if kv != null and v.id != kv:
+					continue
+				if v.get("resv") and v.id != kv:
+					continue
+				idle.append(v)
 		if idle.is_empty():
 			continue
 		var crew: int = T.get("crew", 1)
@@ -1343,8 +1358,12 @@ func co_plan1(k: Dictionary) -> Dictionary:
 		# only as far as needed: a plan wants a few vehicles, sorting a fleet of hundreds cost milliseconds
 		var dist := PackedFloat64Array()
 		dist.resize(idle.size())
+		var dl := {}   # the distance once per city: a fleet stands in a few hubs
 		for i in idle.size():
-			dist[i] = JS.hypot(PL[idle[i].loc].x - A.x, PL[idle[i].loc].z - A.z)
+			var lc: int = idle[i].loc
+			if not dl.has(lc):
+				dl[lc] = JS.hypot(PL[lc].x - A.x, PL[lc].z - A.z)
+			dist[i] = dl[lc]
 		var used := PackedByteArray()
 		used.resize(idle.size())
 		var sel := []
@@ -1797,14 +1816,18 @@ func co_auto() -> void:
 	for k in L:
 		if n >= lim:
 			break
+		Perf.begin("day.auto_plan")
 		var P := co_plan(k)
+		Perf.end("day.auto_plan")
 		var guess: float = P.get("profit", NAN) * (1 + (R.next() - .5) * (1 - sk) * .9)   # a weak dispatcher misjudges orders
 		if P.ok and (not P.late and guess > k.pay * .15):
 			var extra := JS.round_js(P.fuel * (1 - sk) * .45)   # and plans longer, costlier routes
 			CO.cash -= extra
 			CO.m.fuel += extra
 			k.how = "mgr"
+			Perf.begin("day.auto_disp")
 			co_dispatch(k, P, true)
+			Perf.end("day.auto_disp")
 			_plan_free_dirty = true
 			n += 1
 	_plan_fleet = false
@@ -2084,26 +2107,37 @@ func _ret_trip(v: Dictionary, to: int, r: Dictionary) -> void:
 
 
 func co_returns() -> void:
+	# the hubs by city and the vehicles standing in every city, counted once (hub_at / hub_veh_n for each
+	# vehicle scanned the hubs and the whole fleet: a large fleet made the day stutter); kept up to date below
+	var hubp := {}
+	for h in CO.get("hubs", []):
+		if not hubp.has(h.pid):
+			hubp[h.pid] = h
+	var cnt := {}
+	for v in CO.veh:
+		if v.st != "trip":
+			cnt[v.loc] = cnt.get(v.loc, 0) + 1
 	# a vehicle with a home hub goes there, not to the nearest one
 	for v in CO.veh:
-		if v.get("home") == null or v.st != "idle" or v.loc == v.home or hub_at(v.loc) != null:
+		if v.get("home") == null or v.st != "idle" or v.loc == v.home or hubp.has(v.loc):
 			continue
-		var h: Variant = hub_at(v.home)
+		var h: Variant = hubp.get(v.home)
 		if h == null:
 			v.home = null
 			continue
 		if v.get("idle0") == null or co_now() - v.idle0 < 1:
 			continue
 		var r: Variant = co_route(D.VT[v.t].mode, v.loc, v.home)
-		if r == null or hub_veh_n(v.home) >= hub_veh_cap(h):
+		if r == null or cnt.get(v.home, 0) >= hub_veh_cap(h):
 			continue
 		_ret_trip(v, v.home, r)
+		cnt[v.loc] -= 1
 	for v in CO.veh:
 		var T: Dictionary = D.VT[v.t]
 		if v.st != "idle" or T.mode == "local":
 			v.idle0 = null
 			continue
-		if hub_at(v.loc) != null:
+		if hubp.has(v.loc):
 			v.idle0 = null
 			continue
 		if v.get("idle0") == null:
@@ -2114,7 +2148,7 @@ func co_returns() -> void:
 		var best: Variant = null
 		var bl := 1e9
 		for h in CO.hubs:
-			if not mode_ok(T.mode, PL[h.pid]) or hub_veh_n(h.pid) >= hub_veh_cap(h):
+			if not mode_ok(T.mode, PL[h.pid]) or cnt.get(h.pid, 0) >= hub_veh_cap(h):
 				continue
 			var r: Variant = co_route(T.mode, v.loc, h.pid)
 			if r != null and r.len < bl:
@@ -2124,6 +2158,7 @@ func co_returns() -> void:
 			v.idle0 = co_now() + 30
 			continue
 		_ret_trip(v, best.h.pid, best.r)
+		cnt[v.loc] -= 1
 
 
 # ---------- per frame: trips finish mid-day (coFrame) ----------
@@ -2179,7 +2214,21 @@ func _gen_sum(field: String) -> float:
 
 
 func co_board_day() -> void:
-	_gen_pre = {"wait": _gen_wait(), "own": _gen_sum("cap"), "ov": _gen_sum("vol"), "rlim": road_lim()}
+	Perf.begin("day.gen_pre")
+	# the road fleet's capacity, volume and the largest truck in one pass (three passes before; the sums in
+	# fleet order, so the same numbers)
+	var own := 0.0
+	var ov := 0.0
+	var mx := -INF
+	for v in CO.veh:
+		var T: Dictionary = D.VT[v.t]
+		if T.mode == "road":
+			own += T.get("cap", 0)
+			ov += T.get("vol", 0)
+			mx = maxf(mx, T.cap)
+	_gen_pre = {"wait": _gen_wait(), "own": own, "ov": ov}
+	_gen_pre.rlim = mx * 8 if mx > -INF else road_lim()
+	Perf.end("day.gen_pre")
 	_co_board_day()
 	_gen_pre = {}
 
@@ -2193,7 +2242,9 @@ func _co_board_day() -> void:
 		if not chance(.65):
 			continue
 		for a in 5:
+			Perf.begin("day.gen")
 			var k: Variant = co_gen()
+			Perf.end("day.gen")
 			if k != null:
 				CO.board.append(k)
 				break
@@ -2283,13 +2334,27 @@ func co_day() -> void:
 			date.y += 1
 	for k in D.RES.size():   # updateMarketDaily: world commodity prices (not shown in logistics), one R() each
 		R.next()
+	Perf.begin("day.co_local")
 	co_local()
+	Perf.end("day.co_local")
+	Perf.begin("day._jobs_day")
 	_jobs_day()
+	Perf.end("day._jobs_day")
+	Perf.begin("day.co_board_day")
 	co_board_day()
+	Perf.end("day.co_board_day")
+	Perf.begin("day.co_auto")
 	co_auto()
+	Perf.end("day.co_auto")
+	Perf.begin("day.co_returns")
 	co_returns()
+	Perf.end("day.co_returns")
+	Perf.begin("day.biz_prices")
 	biz_prices()
+	Perf.end("day.biz_prices")
+	Perf.begin("day.perm_day")
 	perm_day()
+	Perf.end("day.perm_day")
 	if nm:
 		co_month()
 

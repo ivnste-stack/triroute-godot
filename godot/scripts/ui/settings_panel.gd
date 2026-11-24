@@ -5,7 +5,7 @@ extends VBoxContainer
 ## a change is saved and applied at once.
 
 const TABS := [["gfx", "Графіка", "eye"], ["ui", "Інтерфейс", "layers"], ["snd", "Звук", "mega"], ["keys", "Керування", "target"], ["game", "Гра", "gear"]]
-const RES_OPTS := [[0, "Як вікно"], [1280, "HD · 1280×720"], [1600, "HD+ · 1600×900"], [1920, "Full HD · 1920×1080"],
+const RES_OPTS := [[0, "Як вікно"], [-85, "85% вікна"], [-75, "75% вікна"], [-67, "67% вікна"], [-50, "50% вікна"], [1280, "HD · 1280×720"], [1600, "HD+ · 1600×900"], [1920, "Full HD · 1920×1080"],
 	[2560, "2K · 2560×1440"], [3840, "4K · 3840×2160"]]
 
 const WIN_SIZES := ["1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440", "3840x2160"]
@@ -117,6 +117,8 @@ func _head(text: String) -> void:
 
 func _put(key: String, v: Variant, apply: Callable = Callable(), refresh := false) -> void:
 	Settings.set_value(key, v)
+	if Settings.PRESETS.low.has(key):   # a setting of the presets: the preset row shows what it matches now
+		refresh = true
 	if apply.is_valid():
 		apply.call()
 	if refresh:
@@ -195,6 +197,13 @@ static func _knob(col: Color) -> Texture2D:
 
 # ---------- sections ----------
 func _gfx() -> void:
+	_head("Якість графіки")
+	var pr := Settings.preset_now()
+	_row("Пресет", "Одним кліком: роздільна здатність мапи, згладжування, фільтрація, розмиття панелей, відблиски й сліди техніки. Низька — для слабких ноутбуків, Ультра — для потужних відеокарт. Змініть будь-що нижче — і пресет стане «Своя».",
+		Ui.seg([["low", "Низька"], ["medium", "Середня"], ["high", "Висока"], ["ultra", "Ультра"], ["custom", "Своя"]], pr, func(v):
+			if v != "custom":
+				host.apply_preset(v)
+			_refresh()))
 	_head("Екран")
 	_row("Режим вікна", "«На весь екран» — без рамки, швидко перемикається між програмами. «Ексклюзивний» — найменша затримка, але Alt+Tab повільніший.",
 		_dd("window", [["max", "Розгорнуте вікно"], ["window", "Вікно"], ["borderless", "На весь екран"], ["exclusive", "Ексклюзивний повноекранний"]], "layers", host.apply_window, true))
@@ -233,8 +242,10 @@ func _gfx() -> void:
 		_toggle("glint", false, host.apply_video))
 	_row("День і ніч (тест)", "Мапа живе за ігровим годинником: увечері темніє, вночі міста світяться, вранці світлішає.",
 		_toggle("daynight"))
-	_row("Розмиття під панелями", "Скляні панелі розмивають мапу під собою. Без розмиття вони просто напівпрозорі — легше для слабкої відеокарти.",
-		_toggle("blur", false, host.apply_blur))
+	_row("Розмиття під панелями", "Скляні панелі розмивають мапу під собою. Низька якість — трохи легша, різниця ледь помітна. Без розмиття панелі просто напівпрозорі — найлегше для відеокарти.",
+		_seg("blur", [[0, "Вимк"], [1, "Низька"], [2, "Висока"]], host.apply_blur, true))
+	_row("Сліди техніки", "Згасаючий слід за машинами, потягами, кораблями й літаками. З великим автопарком вимкнення помітно розвантажує процесор.",
+		_toggle("trails", false, host.apply_video))
 	var f3 := Ui.note("F3 — панель продуктивності: кадри, час CPU і GPU, відеокарта.", Ui.MUTED)
 	f3.add_theme_font_size_override("font_size", 12)
 	_page.add_child(Ui.margin(f3, 2, 10, 2, 0))

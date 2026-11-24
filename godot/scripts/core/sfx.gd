@@ -3,7 +3,7 @@ extends Node
 ## news, a warning, an incident, a refusal, a new grade or licence. A few players on the "Sfx" bus (its
 ## volume: the settings); the same sound again within a moment is skipped, so a burst of events is one sound.
 
-const NAMES := ["click", "open", "close", "send", "coin", "good", "warn", "alert", "deny", "level"]
+const NAMES := ["click", "send", "coin", "good", "warn", "alert", "deny", "level"]
 const GAP := {"click": .04, "coin": .25, "good": .3, "warn": .4, "alert": .5}   # seconds before the same sound again
 
 var _streams := {}

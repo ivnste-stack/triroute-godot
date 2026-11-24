@@ -37,14 +37,3 @@ func advance_days(n: int) -> void:
 			EventBus.month_passed.emit(date.m, date.y)
 		EventBus.day_passed.emit(int(day))
 
-
-func to_dict() -> Dictionary:
-	return {"seed": world_seed, "day": day, "date": date.duplicate(), "speed": speed, "diff": difficulty}
-
-
-func from_dict(d: Dictionary) -> void:
-	world_seed = int(d.get("seed", 0))
-	day = float(d.get("day", 0.0))
-	date = d.get("date", {"d": 1, "m": 0, "y": 2026})
-	speed = 0
-	difficulty = int(d.get("diff", 1))

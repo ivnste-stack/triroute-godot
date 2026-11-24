@@ -331,29 +331,6 @@ func set_colors(cols: Array) -> void:
 	_mat.set_shader_parameter("col", arr)
 
 
-## Fallback colouring (no state data): neighbours never share a colour, the least used colour first.
-static func default_colors(countries: Array) -> Array:
-	var used := {}
-	var out := []
-	out.resize(countries.size())
-	for c in countries:
-		var taken := {}
-		for n in c.neighbors:
-			if n < out.size() and out[n] != null:
-				taken[out[n]] = true
-		var best := ""
-		for hex in COUNTRY_COLS:
-			if taken.has(hex):
-				continue
-			if best == "" or used.get(hex, 0) < used.get(best, 0):
-				best = hex
-		if best == "":
-			best = COUNTRY_COLS[c.idx % COUNTRY_COLS.size()]
-		used[best] = used.get(best, 0) + 1
-		out[c.idx] = best
-	return out.map(func(h): return Color(h))
-
-
 func state_at(p: Vector3) -> int:
 	if world.is_empty():
 		return -1

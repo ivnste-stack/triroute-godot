@@ -237,19 +237,6 @@ func co_pause(j: Dictionary, w: float, ph: String, k: String, extra: Dictionary 
 	return p
 
 
-func co_pause_cut(j: Dictionary, p: Dictionary) -> void:
-	var e: float = co_now() - j.t0
-	if e >= p.e + p.w:
-		return
-	var nw := maxf(0, e - p.e)
-	var d: float = p.w - nw
-	p.w = nw
-	j.tot -= d
-	for q in j.pz:
-		if not is_same(q, p) and q.e > p.e:
-			q.e -= d
-
-
 func pz_len(j: Dictionary) -> float:
 	var a := 0.0
 	for p in j.get("pz", []):
@@ -692,13 +679,23 @@ func _inc_frame(T: float) -> void:
 	var dt := JS.clamp_js(T - (CO.incT if CO.get("incT") != null else T), 0, 1)
 	CO.incT = T
 	if dt > 0:
+		Perf.begin("frame.world")
 		inc_world(T, dt)
+		Perf.end("frame.world")
+		Perf.begin("frame.jams")
 		inc_jams(T, dt)
+		Perf.end("frame.jams")
 	elif jam.is_empty():
 		inc_jams(T, 0)
 	inc_f += 1
 	if (inc_f - 1) % 2:
 		return
+	Perf.begin("frame.trips")
+	_inc_trips(T)
+	Perf.end("frame.trips")
+
+
+func _inc_trips(T: float) -> void:
 	for j in CO.jobs.duplicate():
 		if j.get("hold", 0) > 0:
 			continue
@@ -856,7 +853,9 @@ func inc_world(T: float, dt: float) -> void:
 			CO.cls.append({"id": CO.uid, "kind": "pair", "a": f.a, "b": f.b, "why": "Воєнний конфлікт", "until": f.until, "conf": 1})
 			CO.uid += 1
 			ch = true
-	var cps: Array = board.checkpoints.filter(func(c): return not c.rail)
+	if _cps_road == null:   # the road checkpoints never change: filtered once, not every frame
+		_cps_road = board.checkpoints.filter(func(c): return not c.rail)
+	var cps: Array = _cps_road
 	var hc: int = hq_p().cid
 	if CO.tier >= 1 and _n_cls("cp") < 4 and cps.size() and chance(.05 * dt):
 		var L: Array = cps.filter(func(c): return _near_hub(c, 4))
@@ -1021,7 +1020,19 @@ func jam_r() -> float:
 	return board.st * .55
 
 
+var _cps_road: Variant = null
+var _rc_t := -1
+var _jam_src: Variant = null
+
+
 func rc_target() -> int:
+	if _rc_t >= 0:   # the places never change type after the board is made
+		return _rc_t
+	_rc_t = _rc_target()
+	return _rc_t
+
+
+func _rc_target() -> int:
 	var n := 0
 	for p in PL:
 		if p.type == "cap" or p.type == "big" or p.type == "city":
@@ -1080,7 +1091,9 @@ func inc_jams(T: float, dt: float) -> void:
 	jam = jam.filter(func(J): return J.until > T)
 	if jam.size() != before:
 		ch = true
-	var src: Array = PL.filter(func(p): return p.node != null and p.type != "vil")
+	if _jam_src == null:
+		_jam_src = PL.filter(func(p): return p.node != null and p.type != "vil")
+	var src: Array = _jam_src
 	var tgt := rc_target()
 	# (a lambda cannot set the outer `ch`: GDScript captures locals by value, so spawn returns it)
 	var spawn := func() -> bool:

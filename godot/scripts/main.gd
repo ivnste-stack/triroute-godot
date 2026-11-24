@@ -77,6 +77,7 @@ func apply_video() -> void:
 	if map != null:
 		map.set_glint(bool(Settings.get_value("glint")))
 	vp.anisotropic_filtering_level = clampi(int(Settings.get_value("aniso")), 0, 4) as Viewport.AnisotropicFiltering
+	VehicleLayer.trails = bool(Settings.get_value("trails"))
 	apply_render_scale()
 
 
@@ -85,7 +86,7 @@ func apply_render_scale() -> void:
 	var vp := get_viewport()
 	var res := int(Settings.get_value("res"))
 	var phys_w := float(get_window().size.x) if get_window() != null else 1600.0
-	var k := clampf(res / maxf(320.0, phys_w), .5, 2.0) if res > 0 else 1.0
+	var k := clampf(res / maxf(320.0, phys_w), .5, 2.0) if res > 0 else (clampf(-res / 100.0, .5, 1.0) if res < 0 else 1.0)
 	# supersampling: the map's 3D render this many times larger on each side (at most 2, Godot's limit)
 	var ss: float = {"ssaa2": 1.5, "ssaa4": 2.0, "fxaa_ssaa": 1.5}.get(_aa_mode(), 1.0)
 	var k3 := minf(k * ss, 2.0)
@@ -149,7 +150,7 @@ func _pace_frames() -> void:
 
 
 func apply_ui_scale() -> void:
-	Ui.set_blur(bool(Settings.get_value("blur")))
+	Ui.set_blur(int(Settings.get_value("blur")))
 	var sc := float(Settings.get_value("ui_scale"))
 	if sc <= 0:
 		sc = DisplayServer.screen_get_scale()
@@ -165,6 +166,9 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else ""
+	if _args.has("preset"):   # test: a graphics preset for this run only
+		for k in Settings.PRESETS[_args.preset]:
+			Settings._values[k] = Settings.PRESETS[_args.preset][k]
 	if _args.has("set"):   # test: settings for this run only, --set=res:1280,aa:msaa4
 		for kv in String(_args.set).split(","):
 			var p := kv.split(":")
@@ -405,9 +409,15 @@ func sandbox() -> void:
 
 
 func apply_blur() -> void:
-	var v: bool = Settings.get_value("blur")
-	Ui.set_blur(v)
-	_bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT if v else BackBufferCopy.COPY_MODE_DISABLED
+	Ui.set_blur(int(Settings.get_value("blur")))
+	_bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT if Ui.blur else BackBufferCopy.COPY_MODE_DISABLED
+
+
+## a graphics preset: every setting it covers at once, applied
+func apply_preset(name: String) -> void:
+	Settings.apply_preset(name)
+	apply_video()
+	apply_blur()
 
 
 func open_checks() -> void:
@@ -603,6 +613,12 @@ func _on_world(w: Dictionary) -> void:
 		if _args.has("demo"):
 			session.demo_fleet()
 			map.company_colors()
+		if _args.has("stress"):   # test: a big company — every vehicle, the dispatcher sends what it can
+			sandbox()
+			var CO: Dictionary = session.sim.CO
+			if not CO.mgr.has("cto") and CO.cand.has("cto"):
+				CO.mgr.cto = CO.cand.cto[0].duplicate()
+			CO.auto = true
 		if _args.has("days"):
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
@@ -954,11 +970,6 @@ func _pick_done(pid: int) -> void:
 	_play(pid, false)
 	var hp: Dictionary = session.sim.PL[pid]
 	map.camera.look_at_point(Vector2(hp.x, hp.z + .3), 6.0)
-
-
-## riskW
-static func _risk_word(r: float) -> String:
-	return "дуже високий" if r > .75 else ("високий" if r > .5 else ("середній" if r > .3 else "низький"))
 
 
 func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:

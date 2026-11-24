@@ -69,9 +69,6 @@ SOFT = ((1, 1.0), (2, 0.18), (3, 0.06))
 os.makedirs(OUT, exist_ok=True)
 # a button: a tiny wooden tick
 save("click", mix((0, noise(0.03, d=0.004, lp=0.5) * 0.35), (0, tone(1850, 0.05, a=0.001, d=0.012, partials=SOFT))), 0.32)
-# a window opens / closes: a soft rising / falling sweep
-save("open", chirp(420, 820, 0.16, a=0.012, d=0.07), 0.28)
-save("close", chirp(760, 380, 0.14, a=0.008, d=0.06), 0.24)
 # a trip is sent: two rising notes (G5, D6)
 save("send", mix((0, tone(784, 0.25, d=0.09, partials=BELL)), (0.075, tone(1175, 0.35, d=0.14, partials=BELL))), 0.4)
 # a delivery: a coin (two bright bell strikes close together)

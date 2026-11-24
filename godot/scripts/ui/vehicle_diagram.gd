@@ -21,13 +21,6 @@ static func make(_t: String, f: float, text: String = "") -> VehicleDiagram:
 	return d
 
 
-func set_fill(f: float) -> void:
-	f = clampf(f, 0, 1)
-	if absf(f - fill) > .001:
-		fill = f
-		queue_redraw()
-
-
 func _draw() -> void:
 	var h := minf(size.y - 4, 52.0)
 	var w := minf(size.x - 4, h * 4.2)

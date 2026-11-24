@@ -93,7 +93,7 @@ func _draw_t() -> void:
 		var amb: bool = inc != null and not red
 		var rgb: Color = RED if red else MODE_RGB.get(j.mode, HUB_RGB)
 		# trail
-		if st.seg >= 0 and inc == null:
+		if trails and st.seg >= 0 and inc == null:
 			var step: float = {"road": .05, "rail": .06, "sea": .08, "air": .12}[j.mode] * minf(1, camera.dist / 6 + .25) * sim.CO_DU / 1.6
 			# one polyline with fading colours instead of nine separate lines
 			var tp := PackedVector2Array([sp])
@@ -131,8 +131,8 @@ func _draw_t() -> void:
 			for w in (2 if amb else 1):
 				var f := fmod(t / .9 + w * .5, 1.0)
 				draw_arc(sp, r + 2 * dpr + f * 14 * dpr, 0, TAU, 32, Color(wc, .9 * (1 - f) * gv), 1.8 * dpr, true)
-		draw_circle(sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv), true, -1.0, true)
-		_dot(sp, r, Color(rgb, ((.35 + .65 * bl) if red and inc != null else 1.0) * gv), Color(Color("#06121b"), gv), 1.4 * dpr)
+		DotTex.draw(self, DotTex.soft(), sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv))
+		DotTex.draw(self, DotTex.dot(), sp, r, Color(rgb, ((.35 + .65 * bl) if red and inc != null else 1.0) * gv))
 		if inc != null and red and camera.dist < 16:
 			_text("!", Vector2(sp.x - 2.5 * dpr, sp.y), int(round(9 * dpr)), Color(Color("#06121b"), gv))
 		if j.n > 1 and camera.dist < 12:
@@ -143,11 +143,8 @@ func _draw_t() -> void:
 	_marks()
 
 
-func _trail(from: Vector2, tr: Array, col: Color) -> void:
-	var prev := from
-	for k in tr.size():
-		draw_line(prev, tr[k], Color(col, .55 - k * .12), 1.4 * dpr, true)
-		prev = tr[k]
+## the fading trails behind moving vehicles (settings «Сліди техніки»)
+static var trails := true
 
 
 func _dot(c: Vector2, r: float, fill: Color, stroke: Color, w: float) -> void:

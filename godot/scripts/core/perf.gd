@@ -41,6 +41,10 @@ static func report(frames: int) -> String:
 static var _off: Variant = null
 
 
+## --perf on the command line: a line per game day with what the day cost
+static var verbose: bool = "--perf" in OS.get_cmdline_user_args()
+
+
 static func off(k: String) -> bool:
 	if _off == null:
 		_off = []

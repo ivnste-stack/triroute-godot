@@ -48,11 +48,6 @@ static func fixed2(x: float) -> float:
 	return n / 100.0
 
 
-static func sstep(a: float, b: float, x: float) -> float:
-	var t := clamp_js((x - a) / (b - a), 0.0, 1.0)
-	return t * t * (3.0 - 2.0 * t)
-
-
 ## Math.exp / Math.log / Math.log10 / Math.log2 / Math.pow, correctly rounded (native TRMath, core/crmath.h):
 ## the same on every platform, equal to Chromium's for exp and the logarithms. GDScript's exp/log/pow come
 ## from the C runtime and differ between Windows, Linux and the HTML version in the last bit.

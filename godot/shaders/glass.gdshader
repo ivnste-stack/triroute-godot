@@ -11,15 +11,30 @@ uniform float saturate = 1.5;
 // so the glass of a dialog darkens what it blurs by itself, as backdrop-filter sees the veil in the HTML version
 uniform float dim = 0.0;
 
+// the quality (settings «Розмиття під панелями»): 2 — 3×3 taps of a mip level, 1 — 2×2 taps of a coarser
+// one; both close to the CSS blur, the 5×5 of before cost three to six times more for no visible difference
+uniform int quality = 2;
+
 void fragment() {
 	vec3 acc = vec3(0.0);
 	float ws = 0.0;
-	float lod = log2(radius_px * 0.5);
-	for (int x = -2; x <= 2; x++) {
-		for (int y = -2; y <= 2; y++) {
-			float w = exp(-float(x * x + y * y) / 2.0);
-			acc += textureLod(screen_tex, SCREEN_UV + vec2(float(x), float(y)) * radius_px * 0.5 * SCREEN_PIXEL_SIZE, lod).rgb * w;
-			ws += w;
+	vec2 st = radius_px * 0.6 * SCREEN_PIXEL_SIZE;
+	if (quality >= 2) {
+		float lod = log2(radius_px * 0.5) + 0.5;
+		for (int x = -1; x <= 1; x++) {
+			for (int y = -1; y <= 1; y++) {
+				float w = exp(-float(x * x + y * y) * 0.5);
+				acc += textureLod(screen_tex, SCREEN_UV + vec2(float(x), float(y)) * st, lod).rgb * w;
+				ws += w;
+			}
+		}
+	} else {
+		float lod = log2(radius_px * 0.5) + 1.2;
+		for (int x = 0; x < 2; x++) {
+			for (int y = 0; y < 2; y++) {
+				acc += textureLod(screen_tex, SCREEN_UV + (vec2(float(x), float(y)) - .5) * st, lod).rgb;
+				ws += 1.0;
+			}
 		}
 	}
 	vec3 c = acc / ws;

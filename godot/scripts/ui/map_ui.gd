@@ -331,12 +331,6 @@ func _place_tip(p: Dictionary) -> Control:
 	return v
 
 
-func _vnm(v: Dictionary) -> String:
-	if not v.has("nm"):
-		v.nm = D.FIRST[_rng.randi() % D.FIRST.size()] + " " + D.LAST[_rng.randi() % D.LAST.size()]
-	return v.nm
-
-
 ## the city couriers of a hub, or a group of vehicles on the streets
 ## the hover text of a road closure, a closed border or checkpoint, a closed port or airport
 func _inc_tip(h: Dictionary) -> Control:

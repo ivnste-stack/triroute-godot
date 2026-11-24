@@ -125,6 +125,13 @@ func _process_t(delta: float) -> void:
 			Perf.begin("co_day")
 			sim.co_day()
 			Perf.end("co_day")
+			if Perf.verbose:
+				var parts := []
+				for k in Perf.acc:
+					if String(k).begins_with("day."):
+						parts.append("%s %.1f" % [String(k).substr(4), Perf.acc[k] / 1000.0])
+						Perf.acc[k] = 0
+				print("PERF day %d: %.1f ms · jobs %d · board %d · vehicles %d · %s" % [sim.day, Perf.acc.get("co_day", 0) / 1000.0, sim.CO.jobs.size(), sim.CO.board.size(), sim.CO.veh.size(), ", ".join(parts)])
 			day_passed.emit(int(sim.day))
 	# the game logic of a frame (incidents, arrivals) up to 60 times a second, like the HTML version at 60 Hz;
 	# in between only the moment of the day moves on, so vehicles still glide at any frame rate

@@ -56,8 +56,6 @@ func _ready() -> void:
 	# #bgSnap: the pictures blurred by a shader (filter: blur(6px)), darker than the game so the buttons stand
 	# out on the light land; mipmapped 4K pictures: sharp on large screens, smooth when they drift
 	var paths: Array = BGS.filter(func(x): return ResourceLoader.exists(x))
-	if paths.is_empty():
-		paths = ["res://assets/img/menu_bg.webp"]
 	var sh: Shader = load("res://shaders/menu_bg.gdshader")
 	for path in paths:
 		var tex: Texture2D = load(path)

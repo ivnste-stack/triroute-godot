@@ -172,7 +172,18 @@ func _draw_base() -> void:
 
 
 ## the pulsing road closures (redrawn every frame while there are any)
+const JAM_PLAN := Color(150 / 255.0, 160 / 255.0, 172 / 255.0)
+const JAM_BAD := Color(240 / 255.0, 68 / 255.0, 60 / 255.0)
+const JAM_WARN := Color(1.0, 138 / 255.0, 42 / 255.0)
+
+
 func _anim_base(n: Node2D) -> void:
+	Perf.begin("incident_layer.anim")
+	_anim_base_t(n)
+	Perf.end("incident_layer.anim")
+
+
+func _anim_base_t(n: Node2D) -> void:
 	_hits_anim = []
 	if session == null or session.sim == null:
 		return
@@ -189,11 +200,12 @@ func _anim_base(n: Node2D) -> void:
 			if q == null or q.x < -20 or q.y < -20 or q.x > W + 20 or q.y > H + 20:
 				continue
 			var pl: bool = J.t0 > T_
-			var col := _c("150,160,172") if pl else (_c("240,68,60") if J.sev > 1 else _c("255,138,42"))
+			var col: Color = JAM_PLAN if pl else (JAM_BAD if J.sev > 1 else JAM_WARN)
 			var f: float = .3 if pl else .5 + .5 * sin(t * 4 + J.id)
-			n.draw_circle(q, r * (1.9 + .4 * f), Color(col, .18 + .14 * f), true, -1.0, true)
-			n.draw_circle(q, r, col, true, -1.0, true)
-			n.draw_arc(q, r, 0, TAU, 20, Color("#0b1520"), 1.2 * dpr, true)
+			# textured markers: all the closures batch into a few draw calls (antialiased circles for each
+			# one every frame were the costliest thing on the CPU)
+			DotTex.draw(n, DotTex.soft(), q, r * (1.9 + .4 * f), Color(col, .18 + .14 * f))
+			DotTex.draw(n, DotTex.dot(), q, r, col)
 			_hits_anim.append({"x": q.x, "y": q.y, "r": r / dpr + 5, "kind": "jam", "data": J})
 	hits = _hits_static + _hits_anim
 

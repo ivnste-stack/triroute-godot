@@ -48,10 +48,6 @@ func hub_abroad(p: Dictionary) -> bool:
 	return CO.hq != null and p.cid != PL[CO.hq].cid
 
 
-func hub_open_cost(p: Dictionary) -> float:
-	return JS.round_js(hub_cost(p) * .1) if hub_abroad(p) else hub_cost(p)
-
-
 func co_rate() -> float:
 	return JS.clamp_js(.07 + (5 - CO.rating) * .022 - msk("cfo") * .025, .03, .2)
 
@@ -348,12 +344,6 @@ func act_hub_close(pid: int) -> Dictionary:
 	return _toast("", "Оренду хаба припинено" if h.get("rent") else "Хаб закрито", PL[pid].name)
 
 
-func act_mk(pid: int, v: float) -> void:
-	var h: Variant = hub_at(pid)
-	if h != null:
-		h.mk = v
-
-
 # ---------- finance ----------
 func act_ins() -> void:
 	CO.ins = not CO.ins
@@ -391,20 +381,6 @@ func act_repay() -> void:
 
 
 # ---------- orders and trips ----------
-func act_send(id: int) -> Dictionary:
-	for k in CO.board:
-		if k.id == id:
-			var P := co_plan(k)
-			if not P.ok:
-				return _toast("warn", "Неможливо відправити", P.why)
-			k.how = "hand"
-			co_dispatch(k, P)
-			var A: Dictionary = PL[k.from]
-			var B: Dictionary = PL[k.to]
-			return _toast("good", "Рейс відправлено", "%s%s: %s → %s" % [D.VT[P.t].n if P.has("t") and D.VT.has(P.t) else "", (" ×%d" % P.n) if P.get("n", 1) > 1 else "", A.name, B.name])
-	return {}
-
-
 func act_decline(id: int) -> void:
 	CO.board = CO.board.filter(func(k): return k.id != id)
 
