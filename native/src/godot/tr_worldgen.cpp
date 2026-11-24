@@ -83,6 +83,7 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("sky_hit", "x0", "z0", "x1", "z1"), &TRWorldGen::sky_hit);
 	ClassDB::bind_method(D_METHOD("sr_grid", "mode", "x0", "z0", "x1", "z1", "zones"), &TRWorldGen::sr_grid);
 	ClassDB::bind_method(D_METHOD("node_path_avoid", "a", "b", "jam_nodes", "zones"), &TRWorldGen::node_path_avoid);
+	ClassDB::bind_method(D_METHOD("node_path_costly", "a", "b", "edges", "mult"), &TRWorldGen::node_path_costly);
 	ClassDB::bind_method(D_METHOD("continents"), &TRWorldGen::continents);
 	ClassDB::bind_method(D_METHOD("lines"), &TRWorldGen::lines);
 	ClassDB::bind_method(D_METHOD("crossings", "p", "eco"), &TRWorldGen::crossings);
@@ -438,6 +439,17 @@ PackedFloat32Array TRWorldGen::node_path_avoid(int64_t a, int64_t b, const Packe
 		return false;
 	};
 	return to_packed(nav_->path(int(a), int(b), false, blocks_.get(), bad));
+}
+
+PackedFloat32Array TRWorldGen::node_path_costly(int64_t a, int64_t b, const PackedInt32Array &edges, double mult) const {
+	if (!nav_ || !board_) return PackedFloat32Array();
+	std::set<int64_t> es;
+	for (int64_t i = 0; i + 1 < edges.size(); i += 2) {
+		int64_t x = edges[i], y = edges[i + 1];
+		es.insert(std::min(x, y) * 1048576 + std::max(x, y));
+	}
+	auto w = [&](int n, int m) { return es.count(int64_t(std::min(n, m)) * 1048576 + std::max(n, m)) ? mult : 1.0; };
+	return to_packed(nav_->path_w(int(a), int(b), false, blocks_.get(), w));
 }
 
 bool TRWorldGen::sky_hit(double x0, double z0, double x1, double z1) const {

@@ -610,11 +610,28 @@ func _on_world(w: Dictionary) -> void:
 			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret"))
 			map_ui.select_job(js[0] if js.size() else session.sim.CO.jobs[0], true)
 		if _args.has("plan"):
+			if _args.plan == "road" and _args.has("sandbox"):   # test: plenty of vehicles and every licence first
+				sandbox()
+				for i in 3:
+					session.sim.co_board_day()
 			var ks: Array = session.sim.CO.board.filter(func(x): return session.sim.co_plan(x).ok)
+			if _args.plan == "road":   # test: an order whose road crosses a toll motorway or a ban, its leg laid
+				var sm := session.sim
+				ks = ks.filter(func(x):
+					if x.mode != "road" or x.get("legs"):
+						return false
+					var ri := sm.road_info(sm.co_route("road", x.from, x.to))
+					return ri.toll > 0 or ri.ban > 0)
 			if ks.size():
 				_plan(ks[0])
 				if _args.plan == "auto":
 					planner.auto_use()
+				elif _args.plan == "road":
+					planner.LP.pts = [ks[0].from, ks[0].to]
+					planner.LP.modes = ["road"]
+					if _args.has("av"):
+						planner.LP.av = String(_args.av).replace("+", ",")
+					planner._panel_build()
 		if _args.has("reroute"):
 			session.sim.CO.xp = 1e6
 			var js: Array = session.sim.CO.jobs.filter(func(x): return session.sim.sr_ok(x) and x.mode == _args.reroute)
@@ -947,6 +964,8 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 		session.choose_hq(hq, auto_decisions)
 	session.set_speed(0)
 	map.attach_session(session)
+	map.overlay.set_marks(session.sim.road_mark_segs() if session.sim.road_rules else [])   # toll motorways, bans
+	map.apply_vis()
 	wins = Windows.new(session.sim)
 	wins.acted.connect(_on_act)
 	wins.goto_place.connect(_goto_place)

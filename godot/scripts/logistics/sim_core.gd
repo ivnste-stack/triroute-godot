@@ -209,6 +209,119 @@ func lp_with(key: String, r: Variant, f: Callable) -> Variant:
 	return res
 
 
+# ---------- road rules: toll motorways and heavy-vehicle bans (not in the HTML version) ----------
+const TOLL_FAST := .3     # on a toll motorway the trip takes this much less time
+const TOLL_K := 1.0       # the toll: as much as the fuel burnt on the toll stretch, per vehicle
+const HEAVY_CAP := 18.0   # tonnes: vehicles this heavy are banned from some stretches
+const _EK := 1048576
+## the parity tests against the HTML version switch the rules off
+var road_rules := true
+## the planner's choice for the routes it asks for: "" | "toll" | "ban" | "toll,ban" (stretches to go around)
+var road_av := ""
+var _rm := {}             # edge (node pair) → 1 toll motorway, 2 heavy-vehicle ban, 3 both
+var _rm_edges := {}       # "toll" / "ban" → the edges of such stretches as node pairs: the detour avoids them
+var _rm_done := false
+
+
+static func _ekey(a: int, b: int) -> int:
+	return mini(a, b) * _EK + maxi(a, b)
+
+
+## which stretches are toll motorways and which are closed to heavy vehicles: drawn once from the board with
+## a random stream of their own (the game's RNG stays untouched), so the same world has the same rules
+func road_marks() -> void:
+	if _rm_done:
+		return
+	_rm_done = true
+	_rm = {}
+	var rng := Mulberry.new((seed_value * 7919 + 4242) & 0xFFFFFFFF)
+	var mway := {}   # motorway edges: never banned (an ordinary road that shares one is the motorway there)
+	for h in board.get("roads", []):
+		if h.lv >= 3:
+			var p0: PackedFloat32Array = h.p
+			for i in range(2, p0.size() - 1, 2):
+				mway[_ekey(node_at(p0[i - 2], p0[i - 1]), node_at(p0[i], p0[i + 1]))] = true
+	for h in board.get("roads", []):
+		var p: PackedFloat32Array = h.p
+		var nodes := []
+		for i in range(0, p.size() - 1, 2):
+			var n := node_at(p[i], p[i + 1])
+			if nodes.is_empty() or nodes.back() != n:
+				nodes.append(n)
+		if nodes.size() < 2:
+			continue
+		if h.lv >= 3:   # about a third of the motorways between cities are toll lines
+			if rng.next() < .3:
+				for i in range(1, nodes.size()):
+					var k := _ekey(nodes[i - 1], nodes[i])
+					_rm[k] = _rm.get(k, 0) | 1
+		elif nodes.size() >= 4 and rng.next() < (.03 if h.lv >= 2 else .09):   # a stretch of an ordinary road: a weak bridge, a town centre…
+			var ln := mini(nodes.size() - 1, 2 + int(rng.next() * 4))
+			var s0 := int(rng.next() * (nodes.size() - ln))
+			for i in range(s0 + 1, s0 + ln + 1):
+				var k := _ekey(nodes[i - 1], nodes[i])
+				if not mway.has(k):
+					_rm[k] = _rm.get(k, 0) | 2
+	var te := PackedInt32Array()
+	var be := PackedInt32Array()
+	for k in _rm:
+		if _rm[k] & 1:
+			te.append_array([k / _EK, k % _EK])
+		if _rm[k] & 2:
+			be.append_array([k / _EK, k % _EK])
+	_rm_edges = {"toll": te, "ban": be}
+
+
+## the marked stretches for the map: Array of [x1, z1, x2, z2, flags]
+func road_mark_segs() -> Array:
+	road_marks()
+	var out := []
+	for k in _rm:
+		var a: int = k / _EK
+		var b: int = k % _EK
+		out.append([-board.wx / 2 + (a % board.nx) * board.st, -board.wz / 2 + (a / board.nx) * board.st,
+			-board.wx / 2 + (b % board.nx) * board.st, -board.wz / 2 + (b / board.nx) * board.st, _rm[k]])
+	return out
+
+
+## how much of a road route runs on toll motorways and on banned stretches (in route length units), cached on it
+func road_info(r: Variant) -> Dictionary:
+	if r == null or not road_rules:
+		return {"toll": 0.0, "ban": 0.0}
+	if r.has("_ri"):
+		return r._ri
+	road_marks()
+	var p: Variant = r.p
+	var toll := 0.0
+	var ban := 0.0
+	var nx: int = board.nx
+	var seg: float = board.st * CO_DU   # one step along the lattice (a diagonal step is longer)
+	for i in range(2, p.size() - 1, 2):
+		# the native path keeps only the turns: walk every node of a straight run
+		var na := node_at(p[i - 2], p[i - 1])
+		var nb := node_at(p[i], p[i + 1])
+		var dx: int = nb % nx - na % nx
+		var dz: int = nb / nx - na / nx
+		var steps := maxi(absi(dx), absi(dz))
+		if steps == 0:
+			continue
+		var sx := signi(dx)
+		var sz := signi(dz)
+		var d: float = seg * (1.4142 if sx != 0 and sz != 0 else 1.0)
+		var n := na
+		for q in steps:
+			var m := n + sz * nx + sx
+			var f: int = _rm.get(_ekey(n, m), 0)
+			if f & 1:
+				toll += d
+			if f & 2:
+				ban += d
+			n = m
+	var ri := {"toll": toll, "ban": ban}
+	r["_ri"] = ri
+	return ri
+
+
 func co_route(mode: String, a: int, b: int) -> Variant:
 	if lp_ovr != null and lp_ovr.key == mode + str(a) + ":" + str(b):
 		return lp_ovr.r
@@ -216,12 +329,22 @@ func co_route(mode: String, a: int, b: int) -> Variant:
 	if a == b:
 		return {"p": PackedFloat32Array([A.x, A.z, A.x, A.z]), "len": 0.0}
 	var key := mode + str(a) + ":" + str(b)
+	var av := road_av if mode == "road" and road_rules else ""
+	if av != "":
+		key += "|" + av
 	if routes.has(key):
 		return routes[key]
 	var B: Dictionary = PL[b]
 	var p := PackedFloat32Array()
 	if mode == "road":
-		p = gen.route("road", a, b)
+		if av != "":   # the planner's choice: around the toll motorways and/or the heavy-vehicle bans
+			road_marks()
+			var edges := PackedInt32Array()
+			for t in av.split(","):
+				edges.append_array(_rm_edges.get(t, PackedInt32Array()))
+			p = gen.node_path_costly(A.node, B.node, edges, 8.0)   # a detour when there is a sensible one
+		if p.size() < 4:
+			p = gen.route("road", a, b)
 	elif mode == "sea" and A.port != null and B.port != null:
 		p = gen.route("sea", a, b)
 	elif mode == "rail" and A.rail and B.rail:
@@ -1253,15 +1376,30 @@ func co_plan1(k: Dictionary) -> Dictionary:
 				cust = cp_wait(PL[k.to].cid, mode) * maxf(1, JS.round_js(JS.hypot(PL[k.to].x - A.x, PL[k.to].z - A.z) / 5))
 			else:
 				cust = .3
-		var tl: float = lead / (T.spd * spd_k())
-		var tm: float = main.len / (T.spd * spd_k())
+		# road rules: a toll motorway is quicker but paid; a heavy vehicle on a banned stretch risks a fine
+		var ri := road_info(main) if mode == "road" else {"toll": 0.0, "ban": 0.0}
+		var rl := road_info(lead_r) if mode == "road" else {"toll": 0.0, "ban": 0.0}
+		var tl: float = (lead - rl.toll * TOLL_FAST) / (T.spd * spd_k())
+		var tm: float = (main.len - ri.toll * TOLL_FAST) / (T.spd * spd_k())
+		var toll_l: float = ri.toll + rl.toll
+		var toll := JS.round_js(toll_l * T.fuel * CO.fuel * fuel_k(mode) * TOLL_K * n) if toll_l > 0 else 0.0
+		var ban_l: float = (ri.ban + rl.ban) if T.cap >= HEAVY_CAP else 0.0
+		var ban_p := 1.0 - exp(-ban_l * D.KM / 250.0) if ban_l > 0 else 0.0
+		var ban_f := JS.round_js((700 + ban_l * D.KM * 4) * price_k(A.cid)) * n if ban_l > 0 else 0.0
 		var hs: float = D.HAND[mode] * hand_k() * (hand_f(k.from) + hand_f(k.to)) / 2
 		var tot: float = tl + hs + tm + cust + hs
 		var fuel: float = (lead + main.len) * T.fuel * CO.fuel * fuel_k(mode) * n * (1 - .06 * msk("cto")) * 1
 		var runc: float = (T.up * rep_k() * [.8, 1.0, 1.35][CO.maint] + D.ROLE[T.role].w * wage_k(me) * CO.wageLv / 30 * crew) * tot * n
 		var pk_ := 1.2 if T.has("fit") and T.fit.has(k.cg) else 1.0
 		var c := {"ok": true, "t": t, "n": n, "vids": sel.map(func(v): return v.id), "lead": lead, "leadR": lead_r, "main": main, "tl": tl, "tm": tm,
-			"hs": hs, "cust": cust, "tot": tot, "fuel": fuel, "payK": pk_, "profit": k.pay * pk_ - fuel - runc, "late": tot > k.dlDays}
+			"hs": hs, "cust": cust, "tot": tot, "fuel": fuel, "payK": pk_, "profit": k.pay * pk_ - fuel - runc - toll - ban_p * ban_f, "late": tot > k.dlDays}
+		if toll_l > 0:
+			c.toll = toll
+			c.tollL = toll_l
+		if ban_l > 0:
+			c.banL = ban_l
+			c.banP = ban_p
+			c.banF = ban_f
 		if best == null or (not c.late and best.late) or (c.late == best.late and c.profit > best.profit):
 			best = c
 	return best if best != null else {"ok": false, "why": why}
@@ -1349,6 +1487,9 @@ func co_dispatch(k: Dictionary, P: Dictionary, _silent: bool = false) -> bool:
 		return true
 	CO.cash -= P.fuel
 	CO.m.fuel += P.fuel
+	if P.get("toll", 0) > 0:
+		CO.cash -= P.toll
+		CO.m.toll = CO.m.get("toll", 0) + P.toll
 	var lp: PackedFloat32Array = P.leadR.p
 	var mp: PackedFloat32Array = P.main.p
 	var path := PackedFloat32Array(lp)
@@ -1356,6 +1497,11 @@ func co_dispatch(k: Dictionary, P: Dictionary, _silent: bool = false) -> bool:
 	var j := {"id": k.id, "k": k, "mode": k.mode, "t": P.t, "n": P.n, "vids": P.vids, "payK": P.payK if P.get("payK") else 1.0, "p": path, "lead": P.lead,
 		"len": P.main.len, "tl": P.tl, "tm": P.tm, "hs": P.hs, "cust": P.cust, "tot": P.tot, "t0": co_now(), "dl": day + k.dlDays, "dmg": 0.0,
 		"lost": false, "hold": 0.0, "ev": []}
+	if P.get("toll", 0) > 0:
+		j.toll = P.toll
+		j.ev.append("Платна траса: %s км, %s" % [Ui.grp(JS.round_js(P.tollL * D.KM)), Ui.usd(P.toll)])
+	if P.get("banP", 0) > 0:
+		j.ban = {"p": P.banP, "f": P.banF, "km": JS.round_js(P.banL * D.KM)}
 	if k.mode == "road" or k.mode == "rail":
 		var tot: float = j.lead + j.len
 		var wl := 0.0

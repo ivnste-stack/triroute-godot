@@ -31,6 +31,8 @@ public:
 	// the same, but nodes for which bad(node) is true are not entered (except b): the "avoid danger" road
 	// search of the course change (srRoad)
 	std::vector<float> path(int a, int b, bool rail, const Blocks *blk, const std::function<bool(int)> &bad) const;
+	// the same search with a cost multiplier per edge (n, m) — 1 for an ordinary edge (road rules: toll, bans)
+	std::vector<float> path_w(int a, int b, bool rail, const Blocks *blk, const std::function<double(int, int)> &w) const;
 	// A* over the cells of the board (srGrid): water only for ships (sea), everything but a closed sky for
 	// planes; cells inside the zones {x, z, r} cost 30 more (avoid). Doubles, as in the original; empty if none.
 	std::vector<double> grid(bool sea, double x0, double z0, double x1, double z1, const std::vector<std::array<double, 3>> &zones,

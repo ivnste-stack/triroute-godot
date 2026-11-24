@@ -143,6 +143,51 @@ std::vector<float> Nav::path(int a, int b, bool rail, const Blocks *blk, const s
 	return pts;
 }
 
+std::vector<float> Nav::path_w(int a, int b, bool rail, const Blocks *blk, const std::function<double(int, int)> &w) const {
+	const int N = b_.nx * b_.nz;
+	const auto &bits = rail ? b_.rbits : b_.bits;
+	const bool useBlk = blk && blk->any();
+	std::vector<float> g(N, 1e9f);
+	std::vector<int> prev(N, -1);
+	Heap h;
+	g[a] = 0;
+	h.push(0, a);
+	while (!h.empty()) {
+		int n = h.pop();
+		if (n == b) break;
+		int x = n % b_.nx, y = n / b_.nx;
+		for (int d = 0; d < 8; d++) {
+			if (!(bits[n] & (1 << d))) continue;
+			int m = (y + D8[d][1]) * b_.nx + x + D8[d][0];
+			if (useBlk && blocked(n, m, rail, *blk)) continue;
+			double ng = double(g[n]) + ((d & 1) ? 1.4142 : 1) * b_.st * w(n, m);
+			if (ng < double(g[m])) {
+				g[m] = float(ng);
+				prev[m] = n;
+				h.push(ng, m);
+			}
+		}
+	}
+	if (g[b] >= 1e9f) return {};
+	std::vector<int> nodes;
+	for (int n = b; n >= 0; n = prev[n]) {
+		nodes.push_back(n);
+		if (n == a) break;
+	}
+	std::reverse(nodes.begin(), nodes.end());
+	std::vector<float> pts;
+	for (size_t k = 0; k < nodes.size(); k++) {
+		if (k > 0 && k < nodes.size() - 1 && nodes[k] - nodes[k - 1] == nodes[k + 1] - nodes[k]) continue;
+		pts.push_back(float(-b_.wx / 2 + (nodes[k] % b_.nx) * b_.st));
+		pts.push_back(float(-b_.wz / 2 + (nodes[k] / b_.nx) * b_.st));
+	}
+	if (pts.size() < 4) {
+		std::vector<float> p2 = pts;
+		pts.insert(pts.end(), p2.begin(), p2.end());
+	}
+	return pts;
+}
+
 std::vector<float> Nav::sea(int ta, int tb) const {
 	const Town &A = b_.towns[ta], &B = b_.towns[tb];
 	if (A.wc_i < 0 || B.wc_i < 0) return {};

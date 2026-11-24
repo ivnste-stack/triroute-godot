@@ -29,6 +29,7 @@ func _new_game(seed_value: int) -> Sim:
 	var board: Dictionary = gen.generate_board()
 	var sim := Sim.new()
 	sim.setup(gen, seed_value, states, board, world)
+	sim.road_rules = false   # toll motorways and heavy-vehicle bans are not in the HTML version
 	var choices := sim.start_choices()
 	sim.co_init(choices[0].id)
 	sim.co_set_hq(choices[0].id)

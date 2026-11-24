@@ -440,6 +440,16 @@ func _panel_build() -> void:
 		bits.append(Ui.days(Lg.time))
 		bits.append(Ui.usd(Lg.cost))
 		bits.append(Lg.get("veh") if Lg.get("veh") else ("власна техніка" if Lg.own else "партнер"))
+		if Lg.m == "road":   # road rules: the toll motorway and the stretches closed to heavy vehicles
+			var P_: Variant = Lg.get("P")
+			var ri := sim.road_info(Lg.r)
+			if ri.toll > 0:
+				bits.append("[color=#8fe3ff]платна траса %s%s[/color]" % [Ui.km(ri.toll), (" · " + Ui.usd(P_.get("toll", 0))) if P_ != null and P_.get("toll", 0) > 0 else ""])
+			if ri.ban > 0:
+				if P_ != null and P_.get("banP", 0) > 0:
+					bits.append("[color=#f0625f]заборона для важких %s · ризик штрафу %d%% (%s)[/color]" % [Ui.km(ri.ban), int(round(P_.banP * 100)), Ui.usd(P_.banF)])
+				else:
+					bits.append("[color=#f1c453]заборона для важких %s (ця техніка легша — можна)[/color]" % Ui.km(ri.ban))
 		if Lg.risk.jam:
 			bits.append("[color=#f0625f]перекриття %d[/color]" % Lg.risk.jam)
 		if Lg.risk.wx:
@@ -453,6 +463,15 @@ func _panel_build() -> void:
 		lg.add_child(_leg_row(Lg.m, "%s → %s" % [sim.PL[Lg.a].name, sim.PL[Lg.b].name], " · ".join(bits)))
 	if C.legs.is_empty() and C.tail == null:
 		lg.add_child(W._note("Ще немає ділянок."))
+	if sim.road_rules and C.legs.any(func(x): return x.m == "road"):   # the road choice for the whole plan
+		var av: String = LP.get("av", "")
+		var tip := "Платні швидкісні траси: на третину швидше, але проїзд платний. Ділянки із забороною для важкого транспорту (від 18 т): проїхати можна, але поліція може оштрафувати. Об'їзд довший, зате без плати й ризику."
+		var row := Ui.hbox(8, [Ui.lbl("Дороги"), Ui.seg([["", "Найкоротші"], ["toll", "Без платних"], ["ban", "Без заборон"], ["toll,ban", "Без обох"]], av, func(v):
+			LP.av = v
+			_panel_build()
+			queue_redraw())])
+		row.tooltip_text = "Вибір доріг\n" + tip
+		lg.add_child(Ui.margin(row, 0, 6, 0, 0))
 	if C.tail != null:
 		var tl: Dictionary = C.tail
 		var r := _leg_row(tl.m, "%s → …" % sim.lp_name(LP.pts[LP.pts.size() - 1 - tl.via.size()]), "через: %s · %s · доведіть до міста" % [", ".join(tl.via.map(func(v): return sim.lp_name(v))), Ui.km(tl.r.len)])
@@ -712,12 +731,15 @@ func _draw_route() -> void:
 	if not on:
 		return
 	var n := _draw_node
+	var av0 := sim.road_av
+	sim.road_av = String(LP.get("av", ""))   # the road choice of the plan: the drawn route is the one it takes
 	for i in range(1, LP.pts.size()):
 		var r: Variant = sim.lp_seg(LP.modes[i - 1], LP.pts[i - 1], LP.pts[i])
 		if r != null:
 			var pts := _path(r, LP.modes[i - 1])
 			_poly(n, pts, Color(6 / 255.0, 12 / 255.0, 18 / 255.0, .7), 5)
 			_poly(n, pts, LP_C[LP.modes[i - 1]], 3)
+	sim.road_av = av0
 	# the preview to what is under the pointer
 	var mp := get_viewport().get_mouse_position()
 	if get_viewport().gui_get_hovered_control() == null:

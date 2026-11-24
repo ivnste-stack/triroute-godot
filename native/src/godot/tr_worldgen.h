@@ -68,7 +68,10 @@ public:
 	// state at a world point (bOwn), -1 water / neutral
 	// the course change (08r-multi.js): srGrid for "sea"/"air" and srRoad with avoid; zones are x, z, r triples
 	PackedFloat64Array sr_grid(const String &mode, double x0, double z0, double x1, double z1, const PackedFloat64Array &zones) const;
-	PackedFloat32Array node_path_avoid(int64_t a, int64_t b, const PackedInt32Array &jam_nodes, const PackedFloat64Array &zones) const;
+// road rules: the road path with the edges (pairs of nodes, both ways) costing mult times more: a detour
+	// around them when there is a sensible one, through them when there is not
+	PackedFloat32Array node_path_costly(int64_t a, int64_t b, const PackedInt32Array &edges, double mult) const;
+		PackedFloat32Array node_path_avoid(int64_t a, int64_t b, const PackedInt32Array &jam_nodes, const PackedFloat64Array &zones) const;
 	// does a straight flight cross a closed sky (skyHit)
 	bool sky_hit(double x0, double z0, double x1, double z1) const;
 	int64_t state_at(double x, double z) const;

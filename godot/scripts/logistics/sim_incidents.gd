@@ -342,6 +342,13 @@ func _jobs_day() -> void:
 		var e: float = day - j.t0
 		var st := co_job_state(j, e)
 		var cg: Dictionary = cargo_i[j.k.cg]
+		if j.get("ban") != null and not j.ban.get("done", false) and st.seg >= 0:   # a heavy vehicle on a banned stretch
+			j.ban.done = true
+			if chance(j.ban.p):
+				var f := _pay(j.ban.f, "claims")
+				co_pause(j, rnd(.1, .3), "Поліція: важкий транспорт під забороною", "pdr")
+				j.ev.append("Штраф: проїзд забороненою для важкого транспорту ділянкою, %s" % _usd(f))
+				co_news("warn", "gavel", "%s: штраф %s — %s проїхав ділянкою, закритою для важкого транспорту" % [CO.name, _usd(f), D.VT[j.t].n.to_lower()])
 		if not j.get("ret") and not j.get("back") and not j.get("cx0") and not j.get("sch") and st.get("inc") == null:
 			var cc: Dictionary = states[PL[j.k.to if st.s > j.lead + j.len / 2 else j.k.from].cid]
 			var k: Variant = inc_roll(j, st, cc, cg)

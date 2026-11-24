@@ -52,6 +52,8 @@ func lp_plain(m: String, a: int, b: int) -> Variant:
 		return co_route(m, a, b)
 	if m == "rail" and not (PL[a].rail and PL[b].rail):
 		return null
+	if m == "road" and road_av != "" and road_rules:   # the planner's road choice: around tolls and/or bans
+		return co_route(m, a, b)
 	if _lp_rc_v != blk_v:
 		_lp_rc_v = blk_v
 		_lp_rc.clear()
@@ -203,6 +205,14 @@ func lp_groups(pts: Array, modes: Array) -> Dictionary:
 ## LP: {k: the order, pts: plan points, modes: a mode per step, veh0: the vehicle chosen for the first leg or null}
 ## Returns {legs, t (days), c (cost), risk, len, tr (transshipment fees), ht (hub taxes), done, late, net, tail}
 func lp_calc(LP: Dictionary) -> Dictionary:
+	var av0 := road_av
+	road_av = String(LP.get("av", ""))   # the planner's road choice: around toll motorways and/or bans
+	var C := _lp_calc(LP)
+	road_av = av0
+	return C
+
+
+func _lp_calc(LP: Dictionary) -> Dictionary:
 	if LP.k.get("cons"):
 		return lp_calc_cons(LP)
 	var M: Variant = LP.k.get("multi")
@@ -356,7 +366,8 @@ func lp_go(LP: Dictionary, by_mgr: bool = false) -> String:
 	k.how = "mgr" if by_mgr else "hand"
 	var legs := []
 	for L in C.legs:
-		legs.append({"a": L.a, "b": L.b, "m": L.m, "r": L.r if L.via.size() else null})
+		# a road leg routed around tolls or bans keeps its route (the leg would be routed afresh otherwise)
+		legs.append({"a": L.a, "b": L.b, "m": L.m, "r": L.r if L.via.size() or (L.m == "road" and String(LP.get("av", "")) != "") else null})
 	var plan := {"legs": legs, "ctry": PL[LP.pts[0]].cid}
 	var P0: Variant = C.legs[0].get("P") if C.legs.size() else null
 	plan.veh0 = LP.veh0 if LP.get("veh0") != null else (P0.vids[0] if P0 != null and P0.ok and P0.n == 1 else null)

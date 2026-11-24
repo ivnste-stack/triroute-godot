@@ -399,6 +399,10 @@ func apply_vis() -> void:
 		for k in ["rail", "rail_case"]:
 			L[k].visible = MapVis.vis("rail")
 		L.borders.visible = not (mode == "pol" and not MapVis.vis("pol_b"))
+		if L.has("toll"):
+			L.toll.visible = MapVis.vis("toll") and MapVis.vis("r3")
+		if L.has("hban"):
+			L.hban.visible = MapVis.vis("hban")
 		overlay.dirty()
 	company_colors()
 
