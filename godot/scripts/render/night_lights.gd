@@ -52,7 +52,7 @@ func _draw() -> void:
 		if camera.is_position_behind(w):
 			continue
 		var c := camera.unproject_position(w)
-		var r: float = R.get(p.type, 8.0) * zoom
+		var r: float = R.get(p.type, 8.0) * zoom * 1.4
 		if c.x < -r or c.y < -r or c.x > vs.x + r or c.y > vs.y + r:
 			continue
 		draw_texture_rect(_glow, Rect2(c - Vector2(r, r), Vector2(r, r) * 2), false, Color(1, 1, 1, night))
