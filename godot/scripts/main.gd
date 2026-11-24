@@ -89,10 +89,14 @@ func apply_render_scale() -> void:
 	var k := clampf(res / maxf(320.0, phys_w), .5, 2.0) if res > 0 else (clampf(-res / 100.0, .5, 1.0) if res < 0 else 1.0)
 	# supersampling: the map's 3D render this many times larger on each side (at most 2, Godot's limit)
 	var ss: float = {"ssaa2": 1.5, "ssaa4": 2.0, "fxaa_ssaa": 1.5}.get(_aa_mode(), 1.0)
+	# the supersampled render never goes beyond 4K wide: more costs a lot and shows nothing (SSAA 4× on a
+	# 1440p window rendered 5120×2880)
+	ss = maxf(1.0, minf(ss, 3840.0 / maxf(320.0, phys_w * k)))
 	var k3 := minf(k * ss, 2.0)
 	vp.scaling_3d_scale = k3
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if String(Settings.get_value("upscale")) == "fsr" and k3 < 1 else Viewport.SCALING_3D_MODE_BILINEAR
 	_map_k3 = k3
+	_map_k = k
 	if map != null:
 		map.render_k = k
 		# the roads, railways, borders and the towns are a 2D layer of their own: supersampled the same way
@@ -101,6 +105,7 @@ func apply_render_scale() -> void:
 
 
 var _map_k3 := 1.0
+var _map_k := 1.0
 
 
 ## the anti-aliasing mode; the MSAA modes of earlier versions became supersampling
@@ -109,8 +114,13 @@ func _aa_mode() -> String:
 	return {"msaa2": "ssaa2", "msaa4": "ssaa4", "msaa8": "ssaa4"}.get(aa, aa)
 
 
-## the size the map is rendered at now (for the settings)
+## the map's resolution now (for the settings): the window's size × the render scale, without supersampling
 func render_size() -> Vector2i:
+	return Vector2i((Vector2(get_window().size) * _map_k).round())
+
+
+## the size the anti-aliasing renders the map at inside before it shrinks it to the screen
+func ss_size() -> Vector2i:
 	return Vector2i((Vector2(get_window().size) * _map_k3).round())
 
 
