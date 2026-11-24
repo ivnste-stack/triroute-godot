@@ -22,6 +22,7 @@ uniform float glint = 1.0;
 uniform float wall_h = 0.0;   // slow glints on the water triangles (settings)
 
 uniform float night = 0.0;   // the test day and night: 0 day … 1 night
+uniform float focus = 13.0;   // the distance from the camera to the point it looks at (MapView)
 
 varying vec3 wp;
 
@@ -153,7 +154,9 @@ void fragment() {
 		c = mix(cf, c, mask);
 	}
 	float fd = length(wp - CAMERA_POSITION_WORLD);
-	c = mix(c, bg, smoothstep(14., 34., fd));
+	// the haze starts beyond the point the camera looks at: the board stays bright at any zoom, only the far
+	// horizon fades when the view is tilted (a haze by plain distance darkened the whole board zoomed out)
+	c = mix(c, bg, smoothstep(focus + 10., focus + 30., fd));
 	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	// the depth: land where it is, water far below (3 world units, the tallest wall is ~.4): a wall shows

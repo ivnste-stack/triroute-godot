@@ -273,6 +273,9 @@ func _process_t(_delta: float) -> void:
 	_day_night()
 	if _plane.visible:
 		_mat.set_shader_parameter("wall_h", walls.update(camera))
+		_mat.set_shader_parameter("focus", camera.dist)
+		if walls._mat != null:
+			walls._mat.set_shader_parameter("focus", camera.dist)
 	# the overlay buffer: the size of the screen in real pixels
 	# the line and town buffers at the map's resolution: the lines smooth their own edges in their shader
 	# (overlay_line.gdshader); a supersampled buffer cost 7–8 ms of GPU at every camera move on 1440p
