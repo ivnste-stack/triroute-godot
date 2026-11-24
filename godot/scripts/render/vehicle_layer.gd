@@ -22,6 +22,8 @@ var hits: Array = []              # {j | ids, x, y, r}: what is under the pointe
 
 
 func _ready() -> void:
+	# the markers are small textures (DotTex): filtered through their mipmaps, smooth at any zoom
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 

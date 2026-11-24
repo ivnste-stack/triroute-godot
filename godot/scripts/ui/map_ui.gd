@@ -38,8 +38,6 @@ var _insp_ic: Control
 var _insp_scroll: ScrollContainer
 var _card: PanelContainer
 var _card_t := 0.0
-var _card_hold := 0
-var _card_sz := Vector2.ZERO
 var _land_n := {}
 var _risk_q := []
 var _risk_k := ""
@@ -99,7 +97,6 @@ func _ready() -> void:
 	_insp_scroll.add_child(m)
 	# the trip card
 	_card = Ui.glass()
-	_card.clip_contents = true
 	_card.visible = false
 	_card.custom_minimum_size.x = 290
 	add_child(_card)
@@ -644,7 +641,6 @@ func ask_cancel(j: Dictionary) -> void:
 
 
 func close_card() -> void:
-	_card_sz = Vector2.ZERO
 	map.vehicles.selected = null
 	follow = false
 	_card.visible = false
@@ -676,12 +672,6 @@ func _place_card() -> void:
 		return
 	var j: Variant = map.vehicles.selected
 	var ms := _card.get_combined_minimum_size()
-	# the first frames after a rebuild the new content is not laid out yet and can ask for the whole screen:
-	# the card keeps its last size until then (it was blinking down to the bottom while following a vehicle)
-	if _card_hold > 0 and _card_sz != Vector2.ZERO:
-		_card_hold -= 1
-		ms = _card_sz
-	_card_sz = ms
 	_card.size = ms
 	for h in map.vehicles.hits:
 		if h.has("j") and is_same(h.j, j):
@@ -704,7 +694,6 @@ func _build_card() -> void:
 ## the card of a trip into _card (also used by the tests for every trip)
 func build_card_for(j: Dictionary) -> void:
 	_card_t = Time.get_ticks_msec()
-	_card_hold = 2 if _card.visible else 0
 	for c in _card.get_children():
 		if not (c is ColorRect):
 			_card.remove_child(c)
