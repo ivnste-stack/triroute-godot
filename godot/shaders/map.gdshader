@@ -16,7 +16,10 @@ uniform vec2 WSZ = vec2(22.5, 15.0);        // world size
 uniform vec3 col[120];
 uniform int hov = -1;
 uniform int sel = -1;
-uniform float glint = 1.0;   // slow glints on the water triangles (settings)
+uniform float glint = 1.0;
+// the coastal walls (WallMesh) hang from the coast this far down (0: no walls); the water's depth is written
+// well below them, so land in front of a wall hides it and water lets it show
+uniform float wall_h = 0.0;   // slow glints on the water triangles (settings)
 
 varying vec3 wp;
 
@@ -81,6 +84,7 @@ void fragment() {
 		cf += vec3(.03, .085, .14) * exp(-dd * 3.2) * .55;
 	}
 	c = cf;
+	float is_land = 0.;
 	if (sd > -fe * 2.) {
 		uv = clamp(uv, 0., 1.);
 		vec4 t = texture(t0, uv);
@@ -140,6 +144,7 @@ void fragment() {
 		L += vec3(.06) * fh;
 		L = mix(L, L * 1.08 + vec3(.03, .05, .07) + vec3(.35, .7, .9) * (1. - smoothstep(1.2, 14., bd)) * (.35 + .12 * sin(TIME * 3.)), fs);
 		c = mix(w, L, land);
+		is_land = land * step(0., sd);
 		// ---- state border: soft shade along the line (the line itself is drawn by the overlay)
 		float bl = max(bd - .78, 0.);
 		float px = max(fwidth(bd), 1e-4);
@@ -153,4 +158,9 @@ void fragment() {
 	float fd = length(wp - CAMERA_POSITION_WORLD);
 	c = mix(c, bg, smoothstep(14., 34., fd));
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
+	// the depth: land where it is, water far below (3 world units, the tallest wall is ~.4): a wall shows
+	// wherever the ray to it meets water first, as drawWalls did, and land in front hides it
+	float yy = is_land > .5 || wall_h <= 0. ? wp.y : wp.y - 3.0;
+	vec4 cp = PROJECTION_MATRIX * (VIEW_MATRIX * vec4(wp.x, yy, wp.z, 1.0));
+	DEPTH = cp.z / cp.w;
 }

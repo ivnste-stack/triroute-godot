@@ -16,6 +16,7 @@ var camera: MapCamera
 var world: Dictionary = {}
 var _mat: ShaderMaterial
 var _plane: MeshInstance3D
+var walls: WallMesh
 var _gen: Object
 var _task := -1
 var _seed := 0
@@ -44,6 +45,8 @@ func _ready() -> void:
 	_mat.shader = load("res://shaders/map.gdshader")
 	var mesh := PlaneMesh.new()
 	mesh.size = Vector2(120, 120)   # ±60 like the original quad; the shader fades the far field into the background
+	walls = WallMesh.new()
+	add_child(walls)
 	_plane = MeshInstance3D.new()
 	_plane.mesh = mesh
 	_plane.material_override = _mat
@@ -150,6 +153,8 @@ var render_k := 1.0
 
 
 func _process_t(_delta: float) -> void:
+	if _plane.visible:
+		_mat.set_shader_parameter("wall_h", walls.update(camera))
 	# the overlay buffer: the size of the screen in real pixels
 	var phys := Vector2i(get_viewport().get_visible_rect().size * get_window().content_scale_factor * render_k) if get_window() != null else Vector2i(1600, 900)
 	if _ov_vp.size != phys and phys.x > 0:
@@ -189,7 +194,7 @@ func _show(w: Dictionary) -> void:
 	camera.set_world(size)
 	_plane.visible = true
 	overlay.build(w.lines, w.board, size, w.own, Vector2i(mw, mh))
-	overlay.walls.set_terrain(terrain, float(w.tri_s), Vector2(mw, mh))   # land per lattice triangle, like the map
+	walls.build(w.lines, w.own, Vector2i(mw, mh))   # coastal side walls: a static 3D mesh
 	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
 	inc_base.lines = w.lines
 	inc_top.lines = w.lines

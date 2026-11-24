@@ -14,7 +14,6 @@ var camera: MapCamera
 var _layers := {}       # name → LineLayer
 var _grid: Array = []   # LineLayer per grid level
 var _built := false
-var walls: WallLayer
 var dpr := 1.0
 var host: SubViewport          # the buffer this is drawn into, refreshed only when the view changes
 var _key := ""
@@ -46,11 +45,6 @@ func build(lines: Array, board: Dictionary, size: Vector2, own: PackedByteArray,
 	var fm := LineLayer.build_geometry([fr])
 	_layer("frame_glow", 10, fm, _c(92, 200, 242, .16), 6)
 	_layer("frame", 11, fm, _c(120, 214, 248, .9), 1.4)
-	# coastal side walls
-	walls = WallLayer.new()
-	walls.name = "walls"
-	add_child(walls)
-	walls.build(lines, own, mwh)
 	# coastlines, then state borders
 	var coast := []
 	var borders := []
@@ -96,8 +90,6 @@ func build(lines: Array, board: Dictionary, size: Vector2, own: PackedByteArray,
 	_layer("mway", 53, mw_m, Color("#f6b94f"), 2)
 	_built = true
 	_key = ""
-	# the walls go right after the frame (drawBorders: frame, walls, coastlines…)
-	move_child(walls, 2)
 
 
 ## pixels per world unit at the view centre (ppu of the original)
@@ -135,7 +127,6 @@ func _process_t(_delta: float) -> void:
 		host.render_target_update_mode = SubViewport.UPDATE_ONCE
 	for L in _layers.values():
 		L.set_camera(vp, scr)
-	walls.update(camera, vp, scr)
 	var d := camera.dist
 	var zw := clampf(13.0 / d, 1.0, 3.2)          # drawBorders
 	_layers.coast_glow.set_width(3.2 * zw * dpr)
