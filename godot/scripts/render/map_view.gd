@@ -43,6 +43,18 @@ func _ready() -> void:
 	env.environment.background_mode = Environment.BG_COLOR
 	env.environment.background_color = BG
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	# the distance haze: the engine's depth fog in the colour of the background - zoomed out the board sinks
+	# into the dark, the far side of a tilted view fades first; a gentle curve, no hard band
+	var e := env.environment
+	e.fog_enabled = true
+	e.fog_mode = Environment.FOG_MODE_DEPTH
+	e.fog_light_color = BG
+	e.fog_light_energy = 1.0
+	e.fog_density = 1.0
+	e.fog_sky_affect = 0.0
+	e.fog_depth_begin = 12.0
+	e.fog_depth_end = 40.0
+	e.fog_depth_curve = 1.6
 	add_child(env)
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://shaders/map.gdshader")
@@ -273,9 +285,7 @@ func _process_t(_delta: float) -> void:
 	_day_night()
 	if _plane.visible:
 		_mat.set_shader_parameter("wall_h", walls.update(camera))
-		_mat.set_shader_parameter("focus", camera.dist)
-		if walls._mat != null:
-			walls._mat.set_shader_parameter("focus", camera.dist)
+
 	# the overlay buffer: the size of the screen in real pixels
 	# the line and town buffers at the map's resolution: the lines smooth their own edges in their shader
 	# (overlay_line.gdshader); a supersampled buffer cost 7–8 ms of GPU at every camera move on 1440p
