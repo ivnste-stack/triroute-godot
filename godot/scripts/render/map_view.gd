@@ -274,7 +274,8 @@ func _show(w: Dictionary) -> void:
 	var tx: Dictionary = w.textures
 	var mw: int = tx.width
 	var mh: int = tx.height
-	var terrain := ImageTexture.create_from_image(Image.create_from_data(mw, mh, true, Image.FORMAT_RGBAH, tx.terrain))
+	_terrain_img = Image.create_from_data(mw, mh, true, Image.FORMAT_RGBAH, tx.terrain)
+	var terrain := ImageTexture.create_from_image(_terrain_img)
 	var border := ImageTexture.create_from_image(Image.create_from_data(mw * 2, mh * 2, true, Image.FORMAT_RH, tx.border))
 	var states := ImageTexture.create_from_image(Image.create_from_data(mw * 2, mh * 2, false, Image.FORMAT_R8, tx.states))
 	w.erase("textures")
@@ -293,6 +294,8 @@ func _show(w: Dictionary) -> void:
 	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
 	inc_base.lines = w.lines
 	inc_top.lines = w.lines
+	Relief.clear()
+	set_relief(bool(Settings.get_value("relief")))
 	world_ready.emit(w)
 
 
@@ -365,6 +368,39 @@ func attach_session(session: GameSession) -> void:
 
 
 var _session: GameSession
+var _terrain_img: Image
+var _board: MeshInstance3D   # the test relief: the board as a grid of vertices every 0.0625
+
+
+## the test relief on or off (Relief): the board becomes a dense grid lifted by the heights, and every layer
+## draws on that surface
+func set_relief(on: bool) -> void:
+	Relief.on = on
+	if on and Relief.tex == null and _terrain_img != null and not world.is_empty():
+		Relief.build(_terrain_img, world.mw / 80.0, world.mh / 80.0)
+	var live := on and Relief.tex != null
+	if live:
+		if _board == null:
+			_board = MeshInstance3D.new()
+			_board.material_override = _mat
+			add_child(_board)
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(Relief.wx, Relief.wz)
+		pm.subdivide_width = Relief.gw - 2
+		pm.subdivide_depth = Relief.gh - 2
+		_board.mesh = pm
+		_board.custom_aabb = AABB(Vector3(-Relief.wx / 2, -1, -Relief.wz / 2), Vector3(Relief.wx, 2, Relief.wz))
+		_mat.set_shader_parameter("relief_tex", Relief.tex)
+		_mat.set_shader_parameter("relief_gs", Vector2(Relief.gw, Relief.gh))
+	if _board != null:
+		_board.visible = live and _plane.visible
+	_plane.position.y = -.004 if live else 0.0   # the far field under the lifted board
+	_mat.set_shader_parameter("relief_on", 1.0 if live else 0.0)
+	walls.visible = not live   # the coastal walls hang from a flat coast
+	overlay.set_relief()
+	towns._key = ""
+	for L in [inc_base, inc_top, vehicles]:
+		L.queue_redraw()
 
 
 ## a new world: the layers forget the old game (its zones, trips and headquarters) until the new one starts

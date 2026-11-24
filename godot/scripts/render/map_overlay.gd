@@ -101,6 +101,15 @@ func ppu() -> float:
 	return a.distance_to(b)
 
 
+## the test relief changed: every stroke follows the surface
+func set_relief() -> void:
+	for L in _layers.values():
+		L.set_relief()
+	for e in _grid:
+		e[1].set_relief()
+	dirty()
+
+
 func dirty() -> void:
 	_key = ""
 

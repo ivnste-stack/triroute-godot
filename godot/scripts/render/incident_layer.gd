@@ -67,7 +67,7 @@ func _process_t(_delta: float) -> void:
 
 
 func _P(x: float, z: float) -> Variant:
-	var w := Vector3(x, 0, z)
+	var w := Vector3(x, Relief.h(x, z), z)
 	if camera.is_position_behind(w):
 		return null
 	return camera.unproject_position(w)
@@ -151,7 +151,7 @@ func _draw_base() -> void:
 		draw_polyline(pts, Color(col, .75), 1.5 * dpr, true)
 		var c: Variant = _P(w.x, w.z)
 		if c != null and camera.dist < 26:
-			_badge(c, K.ic, _c("150,160,172") if w.t0 > sim.co_now() else col)
+			_badge(c, K.ic, Color(col, .55) if w.t0 > sim.co_now() else col)   # a forecast: the same colour, faded
 	# closed borders: red lines along the border
 	var zw := clampf(13 / camera.dist, 1, 3.2)
 	for cl in (CO.get("cls", []) if MapVis.vis("clb") else []):

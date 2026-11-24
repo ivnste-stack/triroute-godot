@@ -91,6 +91,17 @@ func set_alpha(a: float) -> void:
 	visible = a > 0.0
 
 
+## the test relief: the line's ends follow the map's surface
+func set_relief() -> void:
+	for m in [_mat, _mat_d]:
+		if m != null:
+			m.set_shader_parameter("relief_on", 1.0 if Relief.on and Relief.tex != null else 0.0)
+			if Relief.tex != null:
+				m.set_shader_parameter("relief_tex", Relief.tex)
+				m.set_shader_parameter("relief_gs", Vector2(Relief.gw, Relief.gh))
+				m.set_shader_parameter("relief_wsz", Vector2(Relief.wx, Relief.wz))
+
+
 func set_camera(view_proj: Projection, screen: Vector2) -> void:
 	for m in [_mat, _mat_d]:
 		if m != null:

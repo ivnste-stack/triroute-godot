@@ -17,6 +17,7 @@ const DEFAULTS := {
 	"fps": 0,             # the frame limit: 0 none, else 30…240
 	"idle_fps": true,     # fewer frames when nothing happens (paused without input, in the background)
 	"glint": true,        # slow glints on the water
+	"relief": false,      # the test relief of the map (Relief)
 	"blur": true,         # the glass of the panels blurs the map behind (heavier for the video card)
 	# interface
 	"ui_scale": 0.0,      # 0 = the system scale (Windows display scaling), else 1…2

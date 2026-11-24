@@ -21,9 +21,19 @@ uniform float glint = 1.0;
 // well below them, so land in front of a wall hides it and water lets it show
 uniform float wall_h = 0.0;   // slow glints on the water triangles (settings)
 
+// the test relief (scripts/render/relief.gd): heights on the grid every 0.0625, one texel per vertex
+uniform sampler2D relief_tex : filter_linear, repeat_disable;
+uniform float relief_on = 0.0;
+uniform vec2 relief_gs = vec2(2.0);
+
 varying vec3 wp;
 
 void vertex() {
+	vec3 w0 = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	if (relief_on > .5 && abs(w0.x) <= WSZ.x * .5 + 1e-3 && abs(w0.z) <= WSZ.y * .5 + 1e-3) {
+		vec2 g = (w0.xz + WSZ * .5) / 0.0625;
+		VERTEX.y += textureLod(relief_tex, (g + .5) / relief_gs, 0.0).r;
+	}
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -157,6 +167,12 @@ void fragment() {
 	}
 	float fd = length(wp - CAMERA_POSITION_WORLD);
 	c = mix(c, bg, smoothstep(14., 34., fd));
+	if (relief_on > .5 && wp.y > .001) {   // the test relief: slopes lit from the north-west, terraces read
+		vec3 n = normalize(cross(dFdy(wp), dFdx(wp)));
+		if (n.y < 0.) n = -n;
+		float l = clamp(dot(n, normalize(vec3(-.55, .75, -.45))), 0., 1.);
+		c *= mix(.62, 1.1, l);
+	}
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	// the depth: land where it is, water far below (3 world units, the tallest wall is ~.4): a wall shows
 	// wherever the ray to it meets water first, as drawWalls did, and land in front hides it

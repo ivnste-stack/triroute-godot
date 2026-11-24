@@ -198,7 +198,7 @@ func _process_t(_delta: float) -> void:
 
 
 func _P(x: float, z: float) -> Variant:
-	var w := Vector3(x, 0, z)
+	var w := Vector3(x, Relief.h(x, z), z)
 	if camera.is_position_behind(w):
 		return null
 	return camera.unproject_position(w) * dpr

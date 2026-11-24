@@ -15,8 +15,19 @@ uniform bool discs = false;
 varying vec2 v_d;       // the offset from the line (segments: x only) in pixels
 varying float v_w;
 
+// the test relief (scripts/render/relief.gd): the same heights as the map's surface
+uniform sampler2D relief_tex : filter_linear, repeat_disable;
+uniform float relief_on = 0.0;
+uniform vec2 relief_gs = vec2(2.0);
+uniform vec2 relief_wsz = vec2(22.5, 15.0);
+
 vec4 clip_of(vec2 p) {
-	return view_proj * vec4(p.x, 0.0, p.y, 1.0);
+	float y = 0.0;
+	if (relief_on > .5) {
+		vec2 g = (p + relief_wsz * .5) / 0.0625;
+		y = textureLod(relief_tex, (g + .5) / relief_gs, 0.0).r;
+	}
+	return view_proj * vec4(p.x, y, p.y, 1.0);
 }
 
 // the unit quad: segments VERTEX = (t: 0 at a, 1 at b; side ±1); discs VERTEX = corner (±1, ±1)

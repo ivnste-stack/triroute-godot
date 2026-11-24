@@ -493,7 +493,7 @@ func _on_drag() -> void:
 
 func _screen(x: float, z: float) -> Variant:
 	var cam: Camera3D = map.camera
-	var p := Vector3(x, 0, z)
+	var p := Vector3(x, Relief.h(x, z), z)
 	if cam.is_position_behind(p):
 		return null
 	return cam.unproject_position(p)
