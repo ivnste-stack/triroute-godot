@@ -262,7 +262,9 @@ func _draw_top() -> void:
 		var u0: Variant = _P(camera.tx, camera.tz)
 		var u1: Variant = _P(camera.tx + 1, camera.tz)
 		var pu: float = u0.distance_to(u1) / dpr if u0 != null and u1 != null else 40.0
-		var cs := clampf(pu / 40, 3.5, 7) * dpr
+		# the checkpoint icon under it (town layer) steps by 0.5 px and has a light rim: the red square is the
+		# next step up plus the rim, so the rim never peeks out while zooming
+		var cs := (ceilf(clampf(pu / 40, 3.5, 7) * 2) / 2 + 1.2) * dpr
 		var pts := []
 		for c in sim.board.get("checkpoints", []):
 			var cl: Variant = sim.inc_cross_cl(c.a, c.b, c.x, c.z)

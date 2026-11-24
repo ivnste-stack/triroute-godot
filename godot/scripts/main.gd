@@ -705,6 +705,16 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
 		map.camera.dist = map.camera.tdist
+	if _args.has("closecp") and session != null:   # test: the first border checkpoint closed, the camera on it (--closecp=dist)
+		var sim_ := session.sim
+		var c: Dictionary = sim_.board.checkpoints.filter(func(q): return not q.rail)[0]
+		sim_.CO.cls.append({"id": sim_.CO.uid, "kind": "cp", "a": c.a, "b": c.b, "x": c.x, "z": c.z, "why": "тест", "until": sim_.day + 30})
+		sim_.CO.uid += 1
+		sim_.CO.clV = sim_.CO.get("clV", 0) + 1
+		map.camera.look_at_point(Vector2(c.x, c.z), float(_args.closecp))
+		map.camera.tx = map.camera.ttx
+		map.camera.tz = map.camera.ttz
+		map.camera.dist = map.camera.tdist
 	if _args.has("sandbox") and session != null:   # test: the sandbox of the settings
 		sandbox()
 	if _args.has("hide"):   # test: kinds hidden from the legend, --hide=roads,rail
