@@ -23,7 +23,7 @@ vec4 clip_of(vec2 p) {
 void vertex() {
 	vec2 hs = screen * 0.5;
 	float w = max(width_px, 0.0);
-	float ext = max(w, 1.0) * 0.5 + 1.0;   // one more pixel for the antialiased edge
+	float ext = max(w, 1.0) * 0.5 + 1.5;   // room for the antialiased edge
 	v_w = w;
 	const float EPS = 0.1;   // the camera's near plane: nothing behind it is projected
 	vec2 s = vec2(-1e5);
@@ -54,7 +54,8 @@ void vertex() {
 void fragment() {
 	// a line thinner than a pixel is drawn one pixel wide with its width as the alpha (like the browser)
 	float d = length(v_d);
-	float a = clamp(max(v_w, 1.0) * 0.5 + 0.5 - d, 0.0, 1.0) * min(v_w, 1.0);
+	// the edge fades over ~1.4 px (analytic anti-aliasing: smooth diagonals without a supersampled buffer)
+	float a = clamp((max(v_w, 1.0) * 0.5 + 0.7 - d) / 1.4, 0.0, 1.0) * min(v_w, 1.0);
 	if (a <= 0.0) discard;
 	COLOR = vec4(color, a);
 }

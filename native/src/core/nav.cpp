@@ -47,6 +47,7 @@ struct Heap {   // the JS binary heap
 		return s;
 	}
 	bool empty() const { return hk.empty(); }
+	double top() const { return hk[0]; }
 };
 } // namespace
 
@@ -104,11 +105,16 @@ std::vector<float> Nav::path(int a, int b, bool rail, const Blocks *blk, const s
 	std::vector<float> g(N, 1e9f);
 	std::vector<int> prev(N, -1);
 	Heap h;
+	std::vector<double> lastk(N, -1.0);   // stale heap entries are skipped (see Nav::sea)
+	const double eps = b_.fine ? 1e-6 : 0.0;
 	g[a] = 0;
 	h.push(0, a);
+	lastk[a] = 0;
 	while (!h.empty()) {
+		double kk = h.top();
 		int n = h.pop();
 		if (n == b) break;
+		if (kk != lastk[n]) continue;
 		int x = n % b_.nx, y = n / b_.nx;
 		for (int d = 0; d < 8; d++) {
 			if (!(bits[n] & (1 << d))) continue;
@@ -116,10 +122,11 @@ std::vector<float> Nav::path(int a, int b, bool rail, const Blocks *blk, const s
 			if (useBlk && blocked(n, m, rail, *blk)) continue;
 			if (bad && m != b && bad(m)) continue;
 			double ng = double(g[n]) + ((d & 1) ? 1.4142 : 1) * b_.st;
-			if (ng < double(g[m])) {
+			if (ng < double(g[m]) - eps) {
 				g[m] = float(ng);
 				prev[m] = n;
 				h.push(ng, m);
+				lastk[m] = ng;
 			}
 		}
 	}
@@ -150,21 +157,27 @@ std::vector<float> Nav::path_w(int a, int b, bool rail, const Blocks *blk, const
 	std::vector<float> g(N, 1e9f);
 	std::vector<int> prev(N, -1);
 	Heap h;
+	std::vector<double> lastk(N, -1.0);   // stale heap entries are skipped (see Nav::sea)
+	const double eps = b_.fine ? 1e-6 : 0.0;
 	g[a] = 0;
 	h.push(0, a);
+	lastk[a] = 0;
 	while (!h.empty()) {
+		double kk = h.top();
 		int n = h.pop();
 		if (n == b) break;
+		if (kk != lastk[n]) continue;
 		int x = n % b_.nx, y = n / b_.nx;
 		for (int d = 0; d < 8; d++) {
 			if (!(bits[n] & (1 << d))) continue;
 			int m = (y + D8[d][1]) * b_.nx + x + D8[d][0];
 			if (useBlk && blocked(n, m, rail, *blk)) continue;
 			double ng = double(g[n]) + ((d & 1) ? 1.4142 : 1) * b_.st * w(n, m);
-			if (ng < double(g[m])) {
+			if (ng < double(g[m]) - eps) {
 				g[m] = float(ng);
 				prev[m] = n;
 				h.push(ng, m);
+				lastk[m] = ng;
 			}
 		}
 	}
@@ -196,11 +209,20 @@ std::vector<float> Nav::sea(int ta, int tb) const {
 	std::vector<int> prev(N, -1);
 	const int s0 = A.wc_j * W + A.wc_i, e0 = B.wc_j * W + B.wc_i, ex = B.wc_i, ey = B.wc_j;
 	Heap h;
+	// the key each cell was last pushed with: an older, larger entry popped later is stale and skipped (its
+	// expansion would change nothing: the cell's best cost was already spread to its neighbours)
+	std::vector<double> lastk(N, -1.0);
+	// on the fine test lattice a float cost "improves" by rounding noise along thousands of equal paths
+	// (millions of pushes, seconds a route): an improvement must be real there
+	const double eps = b_.fine ? 1e-3 : 0.0;
 	g[s0] = 0;
 	h.push(0, s0);
+	lastk[s0] = 0;
 	while (!h.empty()) {
+		double kk = h.top();
 		int n = h.pop();
 		if (n == e0) break;
+		if (kk != lastk[n]) continue;
 		int x = n % W, y = n / W;
 		for (int dy = -1; dy <= 1; dy++)
 			for (int dx = -1; dx <= 1; dx++) {
@@ -211,10 +233,12 @@ std::vector<float> Nav::sea(int ta, int tb) const {
 				if (!water_[m]) continue;
 				if (dx && dy && (!water_[size_t(y) * W + nx] || !water_[size_t(ny) * W + x])) continue;
 				double ng = double(g[n]) + ((dx && dy) ? 1.4142 : 1);
-				if (ng < double(g[m])) {
+				if (ng < double(g[m]) - eps) {
 					g[m] = float(ng);
 					prev[m] = n;
-					h.push(ng + js_hypot(nx - ex, ny - ey), m);
+					double k2 = ng + js_hypot(nx - ex, ny - ey);
+					h.push(k2, m);
+					lastk[m] = k2;
 				}
 			}
 	}

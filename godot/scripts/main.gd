@@ -99,9 +99,7 @@ func apply_render_scale() -> void:
 	_map_k = k
 	if map != null:
 		map.render_k = k
-		# the roads, railways, borders and the towns are a 2D layer of their own: supersampled the same way
-		# (drawn into a larger buffer and shrunk on screen), so the anti-aliasing setting smooths them too
-		map.line_ss = minf(ss, 2.0)
+
 
 
 var _map_k3 := 1.0

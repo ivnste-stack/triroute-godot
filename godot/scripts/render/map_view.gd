@@ -249,8 +249,6 @@ func _cached(layer: Node, parent: Node) -> SubViewport:
 ## the map is rendered at this share of the window's pixels (settings: the render resolution); the 3D map
 ## through Viewport.scaling_3d_scale, the lines and the towns through the size of their buffers
 var render_k := 1.0
-## supersampling of the line and town buffers (the anti-aliasing setting): 1, 1.5 or 2
-var line_ss := 1.0
 
 
 ## 0 by day … 1 at night: dusk 18:00–20:30, dawn 5:00–7:30
@@ -276,7 +274,9 @@ func _process_t(_delta: float) -> void:
 	if _plane.visible:
 		_mat.set_shader_parameter("wall_h", walls.update(camera))
 	# the overlay buffer: the size of the screen in real pixels
-	var phys := Vector2i(get_viewport().get_visible_rect().size * get_window().content_scale_factor * render_k * line_ss) if get_window() != null else Vector2i(1600, 900)
+	# the line and town buffers at the map's resolution: the lines smooth their own edges in their shader
+	# (overlay_line.gdshader); a supersampled buffer cost 7–8 ms of GPU at every camera move on 1440p
+	var phys := Vector2i(get_viewport().get_visible_rect().size * get_window().content_scale_factor * render_k) if get_window() != null else Vector2i(1600, 900)
 	if _ov_vp.size != phys and phys.x > 0:
 		_ov_vp.size = phys
 		overlay.dpr = phys.x / maxf(1.0, get_viewport().get_visible_rect().size.x)
