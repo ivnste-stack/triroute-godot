@@ -277,12 +277,46 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 	const int LW = MW / 2, LH = MH / 2;
 	w.low.assign(size_t(LW) * LH, 0);
 	w.low_m.assign(size_t(LW) * LH, 0);
+	const bool earth = !p.earth.empty() && p.ew > 0 && p.eh > 0;
+	auto earth_at = [&](double px, double py) -> int {   // earthLabelAt(px, py) on the texture
+		int x = std::min(p.ew - 1, std::max(0, int(std::floor(px / MW * p.ew))));
+		int y = std::min(p.eh - 1, std::max(0, int(std::floor(py / MH * p.eh))));
+		return p.earth[size_t(y) * p.ew + x];
+	};
+	std::vector<float> EM;
+	if (earth) {   // earthMask(LW, LH): the land of the grid, softened twice; the invented continents go
+		EM.assign(size_t(LW) * LH, 0);
+		for (int y = 0; y < LH; y++)
+			for (int x = 0; x < LW; x++) {
+				int v = p.earth[size_t(std::floor(double(y) / LH * p.eh)) * p.ew + size_t(std::floor(double(x) / LW * p.ew))];
+				EM[size_t(y) * LW + x] = v > 0 && v < 128 ? 1.f : 0.f;
+			}
+		std::vector<float> t(EM.size(), 0);
+		for (int it = 0; it < 2; it++) {
+			for (int y = 1; y < LH - 1; y++)
+				for (int x = 1; x < LW - 1; x++) {
+					size_t i = size_t(y) * LW + x;
+					t[i] = (EM[i] * 4 + EM[i - 1] + EM[i + 1] + EM[i - LW] + EM[i + LW]) / 8;
+				}
+			EM = t;
+		}
+		blobs.clear();
+		isl.clear();
+		arms.clear();
+		seas.clear();
+		ranges.clear();
+	}
 	for (int y = 0; y < LH; y++)
 		for (int x = 0; x < LW; x++) {
 			double nx = double(x) / LW, ny = double(y) / LH, u = nx * 1.6 * iS, v = ny * iS;
 			double wx0 = u + .24 * fbm(u * 2 + 5.2, v * 2 + 1.3, 4), wy0 = v + .24 * fbm(u * 2 + 8.1, v * 2 + 2.7, 4);
 			double wx = wx0 + .07 * fbm(wx0 * 7 + 3, wy0 * 7 + 9, 3), wy = wy0 + .07 * fbm(wx0 * 7 + 13, wy0 * 7 + 1, 3);
 			double c = 0;
+			if (earth) {
+				int sx = std::clamp(int(js_round(x + fbm(nx * 14 + 3, ny * 14, 3) * 3)), 0, LW - 1);
+				int sy = std::clamp(int(js_round(y + fbm(nx * 14, ny * 14 + 7, 3) * 3)), 0, LH - 1);
+				c = EM[size_t(sy) * LW + sx] * 1.25;
+			}
 			for (auto &b : blobs) {
 				double dx = wx - b.x, dy = wy - b.y;
 				c += b.w * std::exp(-(dx * dx + dy * dy) / (b.r * b.r));
@@ -324,7 +358,7 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 			}
 			w.low_m[size_t(y) * LW + x] = float(m);
 			double ed = std::min(std::min(nx, 1 - nx) * 1.6, std::min(ny, 1 - ny));
-			h -= (1 - sstep(0, .1, ed)) * 1.4;
+			if (!earth) h -= (1 - sstep(0, .1, ed)) * 1.4;
 			w.low[size_t(y) * LW + x] = float(h);
 		}
 	// upsample + detail
@@ -368,6 +402,12 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 	w.land_count = 0;
 	for (size_t i = 0; i < NPX; i++)
 		if (double(w.H[i]) > w.T) { w.land[i] = 1; w.land_count++; }
+	if (earth)   // the open sea stays sea: the relief's noise may move a coast, not fill an inland sea
+		for (int y = 0; y < MH; y++)
+			for (int x = 0; x < MW; x++) {
+				size_t i = size_t(y) * MW + x;
+				if (w.land[i] && earth_at(x + .5, y + .5) == 0) { w.land[i] = 0; w.land_count--; }
+			}
 	// land components and seeds
 	struct Comp { int id; int area; std::vector<int> pix; int n = 0; };
 	std::vector<Comp> comps;
@@ -455,6 +495,35 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 			got++;
 		}
 	}
+	if (earth) {   // the Earth's states: one seed each, moved onto the nearest land if the noise took its spot
+		seeds.clear();
+		for (size_t k = 0; k + 1 < p.eseeds.size(); k += 2) {
+			int x = int(js_round((p.eseeds[k] + .5) / p.ew * MW)), y = int(js_round((p.eseeds[k + 1] + .5) / p.eh * MH));
+			x = std::clamp(x, 0, MW - 1);
+			y = std::clamp(y, 0, MH - 1);
+			if (!w.land[size_t(y) * MW + x]) {
+				double bd = 1e18;
+				int bx = x, by = y;
+				for (int r = 1; r < 60; r++) {
+					for (int dy = -r; dy <= r; dy++)
+						for (int dx = -r; dx <= r; dx++) {
+							int X = x + dx, Y = y + dy;
+							if (X < 0 || Y < 0 || X >= MW || Y >= MH || !w.land[size_t(Y) * MW + X]) continue;
+							double d = dx * dx + dy * dy;
+							if (d < bd) { bd = d; bx = X; by = Y; }
+						}
+					if (bd < 1e18) break;
+				}
+				x = bx;
+				y = by;
+			}
+			SeedPt sp;
+			sp.x = x;
+			sp.y = y;
+			sp.w = 1.4;
+			seeds.push_back(sp);
+		}
+	}
 	// growth character of every state
 	static const int DX[8] = {1, -1, 0, 0, 1, 1, -1, -1}, DY[8] = {0, 0, 1, -1, 1, -1, 1, -1};
 	for (auto &sd : seeds) {
@@ -467,9 +536,12 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 		bool interior = lc >= 30;
 		double r = rng();
 		if (interior) r *= .75;
-		sd.m = r < .2 ? .8 : r < .45 ? 1.25 : r < .75 ? 1.9 : r < .92 ? 2.8 : 4.2;
-		double r1 = rng(), r2 = rng();
-		sd.off = std::floor(r1 * r2 * (interior ? 60 : 180));
+		sd.m = sd.w > 0 ? sd.w : r < .2 ? .8 : r < .45 ? 1.25 : r < .75 ? 1.9 : r < .92 ? 2.8 : 4.2;
+		if (sd.w > 0) sd.off = 0;
+		else {
+			double r1 = rng(), r2 = rng();
+			sd.off = std::floor(r1 * r2 * (interior ? 60 : 180));
+		}
 		double ang = rng() * PI, st = 1 + std::pow(rng(), 1.6) * 2.6, px = -std::sin(ang), py = std::cos(ang);
 		for (int j = 0; j < 8; j++) {
 			double dx = DX[j], dy = DY[j], len = js_hypot(dx, dy);
@@ -621,6 +693,14 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 	}
 	for (size_t i = 0; i < NPX; i++)
 		if (w.land[i] && own[i] < 0) own[i] = int8_t(NEU);
+	if (earth)   // the real borders over the grown ones
+		for (int y = 0; y < MH; y++)
+			for (int x = 0; x < MW; x++) {
+				size_t i = size_t(y) * MW + x;
+				if (!w.land[i]) continue;
+				int v = earth_at(x + .5, y + .5);
+				if (v) own[i] = int8_t((v & 127) - 1);
+			}
 	w.own_grow = own;
 	// onto the board lattice
 	sq_build(w, own);
@@ -658,6 +738,9 @@ World generate_world(uint32_t seed, const WorldParams &p) {
 			Country C;
 			C.idx = int(k);
 			C.area = area[k];
+			if (k < p.enames.size()) C.name = p.enames[k];
+			if (k < p.epop.size()) C.epop = p.epop[k];
+			if (k < p.edev.size()) C.edev = p.edev[k];
 			if (area[k] == 0) {   // a seed that lost all its land: NaN label point in the original
 				C.no_label = true;
 				C.cap_x = seeds[k].x;

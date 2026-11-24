@@ -102,13 +102,42 @@ func generate(seed_value: int, size_key: String = "m") -> void:
 	if _task >= 0:
 		return
 	_seed = seed_value
-	var sec: Vector2i = {"s": Vector2i(2, 1), "m": Vector2i(3, 2), "l": Vector2i(4, 3)}.get(size_key, Vector2i(3, 2))
+	var sec: Vector2i = {"s": Vector2i(2, 1), "m": Vector2i(3, 2), "l": Vector2i(4, 3), "earth": Vector2i(4, 3)}.get(size_key, Vector2i(3, 2))
 	_mw = sec.x * 600
 	_mh = sec.y * 600
 	# G.genN: the number of states grows with the area
 	_n_states = maxi(12, int(JS.round_js(30.0 * (_mw / 80.0) * (_mh / 80.0) / 384.0)))
 	_gen = ClassDB.instantiate("TRWorldGen")
+	if size_key == "earth":   # the real world: its countries, coasts and borders (tools/make_earth.py)
+		var E := MapView.earth_data()
+		_n_states = E.names.size()
+		_gen.set_earth(E.w, E.h, E.labels, E.seeds, E.names, E.pop, E.dev)
 	_task = WorkerThreadPool.add_task(_generate_in_thread, true, "world generation")
+
+
+static var _earth := {}
+
+
+## assets/maps/earth.json: the label grid (run-length coded), a seed, a name, the population and the
+## development of every state
+static func earth_data() -> Dictionary:
+	if not _earth.is_empty():
+		return _earth
+	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/maps/earth.json"))
+	var rle := Marshalls.base64_to_raw(d.near)
+	var lab := PackedByteArray()
+	var run := PackedByteArray()
+	for i in range(0, rle.size(), 2):
+		run.resize(rle[i + 1])
+		run.fill(rle[i])
+		lab.append_array(run)
+	var seeds := PackedInt32Array()
+	for s in d.seeds:
+		seeds.append(int(s[0]))
+		seeds.append(int(s[1]))
+	_earth = {"w": int(d.w), "h": int(d.h), "labels": lab, "seeds": seeds, "names": PackedStringArray(d.names),
+		"pop": PackedFloat64Array(d.pop), "dev": PackedFloat64Array(d.dev)}
+	return _earth
 
 
 func _generate_in_thread() -> void:

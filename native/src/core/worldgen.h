@@ -12,6 +12,13 @@ struct WorldParams {
 	int mw = 1800, mh = 1200;   // texture size (WX*80, WZ*80)
 	int tri_s = 10;             // lattice square in texture pixels
 	int n = 26;                 // number of states to seed on continents
+	// the Earth (opts.earth in 04-map.js): a label grid ew×eh (state id + 1 on land, | 128 on the sea near a
+	// coast, 0 far out) shapes the land and the states; one seed per state (grid cells) and its name
+	std::vector<uint8_t> earth;
+	int ew = 0, eh = 0;
+	std::vector<int> eseeds;    // x, y pairs
+	std::vector<std::string> enames;
+	std::vector<double> epop, edev;   // real population (millions) and development (0.15…1)
 };
 
 struct Country {
@@ -22,12 +29,15 @@ struct Country {
 	std::vector<int> neighbors;
 	double land_share = 0;
 	bool no_label = false;   // the state has no land left (label point is NaN in the HTML version)
+	std::string name;        // the Earth: the real name ("" otherwise: makeCountry names it)
+	double epop = -1, edev = -1;   // the Earth: real population and development (< 0 otherwise)
 };
 
 struct SeedPt {
 	int x, y;
 	double m = 0, off = 0;
 	double dm[8] = {};
+	double w = 0;            // the Earth's seeds grow evenly (sd.w = 1.4)
 };
 
 struct World {

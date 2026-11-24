@@ -126,6 +126,12 @@ std::vector<State> generate_states(uint32_t seed, const World &w, uint32_t *rng_
 		double gdpPc = (3 + (62 - 3) * (c.dev * c.dev)) * 1000;
 		c.gdp = c.pop * gdpPc / 1000;
 		c.name = country_name(r, used);
+		if (!geo.name.empty()) c.name = geo.name;   // the Earth
+		if (geo.epop > 0) {   // the Earth: real people and wealth (the rolls above keep the RNG in step)
+			c.pop = clampd(geo.epop, 1, 400);
+			c.dev = clampd(geo.edev, .15, 1);
+			c.gdp = c.pop * (3 + (62 - 3) * (c.dev * c.dev)) * 1000 / 1000;
+		}
 		c.ideol = ide.id;
 		c.gov = ide.gov;
 		c.title = ide.title;

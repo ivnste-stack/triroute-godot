@@ -4,7 +4,13 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 
+#include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
+
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace tr { struct World; struct Board; class Nav; struct Blocks; }
 
@@ -24,6 +30,12 @@ public:
 	//   sql (PackedInt32Array, 2 per square), height (PackedFloat32Array), mountains (PackedFloat32Array),
 	//   countries (Array of {idx, area, lx, ly, cap_x, cap_y, neighbors, land_share, has_label}).
 	Dictionary generate(int64_t seed, int64_t states = 26, int64_t mw = 1800, int64_t mh = 1200);
+
+	// The Earth for the next generate() (assets/maps/earth.json, tools/make_earth.py): a label grid w×h
+	// (state id + 1 on land, | 128 on the sea near a coast, 0 far out), a seed per state (x, y grid cells),
+	// the names, real populations (millions) and development. An empty grid goes back to invented worlds.
+	void set_earth(int64_t w, int64_t h, const PackedByteArray &labels, const PackedInt32Array &seeds,
+			const PackedStringArray &names, const PackedFloat64Array &pop, const PackedFloat64Array &dev);
 
 	// Towns, roads, railways, ports, airports and border checkpoints on the world made by the last generate()
 	// (boardGen + boardRoads of the HTML version). state_pops: population of every state (millions).
@@ -84,6 +96,11 @@ private:
 	std::shared_ptr<tr::Nav> nav_;
 	std::shared_ptr<tr::Blocks> blocks_;
 	int64_t seed_ = 0;
+	int earth_w_ = 0, earth_h_ = 0;
+	std::vector<uint8_t> earth_;
+	std::vector<int> earth_seeds_;
+	std::vector<std::string> earth_names_;
+	std::vector<double> earth_pop_, earth_dev_;
 };
 
 } // namespace godot

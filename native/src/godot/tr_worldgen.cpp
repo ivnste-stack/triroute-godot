@@ -71,6 +71,7 @@ PackedByteArray half_mips(const std::vector<float> &src, int w, int h, int ch) {
 
 void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate", "seed", "states", "mw", "mh"), &TRWorldGen::generate, DEFVAL(26), DEFVAL(1800), DEFVAL(1200));
+	ClassDB::bind_method(D_METHOD("set_earth", "w", "h", "labels", "seeds", "names", "pop", "dev"), &TRWorldGen::set_earth);
 	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board, DEFVAL(PackedFloat64Array()));
 	ClassDB::bind_method(D_METHOD("generate_states"), &TRWorldGen::generate_states);
 	ClassDB::bind_method(D_METHOD("route", "mode", "a", "b"), &TRWorldGen::route);
@@ -89,11 +90,36 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
 }
 
+void TRWorldGen::set_earth(int64_t w, int64_t h, const PackedByteArray &labels, const PackedInt32Array &seeds,
+		const PackedStringArray &names, const PackedFloat64Array &pop, const PackedFloat64Array &dev) {
+	earth_w_ = int(w);
+	earth_h_ = int(h);
+	earth_.assign(labels.ptr(), labels.ptr() + labels.size());
+	if (int64_t(earth_.size()) != w * h) {
+		earth_.clear();
+		earth_w_ = earth_h_ = 0;
+	}
+	earth_seeds_.assign(seeds.ptr(), seeds.ptr() + seeds.size());
+	earth_names_.clear();
+	for (int64_t i = 0; i < names.size(); i++) earth_names_.push_back(std::string(names[i].utf8().get_data()));
+	earth_pop_.assign(pop.ptr(), pop.ptr() + pop.size());
+	earth_dev_.assign(dev.ptr(), dev.ptr() + dev.size());
+}
+
 Dictionary TRWorldGen::generate(int64_t seed, int64_t states, int64_t mw, int64_t mh) {
 	tr::WorldParams p;
 	p.n = int(states);
 	p.mw = int(mw);
 	p.mh = int(mh);
+	if (!earth_.empty()) {
+		p.earth = earth_;
+		p.ew = earth_w_;
+		p.eh = earth_h_;
+		p.eseeds = earth_seeds_;
+		p.enames = earth_names_;
+		p.epop = earth_pop_;
+		p.edev = earth_dev_;
+	}
 	state_pops_.clear();
 	nav_.reset();
 	board_.reset();

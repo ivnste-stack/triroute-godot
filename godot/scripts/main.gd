@@ -27,7 +27,7 @@ var planner: Planner
 var course: Course
 var menu: StartMenu
 var _args := {}
-var _ng := {"size": "m", "diff": 1, "seed": 0}
+var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen"}
 var _loading: Control
 var backdrop: MenuBackdrop
 var legend: Legend
@@ -276,6 +276,9 @@ func _ready() -> void:
 		_create_world()
 	else:
 		_show_menu()
+		if _args.has("newgame"):   # test: the new game dialog (--newgame=earth: the Earth chosen)
+			_ng.map = "earth" if _args.newgame == "earth" else "gen"
+			_new_game_dialog()
 		if _args.has("shot"):
 			for i in 12:
 				await get_tree().process_frame
@@ -353,8 +356,21 @@ func _new_game_dialog() -> void:
 		var l := Ui.lbl(name)
 		l.custom_minimum_size.x = 130
 		return Ui.hbox(12, [l, ctl])
-	c.add_child(field.call("Розмір мапи", Ui.seg(SIZE_N, _ng.size, func(v): _ng.size = v)))
-	c.add_child(Ui.note("Розмір у секторах. Сектор — 3×3 великі клітинки сітки.", Ui.MUTED))
+	var size_row: Control = field.call("Розмір мапи", Ui.seg(SIZE_N, _ng.size, func(v): _ng.size = v))
+	var size_note := Ui.note("Розмір у секторах. Сектор — 3×3 великі клітинки сітки.", Ui.MUTED)
+	var earth_note := Ui.note("Справжня карта світу: 119 найбільших держав з реальними назвами, населенням і рівнем розвитку, мапа 4×3. Карликові країни приєднано до сусідів.", Ui.MUTED)
+	var map_vis := func() -> void:
+		var e: bool = _ng.map == "earth"
+		size_row.visible = not e
+		size_note.visible = not e
+		earth_note.visible = e
+	c.add_child(field.call("Світ", Ui.seg([["gen", "Згенерований"], ["earth", "Земля"]], _ng.map, func(v):
+		_ng.map = v
+		map_vis.call())))
+	c.add_child(earth_note)
+	c.add_child(size_row)
+	c.add_child(size_note)
+	map_vis.call()
 	c.add_child(field.call("Складність", Ui.seg(DIFF_N, _ng.diff, func(v): _ng.diff = v)))
 	var seed_l := Ui.num(str(_ng.seed), 14, Ui.MUTED)
 	c.add_child(field.call("Зерно світу", Ui.hbox(12, [seed_l, Ui.btn("Інше", "sm", "dice", func():
@@ -471,7 +487,7 @@ func _create_world() -> void:
 	_load_t = 0.0
 	MapVis.clear()   # a new world: everything shown
 	GameState.reset(_ng.seed)
-	_size_key = _args.get("size", _ng.size)
+	_size_key = _args.get("size", "earth" if _ng.map == "earth" else _ng.size)
 	map.generate(_ng.seed, _size_key)
 
 
@@ -1083,6 +1099,9 @@ func _load_slot(slot: String) -> void:
 	_pending = d
 	_ng.seed = int(d.seed)
 	_ng.size = d.get("size", "m")
+	_ng.map = "earth" if _ng.size == "earth" else "gen"
+	if _ng.size == "earth":
+		_ng.size = "l"
 	_ng.diff = int(d.get("diff", 1))
 	_args.erase("size")
 	hud.visible = false
