@@ -76,8 +76,6 @@ func apply_video() -> void:
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "fxaa" or aa == "fxaa_ssaa" else Viewport.SCREEN_SPACE_AA_DISABLED
 	if map != null:
 		map.set_glint(bool(Settings.get_value("glint")))
-		if bool(Settings.get_value("relief")) != Relief.on:
-			map.set_relief(bool(Settings.get_value("relief")))
 	vp.anisotropic_filtering_level = clampi(int(Settings.get_value("aniso")), 0, 4) as Viewport.AnisotropicFiltering
 	apply_render_scale()
 

@@ -660,7 +660,7 @@ func _process(_delta: float) -> void:
 
 func _scr(x: float, y: float, z: float) -> Variant:
 	var cam: Camera3D = map.camera
-	var p := Vector3(x, y + Relief.h(x, z), z)
+	var p := Vector3(x, y, z)
 	if cam.is_position_behind(p):
 		return null
 	return cam.unproject_position(p)
