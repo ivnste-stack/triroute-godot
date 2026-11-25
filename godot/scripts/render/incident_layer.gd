@@ -52,6 +52,10 @@ func _process_t(_delta: float) -> void:
 		if _anim != null and _anim_on:   # the game is gone: its pulsing markers go with it
 			_anim.queue_redraw()
 			_anim_on = false
+		if _cl_layer != null:
+			_cl_layer.queue_free()
+			_cl_layer = null
+			_cl_key = ""
 		hits = []
 		return
 	var sim := session.sim
@@ -88,6 +92,11 @@ func _c(s: String, a: float = 1.0) -> Color:
 
 
 func _circle(x: float, z: float, r: float, n: int) -> PackedVector2Array:
+	# as many points as its size on screen needs (a small zone far away: a dozen, not forty projections)
+	var c0: Variant = _P(x, z)
+	var c1: Variant = _P(x + r, z)
+	if c0 != null and c1 != null:
+		n = clampi(int((c0 as Vector2).distance_to(c1) / 5.0), 12, n)
 	var pts := PackedVector2Array()
 	for i in n + 1:
 		var a := i / float(n) * TAU
@@ -142,7 +151,7 @@ func _draw_base() -> void:
 	for e in [["pir", "240,98,95"], ["band", "255,140,60"]]:
 		for z in (CO.get(e[0], []) if MapVis.vis(e[0]) else []):
 			var pts := _circle(z.x, z.z, z.r, 36)
-			if pts.size() < 10:
+			if pts.size() < 8:
 				continue
 			draw_colored_polygon(pts, _c(e[1], .1))
 			draw_polyline(pts, _c(e[1], .75), 1.5 * dpr, true)
@@ -153,7 +162,7 @@ func _draw_base() -> void:
 	for w in (CO.get("wx", []) if MapVis.vis("wx") else []):
 		var K: Dictionary = GameData.WXK[w.k]
 		var pts := _circle(w.x, w.z, w.r, 40)
-		if pts.size() < 10:
+		if pts.size() < 8:
 			continue
 		var col := _c(K.col)
 		draw_colored_polygon(pts, Color(col, .1))
@@ -161,23 +170,9 @@ func _draw_base() -> void:
 		var c: Variant = _P(w.x, w.z)
 		if c != null and camera.dist < 26:
 			_badge(c, K.ic, Color(col, .55) if w.t0 > sim.co_now() else col)   # a forecast: the same colour, faded
-	# closed borders: red lines along the border
-	var zw := clampf(13 / camera.dist, 1, 3.2)
-	for cl in (CO.get("cls", []) if MapVis.vis("clb") else []):
-		if cl.kind == "cp":
-			continue   # a single closed checkpoint: only its square turns red
-		for p in _border_pts(cl):
-			var pts := PackedVector2Array()
-			for i in range(0, p.size(), 2):
-				var q: Variant = _P(p[i], p[i + 1])
-				if q == null:
-					if pts.size() > 1:
-						draw_polyline(pts, Color("#f0443c"), 1.25 * zw * dpr, true)
-					pts = PackedVector2Array()
-					continue
-				pts.append(q)
-			if pts.size() > 1:
-				draw_polyline(pts, Color("#f0443c"), 1.25 * zw * dpr, true)
+	# closed borders: red lines along the border — a GPU line layer (_closed_lines), not drawn here: a closed
+	# country's whole border projected point by point and stroked on the CPU at every camera move cost 15–25 ms
+	_closed_lines()
 
 
 ## the pulsing road closures (redrawn every frame while there are any)
@@ -217,6 +212,39 @@ func _anim_base_t(n: Node2D) -> void:
 			DotTex.draw(n, DotTex.dot(), q, r, col)
 			_hits_anim.append({"x": q.x, "y": q.y, "r": r / dpr + 5, "kind": "jam", "data": J})
 	hits = _hits_static + _hits_anim
+
+
+var _cl_layer: LineLayer = null
+var _cl_key := ""
+
+
+## the closed borders as one GPU line layer: built again when the closures change, re-projected by the GPU
+## when the camera moves (like the map's own borders, MapOverlay)
+func _closed_lines() -> void:
+	var CO := session.sim.CO
+	var cls: Array = CO.get("cls", []) if MapVis.vis("clb") else []
+	var key := ""
+	for cl in cls:
+		if cl.kind != "cp":
+			key += "%s," % cl.id
+	key += "|%d" % lines.size()
+	if key != _cl_key:
+		_cl_key = key
+		if _cl_layer != null:
+			_cl_layer.queue_free()
+			_cl_layer = null
+		var pls := []
+		for cl in cls:
+			if cl.kind != "cp":
+				pls.append_array(_border_pts(cl))
+		if pls.size():
+			_cl_layer = LineLayer.new(LineLayer.build_geometry(pls), Color("#f0443c"), 1.0)
+			add_child(_cl_layer)
+			move_child(_cl_layer, 0)   # under the pulsing road closures
+	if _cl_layer != null:
+		var vp := camera.get_camera_projection() * Projection(camera.get_camera_transform().affine_inverse())
+		_cl_layer.set_camera(vp, size)
+		_cl_layer.set_width(1.25 * clampf(13 / camera.dist, 1, 3.2) * dpr)
 
 
 ## the border lines a closure covers (incBorderPts)
@@ -272,14 +300,7 @@ func _draw_top() -> void:
 		# the checkpoint icon under it (town layer) steps by 0.5 px and has a light rim: the red square is the
 		# next step up plus the rim, so the rim never peeks out while zooming
 		var cs := (ceilf(clampf(pu / 40, 3.5, 7) * 2) / 2 + 1.2) * dpr
-		var pts := []
-		for c in sim.board.get("checkpoints", []):
-			var cl: Variant = sim.inc_cross_cl(c.a, c.b, c.x, c.z)
-			if cl != null:
-				pts.append([c, cl])
-		for cl in CO.cls:
-			if cl.kind == "cp" and not pts.any(func(o): return JS.hypot(o[0].x - cl.x, o[0].z - cl.z) < .05):
-				pts.append([cl, cl])
+		var pts: Array = _closed_state().cps
 		var seen := []
 		for o in pts:
 			var q: Variant = _P(o[0].get("dx", o[0].x), o[0].get("dz", o[0].z))   # on the border line, like the icon
@@ -295,19 +316,12 @@ func _draw_top() -> void:
 			draw_line(q + Vector2(cs, -cs) * .55, q + Vector2(-cs, cs) * .55, Color.WHITE, 2 * dpr, true)
 			hits.append({"x": q.x, "y": q.y, "r": cs / dpr + 4, "kind": "cl", "data": o[1], "cp": o[0]})
 	# closed ports and airports
-	for p in (sim.PL if MapVis.vis("clp") else []):
-		var sea: Variant = sim.inc_port_cl(p, "sea") if p.port != null else null
-		var air: Variant = sim.inc_port_cl(p, "air") if p.air else null
-		if sea == null and air == null:
-			continue
+	for e in (_closed_state().ports if MapVis.vis("clp") else []):
+		var p: Dictionary = e[0]
+		var ks: Array = e[1]
 		var q0: Variant = _P(p.x, p.z)
 		if q0 == null:
 			continue
-		var ks := []
-		if sea != null:
-			ks.append(["anchor", sea])
-		if air != null:
-			ks.append(["plane", air])
 		var R := 8.5 * dpr
 		for i in ks.size():
 			var q := Vector2(q0.x + (i - (ks.size() - 1) / 2.0) * (R * 2 + 3 * dpr), q0.y - R - 9 * dpr)
@@ -315,6 +329,45 @@ func _draw_top() -> void:
 			draw_arc(q, R, 0, TAU, 24, Color("#0b1520"), 1.4 * dpr, true)
 			Icons.draw(self, ks[i][0], q.x - R * .6, q.y, R * 1.2, Color.WHITE)
 			hits.append({"x": q.x, "y": q.y, "r": R / dpr + 3, "kind": "port", "data": {"place": p, "what": ks[i][0], "why": ks[i][1]}})
+
+
+var _cs_key := ""
+var _cs := {}
+
+
+## what is closed now — the checkpoints and the ports and airports — worked out when the game changes, not at
+## every camera move (every checkpoint and every town checked against every closure and weather zone each
+## time the view moved cost ~2 ms a frame)
+func _closed_state() -> Dictionary:
+	var sim := session.sim
+	var CO := sim.CO
+	var key := "%d|%d|%d|%d|%d|%d" % [CO.get("clV", 0), CO.get("cls", []).size(), CO.get("wx", []).size(), sim.sky.size(), int(sim.co_now() * 8), sim.blk_v]
+	if key == _cs_key:
+		return _cs
+	_cs_key = key
+	var cps := []
+	if CO.get("cls", []).size():
+		for c in sim.board.get("checkpoints", []):
+			var cl: Variant = sim.inc_cross_cl(c.a, c.b, c.x, c.z)
+			if cl != null:
+				cps.append([c, cl])
+		for cl in CO.cls:
+			if cl.kind == "cp" and not cps.any(func(o): return JS.hypot(o[0].x - cl.x, o[0].z - cl.z) < .05):
+				cps.append([cl, cl])
+	var ports := []
+	for p in sim.PL:
+		var sea: Variant = sim.inc_port_cl(p, "sea") if p.port != null else null
+		var air: Variant = sim.inc_port_cl(p, "air") if p.air else null
+		if sea == null and air == null:
+			continue
+		var ks := []
+		if sea != null:
+			ks.append(["anchor", sea])
+		if air != null:
+			ks.append(["plane", air])
+		ports.append([p, ks])
+	_cs = {"cps": cps, "ports": ports}
+	return _cs
 
 
 ## the running dashes along the borders of the states at war (a closed sky)

@@ -646,6 +646,12 @@ func _on_world(w: Dictionary) -> void:
 				for p in ps.slice(0, maxi(0, int(_args.hubs) - CO.hubs.size())):
 					CO.cash = maxf(CO.cash, sm.hub_cost(p) * 2)
 					sm.act_hub(p.id, false)
+		if _args.has("closecty"):   # test: the headquarters' country closes its borders (the red lines)
+			var sm := session.sim
+			sm.CO.cls.append({"id": sm.CO.uid, "kind": "cty", "a": sm.PL[sm.CO.hq].cid, "why": "Test", "until": sm.co_now() + 30})
+			sm.CO.uid += 1
+			sm.inc_changed()
+			sm.inc_blk()
 		if _args.has("fast"):   # test: the fast progress of the settings
 			fast_mode()
 		if _args.get("plan", "") == "mm":   # test: the orders stay on the board for the player
