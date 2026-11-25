@@ -643,6 +643,9 @@ func _on_world(w: Dictionary) -> void:
 				for i in 3:
 					session.sim.co_board_day()
 			var ks: Array = session.sim.CO.board.filter(func(x): return session.sim.co_plan(x).ok)
+			if _args.plan == "multi":   # test: a multi-drop flight, landings in the most urgent order
+				ks = session.sim.CO.board.filter(func(x): return x.get("multi") != null)
+				print("TEST multi orders on the board: %d of %d" % [ks.size(), session.sim.CO.board.size()])
 			if _args.plan == "road":   # test: an order whose road crosses a toll motorway or a ban, its leg laid
 				var sm := session.sim
 				ks = ks.filter(func(x):
@@ -654,6 +657,13 @@ func _on_world(w: Dictionary) -> void:
 				_plan(ks[0])
 				if _args.plan == "auto":
 					planner.auto_use()
+				elif _args.plan == "multi":
+					planner.order("urg")
+				if _args.has("plango"):   # test: press «Відправити» a moment later
+					get_tree().create_timer(1.0).timeout.connect(func():
+						var t := Time.get_ticks_usec()
+						planner.go()
+						print("PERF plan go %.1f ms" % ((Time.get_ticks_usec() - t) / 1000.0)))
 				elif _args.plan == "road":
 					planner.LP.pts = [ks[0].from, ks[0].to]
 					planner.LP.modes = ["road"]

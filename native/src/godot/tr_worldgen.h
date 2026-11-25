@@ -47,6 +47,8 @@ public:
 	Dictionary generate_board(const PackedFloat64Array &state_pops = PackedFloat64Array());
 	// the test road net for the next generate_board(): nodes twice as dense, denser roads, more ways
 	void set_fine_roads(bool on) { fine_roads_ = on; }
+	// which build of the module is loaded (the performance record names it: an old library left in place shows)
+	String build_id() const { return "2026-11-25 nav3"; }
 
 	// The states' starting characteristics for the last generated world, exactly like the HTML version
 	// (makeCountry + colours): Array of {id, name, full, gov, title, ideol, trait, leader, leader_age, pop, dev, gdp,

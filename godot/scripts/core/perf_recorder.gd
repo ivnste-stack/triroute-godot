@@ -112,6 +112,11 @@ func _header() -> void:
 	_w("cpu       %s · %d threads" % [OS.get_processor_name(), OS.get_processor_count()])
 	_w("gpu       %s · %s · %s" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor(), RenderingServer.get_video_adapter_api_version()])
 	_w("renderer  %s · %s" % [RenderingServer.get_current_rendering_driver_name(), RenderingServer.get_current_rendering_method()])
+	var nb := "not loaded"
+	if ClassDB.class_exists("TRWorldGen"):
+		var g: Object = ClassDB.instantiate("TRWorldGen")
+		nb = g.call("build_id") if g.has_method("build_id") else "OLD (before 2026-11-25): godot/bin was not updated"
+	_w("native    triroute %s" % nb)
 	_w("screen    %s · window %dx%d · mode %d · ui scale %.2f · refresh %.0f Hz" % [DisplayServer.screen_get_size(win.current_screen), win.size.x, win.size.y, win.mode, win.content_scale_factor, DisplayServer.screen_get_refresh_rate(win.current_screen)])
 	var keys := ["preset", "vsync", "fps", "idle_fps", "res", "upscale", "aa", "aniso", "blur", "glint", "trails", "daynight", "ui_scale", "window"]
 	_w("settings  " + " · ".join(keys.map(func(k): return "%s=%s" % [k, Settings.get_value(k)])))

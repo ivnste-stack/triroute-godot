@@ -72,6 +72,7 @@ PackedByteArray half_mips(const std::vector<float> &src, int w, int h, int ch) {
 void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("generate", "seed", "states", "mw", "mh"), &TRWorldGen::generate, DEFVAL(26), DEFVAL(1800), DEFVAL(1200));
 	ClassDB::bind_method(D_METHOD("set_fine_roads", "on"), &TRWorldGen::set_fine_roads);
+	ClassDB::bind_method(D_METHOD("build_id"), &TRWorldGen::build_id);
 	ClassDB::bind_method(D_METHOD("set_earth", "w", "h", "labels", "seeds", "names", "pop", "dev"), &TRWorldGen::set_earth);
 	ClassDB::bind_method(D_METHOD("generate_board", "state_pops"), &TRWorldGen::generate_board, DEFVAL(PackedFloat64Array()));
 	ClassDB::bind_method(D_METHOD("generate_states"), &TRWorldGen::generate_states);
