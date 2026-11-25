@@ -32,6 +32,7 @@ var night_lights: NightLights
 var night_hour := -1.0
 var _tw_vp: SubViewport
 var towns: TownLayer
+var sea_labels: SeaLabels
 var inc_base: IncidentLayer
 var inc_top: IncidentLayer
 var vehicles: VehicleLayer
@@ -90,6 +91,9 @@ func _ready() -> void:
 	inc_base = IncidentLayer.new()
 	inc_base.camera = camera
 	cl.add_child(inc_base)
+	sea_labels = SeaLabels.new()   # the names of the oceans and seas, flat on the board
+	sea_labels.camera = camera
+	add_child(sea_labels)
 	towns = TownLayer.new()
 	towns.camera = camera
 	_tw_vp = _cached(towns, cl)
@@ -318,6 +322,7 @@ func _show(w: Dictionary) -> void:
 	overlay.build(w.lines, w.board, size, w.own, Vector2i(mw, mh))
 	walls.build(w.lines, w.own, Vector2i(mw, mh))   # coastal side walls: a static 3D mesh
 	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
+	sea_labels.build(w.own, mw, mh, int(w.tri_s), _is_earth, _seed)
 	inc_base.lines = w.lines
 	inc_top.lines = w.lines
 	world_ready.emit(w)
