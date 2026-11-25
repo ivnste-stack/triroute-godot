@@ -276,10 +276,14 @@ func _add(text: String, x: float, z: float, hgt: float, ocean: bool) -> void:
 	_base.append([l, a])
 
 
+## hidden while the map editor is open (the names come back with the finished world)
+var hold := false
+
+
 func _process(_delta: float) -> void:
 	if camera == null or _base.is_empty():
 		return
-	visible = MapVis.vis("seas")
+	visible = MapVis.vis("seas") and not hold
 	# close up a name would cover the screen: it fades out
 	var k := smoothstep(2.2, 4.5, camera.dist)
 	for b in _base:

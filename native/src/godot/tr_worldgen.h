@@ -1,5 +1,6 @@
 // Godot binding of the world generator: TRWorldGen.generate(seed, states) -> Dictionary.
 #pragma once
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
@@ -45,10 +46,24 @@ public:
 	//   roads (Array of {lv, p: PackedFloat32Array x,z pairs}), railways (Array of PackedFloat32Array),
 	//   checkpoints (Array of {x, z, a, b, rail}).
 	Dictionary generate_board(const PackedFloat64Array &state_pops = PackedFloat64Array());
+	Dictionary board_dict_() const;
+	// ---- the map editor ----
+	// the world from its edited lattice: sqd (diagonal per square), sql (owner per half: -1 sea, 0..n-1 state,
+	// 120 neutral), n states, caps (x, y texture pixels per state, -1: at the label point). Returns own, land_count
+	// and countries as generate() does; build_textures() and lines() follow it. The board is dropped.
+	Dictionary edit_apply(const PackedByteArray &sqd, const PackedInt32Array &sql, int64_t n, const PackedInt32Array &caps);
+	// the board of the editor: towns (Array of {x, z, type, name, pop?, port_ov?, air_ov?}), the drawn roads
+	// (Array of {lv, p}) and railways (Array of PackedFloat32Array) — or generated ones when auto_net
+	Dictionary generate_board_given(const PackedFloat64Array &state_pops, const Array &towns, const Array &roads, const Array &rails, bool auto_net);
+	// a generator holding a copy of this world (the editor builds the textures on it in a worker thread while
+	// this one goes on with the edits)
+	Ref<TRWorldGen> clone() const;
+	// lattice nodes of a road over land from node a to node b (empty: the sea is in the way)
+	PackedInt32Array edit_path(int64_t a, int64_t b) const;
 	// the test road net for the next generate_board(): nodes twice as dense, denser roads, more ways
 	void set_fine_roads(bool on) { fine_roads_ = on; }
 	// which build of the module is loaded (the performance record names it: an old library left in place shows)
-	String build_id() const { return "2026-11-25 nav3"; }
+	String build_id() const { return "2026-11-25 editor"; }
 
 	// The states' starting characteristics for the last generated world, exactly like the HTML version
 	// (makeCountry + colours): Array of {id, name, full, gov, title, ideol, trait, leader, leader_age, pop, dev, gdp,
@@ -93,7 +108,8 @@ public:
 	//   border:  RH with mipmaps (2MW x 2MH) — distance to a state border
 	//   states:  R8 (2MW x 2MH) — state id + 1 (121 neutral), grown into the sea
 	// Mipmaps are 2x2 box averages like the HTML version builds them.
-	Dictionary build_textures();
+	// lite (the map editor): only what the shader reads, the terrain without mipmaps (terrain_mips false)
+	Dictionary build_textures(bool lite = false);
 
 private:
 	std::shared_ptr<tr::World> world_;

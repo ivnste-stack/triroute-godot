@@ -57,8 +57,24 @@ struct Crossing { double ws, s, x, z; int a, b; };
 std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<float> &pts, double eco);
 std::vector<Crossing> board_crossings(const World &w, const Board &b, const std::vector<double> &pts, double eco);
 
+// the roads and railways drawn in the map editor
+struct BoardNet {
+	std::vector<Polyline> hw;
+	std::vector<std::vector<float>> rail;
+};
+
 // state_pop: population of every state (G.C[i].pop in the HTML version, millions).
 // fine: the test road net (a node grid twice as dense, denser roads, more alternative ways between towns).
 Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine = false);
+
+// The map editor's board: the given towns (snapped to their lattice nodes, the state taken from the land
+// around them, a town in the sea dropped; pop <= 0 is drawn by type), the drawn net or (net == nullptr)
+// roads and railways generated as usual; then ports, airports and checkpoints.
+Board generate_board_given(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine, const std::vector<Town> &towns,
+		const BoardNet *net);
+
+// The map editor's road: lattice nodes from a to b over land (the board lattice of the world, fine or not);
+// empty when the sea is in the way.
+std::vector<int> edit_path(const World &w, bool fine, int a, int b);
 
 } // namespace tr

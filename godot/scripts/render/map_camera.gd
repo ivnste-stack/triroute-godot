@@ -20,6 +20,8 @@ var tdist := 13.0
 var world_size := Vector2(22.5, 15.0)
 var min_dist := 0.55
 
+## the map editor's brushes take the left button: the map is then dragged with the right or middle one
+var left_locked := false
 var _down := false
 var _moved := false
 var _down_pos := Vector2.ZERO
@@ -167,8 +169,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN) and get_viewport().gui_get_hovered_control() == null:
 			var f := 1.12 if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else .89
 			tdist = clampf(tdist * f, min_dist, world_size.x * 1.25)
-		elif mb.button_index == MOUSE_BUTTON_LEFT:
-			if not mb.pressed and _down and not _moved:
+		elif (mb.button_index == MOUSE_BUTTON_LEFT and not left_locked) or mb.button_index == MOUSE_BUTTON_RIGHT or mb.button_index == MOUSE_BUTTON_MIDDLE:
+			if mb.button_index != MOUSE_BUTTON_LEFT and not mb.pressed and not _down:
+				return
+			if not mb.pressed and _down and not _moved and mb.button_index == MOUSE_BUTTON_LEFT:
 				clicked.emit(mb.position)
 			_down = mb.pressed
 			_moved = false

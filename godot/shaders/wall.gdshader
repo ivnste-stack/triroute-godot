@@ -6,6 +6,7 @@
 // line at the water level, ~1.5 px whatever the zoom.
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, fog_disabled;
+uniform float haze = 1.0;   // the distance haze (0 in the map editor: the whole board stays clear)
 
 uniform float wall_h = 0.0625;    // the height, following the view like the original (set by MapView)
 
@@ -47,7 +48,7 @@ void fragment() {
 	a = max(a, max(al_end, al_lvl));
 	// the same distance haze as the map
 	float fd = length(v_wp - CAMERA_POSITION_WORLD);
-	c = mix(c, vec3(.022, .038, .055), smoothstep(14., 34., fd));
+	c = mix(c, vec3(.022, .038, .055), smoothstep(14., 34., fd) * haze);
 	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	ALPHA = a;

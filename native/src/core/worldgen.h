@@ -66,8 +66,14 @@ static const int NEU = 120;
 // Generates the world. The HTML version takes the same steps in the same order, so the RNG stays in step.
 World generate_world(uint32_t seed, const WorldParams &p);
 
+// The map editor: the world from its edited lattice (sqd / sql set by the caller, sql -1 = sea): the owner
+// raster, the land, n states (area, label point, neighbours; caps: a seed point x, y per state in texture
+// pixels, -1 = at the label point); the render data is cleared (build_render_data makes it again).
+void world_from_lattice(World &w, int n, const std::vector<int> &caps);
+
 // Fills tf / hb / hid exactly like the end of genWorld() (tri lattice branch).
-void build_render_data(World &w);
+// lite (the map editor): what the map shader reads only — the coast/depth and the diagonal; no lighting, no noise
+void build_render_data(World &w, bool lite = false);
 
 // coastlines (a == 0) and borders between states a and b (state id + 1; 121+ neutral) as polylines in
 // world coordinates: extractSqLines() of 04-map.js

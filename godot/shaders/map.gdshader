@@ -6,6 +6,7 @@
 // the occupation hatching (hasOcc), the fine logistics grid (lgrid: only off the board).
 shader_type spatial;
 render_mode unshaded, cull_disabled, fog_disabled;
+uniform float haze = 1.0;   // the distance haze (0 in the map editor: the whole board stays clear)
 
 uniform sampler2D t0 : filter_linear_mipmap_anisotropic, repeat_disable;   // terrain: coast/height, diagonal, light, noise
 uniform sampler2D tb : filter_linear_mipmap_anisotropic, repeat_disable;   // distance to a state border
@@ -22,6 +23,11 @@ uniform float glint = 1.0;
 uniform float wall_h = 0.0;   // slow glints on the water triangles (settings)
 
 uniform float night = 0.0;   // the test day and night: 0 day … 1 night
+// the map editor: its lattice is drawn at once, before the textures are built again (MapEditor):
+// one texel a square, r / g the owner of the half h0 / h1 (0 sea, state id + 1, 121 neutral), b the diagonal
+uniform bool edit_on = false;
+uniform sampler2D tE : filter_nearest, repeat_disable;
+uniform vec2 SQWH = vec2(180.0, 120.0);
 
 varying vec3 wp;
 
@@ -45,11 +51,17 @@ float hsh(vec2 p) {
 vec3 cc(uint id) {
 	return id >= 122u ? vec3(.36, .385, .41) : id == 121u ? vec3(.50, .50, .47) : id > 0u ? col[int(id) - 1] : vec3(.42, .45, .48);
 }
+vec4 edAt(vec2 fl) {
+	return texelFetch(tE, ivec2(clamp(fl, vec2(0.), SQWH - 1.)), 0);
+}
+float diagAt(vec2 fl) {
+	return edit_on ? edAt(fl).b : textureLod(t0, (fl + .5) * triS / MWH, 0.).g;
+}
 // the colour of the lattice triangle that holds q (in lattice squares): sea by depth, land by state, glints;
 // bd (distance to a state border) and hatch are the pixel's own. land: 1 on land
 vec3 triCol(vec2 q, float bd, float hatch, out float land) {
 	vec2 fl = floor(q), fr = q - fl;
-	float dg = textureLod(t0, (fl + .5) * triS / MWH, 0.).g;
+	float dg = diagAt(fl);
 	float tup;
 	vec2 cc_;
 	if (dg > .5) {
@@ -62,6 +74,12 @@ vec3 triCol(vec2 q, float bd, float hatch, out float land) {
 	vec2 tcuv = clamp((fl + cc_) * triS / MWH, 0., 1.);
 	float tH = hsh(fl * vec2(1.13, .91) + tup * vec2(.37, .71));
 	float h = textureLod(t0, tcuv, 0.).r;
+	uint eid = 0u;
+	if (edit_on) {   // the half: across the diagonal "\\" tup 1 is h0, across "/" it is h1
+		vec4 e = edAt(fl);
+		eid = uint(round((dg > .5 ? (tup > .5 ? e.r : e.g) : (tup > .5 ? e.g : e.r)) * 255.));
+		h = eid > 0u ? max(h, .01) : min(h, -.035);
+	}
 	land = step(0., h);
 	// ---- sea
 	float depth = clamp(-h, 0., 1.);
@@ -89,7 +107,7 @@ vec3 triCol(vec2 q, float bd, float hatch, out float land) {
 		}
 	}
 	// ---- land: state colour
-	uint id = idAt(tcuv);
+	uint id = edit_on ? eid : idAt(tcuv);
 	vec3 L = cc(id);
 	uint su = uint(sel + 1), hu = uint(hov + 1);
 	float fs = sel < 0 ? 0. : float(id == su);
@@ -146,7 +164,7 @@ void fragment() {
 		// drawn diagonal) in screen pixels, and within half a pixel of it the triangle across it mixed in — smooth
 		// at any zoom without rendering the map larger
 		vec2 fl = floor(q), fr = q - fl;
-		float dg = textureLod(t0, (fl + .5) * triS / MWH, 0.).g;
+		float dg = diagAt(fl);
 		float sdg = dg > .5 ? fr.x - fr.y : fr.x + fr.y - 1.;
 		float pdg = abs(sdg) / max(fwidth(sdg), 1e-6);
 		float sx = fr.x - .5, sy = fr.y - .5;
@@ -184,7 +202,7 @@ void fragment() {
 	}
 	// the distance haze: the farther from the camera, the more the background (zoomed out the board darkens)
 	float fd = length(wp - CAMERA_POSITION_WORLD);
-	c = mix(c, bg, smoothstep(14., 34., fd));
+	c = mix(c, bg, smoothstep(14., 34., fd) * haze);
 	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	// the depth: land where it is, water far below (3 world units, the tallest wall is ~.4): a wall shows

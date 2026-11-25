@@ -90,7 +90,11 @@ void TRWorldGen::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("crossings", "p", "eco"), &TRWorldGen::crossings);
 	ClassDB::bind_method(D_METHOD("crossings64", "p", "eco"), &TRWorldGen::crossings64);
 	ClassDB::bind_method(D_METHOD("states_rng_state"), &TRWorldGen::states_rng_state);
-	ClassDB::bind_method(D_METHOD("build_textures"), &TRWorldGen::build_textures);
+	ClassDB::bind_method(D_METHOD("build_textures", "lite"), &TRWorldGen::build_textures, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("edit_apply", "sqd", "sql", "n", "caps"), &TRWorldGen::edit_apply);
+	ClassDB::bind_method(D_METHOD("generate_board_given", "state_pops", "towns", "roads", "rails", "auto_net"), &TRWorldGen::generate_board_given);
+	ClassDB::bind_method(D_METHOD("edit_path", "a", "b"), &TRWorldGen::edit_path);
+	ClassDB::bind_method(D_METHOD("clone"), &TRWorldGen::clone);
 }
 
 void TRWorldGen::set_earth(int64_t w, int64_t h, const PackedByteArray &labels, const PackedInt32Array &seeds,
@@ -197,6 +201,11 @@ Dictionary TRWorldGen::generate_board(const PackedFloat64Array &state_pops) {
 	nav_.reset();
 	board_ = std::make_shared<tr::Board>(tr::generate_board(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops, fine_roads_));
 	nav_ = std::make_shared<tr::Nav>(*world_, *board_);
+	return board_dict_();
+}
+
+Dictionary TRWorldGen::board_dict_() const {
+	Dictionary d;
 	const tr::Board &B = *board_;
 	d["nx"] = B.nx;
 	d["nz"] = B.nz;
@@ -263,15 +272,106 @@ Dictionary TRWorldGen::generate_board(const PackedFloat64Array &state_pops) {
 	return d;
 }
 
-Dictionary TRWorldGen::build_textures() {
+Dictionary TRWorldGen::edit_apply(const PackedByteArray &sqd, const PackedInt32Array &sql, int64_t n, const PackedInt32Array &caps) {
 	Dictionary d;
 	if (!world_) return d;
 	tr::World &w = *world_;
-	if (w.tf.empty()) tr::build_render_data(w);
+	if (int64_t(w.sqd.size()) != sqd.size() || int64_t(w.sql.size()) != sql.size()) return d;
+	std::memcpy(w.sqd.data(), sqd.ptr(), w.sqd.size());
+	for (size_t i = 0; i < w.sql.size(); i++) w.sql[i] = int16_t(sql[int64_t(i)]);
+	std::vector<int> cp(caps.ptr(), caps.ptr() + caps.size());
+	nav_.reset();
+	board_.reset();
+	tr::world_from_lattice(w, int(n), cp);
+	d["land_count"] = w.land_count;
+	PackedByteArray own;
+	own.resize(int64_t(w.own.size()));
+	std::memcpy(own.ptrw(), w.own.data(), w.own.size());
+	d["own"] = own;
+	Array countries;
+	for (const auto &c : w.countries) {
+		Dictionary cd;
+		cd["idx"] = c.idx;
+		cd["area"] = c.area;
+		cd["lx"] = c.lx;
+		cd["ly"] = c.ly;
+		cd["cap_x"] = c.cap_x;
+		cd["cap_y"] = c.cap_y;
+		cd["has_label"] = !c.no_label;
+		cd["land_share"] = c.land_share;
+		PackedInt32Array nb;
+		for (int q : c.neighbors) nb.push_back(q);
+		cd["neighbors"] = nb;
+		countries.push_back(cd);
+	}
+	d["countries"] = countries;
+	return d;
+}
+
+Dictionary TRWorldGen::generate_board_given(const PackedFloat64Array &state_pops, const Array &towns, const Array &roads, const Array &rails, bool auto_net) {
+	if (!world_) return Dictionary();
+	std::vector<double> pops(state_pops.ptr(), state_pops.ptr() + state_pops.size());
+	pops.resize(world_->countries.size(), 10.0);
+	std::vector<tr::Town> ts;
+	for (int64_t i = 0; i < towns.size(); i++) {
+		Dictionary td = towns[i];
+		tr::Town t;
+		t.x = td.get("x", 0.0);
+		t.z = td.get("z", 0.0);
+		t.type = String(td.get("type", "town")).utf8().get_data();
+		t.name = String(td.get("name", "")).utf8().get_data();
+		t.pop = td.get("pop", 0.0);
+		const Variant po = td.get("port_ov", Variant());
+		t.port_ov = po.get_type() == Variant::BOOL ? (bool(po) ? 1 : 0) : po.get_type() == Variant::INT ? int(po) : -1;
+		t.air_ov = td.get("air_ov", false);
+		ts.push_back(std::move(t));
+	}
+	tr::BoardNet net;
+	auto f32 = [](const PackedFloat32Array &a) { return std::vector<float>(a.ptr(), a.ptr() + a.size()); };
+	for (int64_t i = 0; i < roads.size(); i++) {
+		Dictionary r = roads[i];
+		net.hw.push_back({double(r.get("lv", 2.0)), f32(r.get("p", PackedFloat32Array()))});
+	}
+	for (int64_t i = 0; i < rails.size(); i++) net.rail.push_back(f32(rails[i]));
+	nav_.reset();
+	board_ = std::make_shared<tr::Board>(tr::generate_board_given(uint32_t(seed_ & 0xFFFFFFFF), *world_, pops, fine_roads_, ts, auto_net ? nullptr : &net));
+	nav_ = std::make_shared<tr::Nav>(*world_, *board_);
+	return board_dict_();
+}
+
+Ref<TRWorldGen> TRWorldGen::clone() const {
+	Ref<TRWorldGen> g;
+	g.instantiate();
+	if (world_) g->world_ = std::make_shared<tr::World>(*world_);
+	g->seed_ = seed_;
+	g->fine_roads_ = fine_roads_;
+	return g;
+}
+
+PackedInt32Array TRWorldGen::edit_path(int64_t a, int64_t b) const {
+	PackedInt32Array out;
+	if (!world_) return out;
+	for (int n : tr::edit_path(*world_, fine_roads_, int(a), int(b))) out.push_back(n);
+	return out;
+}
+
+Dictionary TRWorldGen::build_textures(bool lite) {
+	Dictionary d;
+	if (!world_) return d;
+	tr::World &w = *world_;
+	if (w.tf.empty()) tr::build_render_data(w, lite);
 	const int MW = w.p.mw, MH = w.p.mh;
 	d["width"] = MW;
 	d["height"] = MH;
-	d["terrain"] = half_mips(w.tf, MW, MH, 4);
+	d["terrain_mips"] = !lite;
+	if (lite) {
+		PackedByteArray b;
+		b.resize(int64_t(w.tf.size() * 2));
+		uint16_t *o = reinterpret_cast<uint16_t *>(b.ptrw());
+		for (size_t i = 0; i < w.tf.size(); i++) o[i] = to_half(w.tf[i]);
+		d["terrain"] = b;
+	} else
+		d["terrain"] = half_mips(w.tf, MW, MH, 4);
 	d["border"] = half_mips(w.hb, MW * 2, MH * 2, 1);
 	PackedByteArray st;
 	st.resize(int64_t(w.hid.size()));

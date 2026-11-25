@@ -380,6 +380,10 @@ func start_choices() -> Array:
 				n += 1
 		return n
 	var caps := PL.filter(func(p): return p.type == "cap" and not tiny.call(p))
+	if caps.is_empty():   # a world of the map editor with only small islands: any capital, any town
+		caps = PL.filter(func(p): return p.type == "cap")
+		if caps.is_empty():
+			caps = PL.duplicate()
 	var ok := caps.filter(func(p): return mates.call(p) >= 2)
 	if ok.size() >= 3:
 		caps = ok

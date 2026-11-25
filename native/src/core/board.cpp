@@ -461,16 +461,12 @@ std::vector<Crossing> board_crossings(const World &w, const Board &b, const std:
 	return board_crossings_t(w, b, pts, eco);
 }
 
-Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine) {
-	Board B;
-	B.fine = fine;
-	if (fine) B.st = .0625;
-	Ctx C(w, B);
-	B.wx = C.WX;
-	B.wz = C.WZ;
-	B.nx = int(js_round(C.WX / B.st)) + 1;
-	B.nz = int(js_round(C.WZ / B.st)) + 1;
-	gen_towns(C, seed, state_pop);
+namespace {
+// the roads, railways, ports, airports and checkpoints of a board whose towns are placed (boardRoads,
+// boardPorts, boardCheckpoints); net: the roads and railways drawn in the editor (nullptr: generated)
+void finish_board(uint32_t seed, Ctx &C, bool fine, const BoardNet *net, bool given_towns) {
+	Board &B = C.B;
+	const World &w = C.w;
 	auto &T = B.towns;
 
 	// ---------- boardRoads ----------
@@ -517,8 +513,9 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 	}
 	const int tinyMin = fine ? TINY_ISL * 4 : TINY_ISL;   // the same land area in nodes
 	auto tinyN = [&](int n) { return comp[n] < 0 || B.csz[comp[n]] < tinyMin; };
+	if (!net) {
 	// a capital cut off from its towns moves to the biggest town of the state's main landmass
-	for (size_t cid = 0; cid < w.countries.size(); cid++) {
+	for (size_t cid = 0; cid < (given_towns ? 0 : w.countries.size()); cid++) {   // the editor's capitals stay
 		std::vector<Town *> ts;
 		for (auto &t : T)
 			if (t.cid == int(cid) && comp[t.node] >= 0) ts.push_back(&t);
@@ -838,6 +835,40 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 		std::stable_sort(o.begin(), o.end(), [&](int x, int y) { return dist(T[x], T[c]) - dist(T[y], T[c]) < 0; });
 		if (!o.empty() && dist(T[o[0]], T[c]) < 6) rl(c, o[0]);
 	}
+	} else {
+		// the drawn net: the lattice bits along every polyline (each step joins two neighbouring nodes)
+		auto fill = [&](const std::vector<float> &p, std::vector<uint8_t> &bits) {
+			auto ij = [&](size_t k, int &i, int &j) {
+				i = clampi(int(js_round((double(p[k]) + C.WX / 2) / B.st)), 0, B.nx - 1);
+				j = clampi(int(js_round((double(p[k + 1]) + C.WZ / 2) / B.st)), 0, B.nz - 1);
+			};
+			for (size_t k = 2; k + 1 < p.size(); k += 2) {
+				int i0, j0, i1, j1;
+				ij(k - 2, i0, j0);
+				ij(k, i1, j1);
+				for (int g = 0; (i0 != i1 || j0 != j1) && g < 5000; g++) {
+					const int sx = (i1 > i0) - (i1 < i0), sz = (j1 > j0) - (j1 < j0);
+					int d = -1;
+					for (int q = 0; q < 8; q++)
+						if (D8[q][0] == sx && D8[q][1] == sz) { d = q; break; }
+					bits[size_t(j0) * B.nx + i0] |= uint8_t(1 << d);
+					i0 += sx;
+					j0 += sz;
+					bits[size_t(j0) * B.nx + i0] |= uint8_t(1 << ((d + 4) % 8));
+				}
+			}
+		};
+		for (const auto &h : net->hw)
+			if (h.p.size() >= 4) {
+				B.hw.push_back(h);
+				fill(h.p, B.bits);
+			}
+		for (const auto &r : net->rail)
+			if (r.size() >= 4) {
+				B.rail.push_back(r);
+				fill(r, B.rbits);
+			}
+	}
 	// ports and airports on tiny islands
 	for (auto &t : T)
 		if (tinyN(t.node) && t.port_ov != 0) t.port_ov = 1;
@@ -892,7 +923,118 @@ Board generate_board(uint32_t seed, const World &w, const std::vector<double> &s
 		for (auto &h : B.hw) scan(h.p, false);
 		for (auto &r : B.rail) scan(r, true);
 	}
+}
+} // namespace
+
+Board generate_board(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine) {
+	Board B;
+	B.fine = fine;
+	if (fine) B.st = .0625;
+	Ctx C(w, B);
+	B.wx = C.WX;
+	B.wz = C.WZ;
+	B.nx = int(js_round(C.WX / B.st)) + 1;
+	B.nz = int(js_round(C.WZ / B.st)) + 1;
+	gen_towns(C, seed, state_pop);
+	finish_board(seed, C, fine, nullptr, false);
 	return B;
+}
+
+Board generate_board_given(uint32_t seed, const World &w, const std::vector<double> &state_pop, bool fine, const std::vector<Town> &towns,
+		const BoardNet *net) {
+	Board B;
+	B.fine = fine;
+	if (fine) B.st = .0625;
+	Ctx C(w, B);
+	B.wx = C.WX;
+	B.wz = C.WZ;
+	B.nx = int(js_round(C.WX / B.st)) + 1;
+	B.nz = int(js_round(C.WZ / B.st)) + 1;
+	// the editor's towns: each on its lattice node, in the state that holds most of the land around it
+	Mulberry rr(seed ^ 0x51abu);
+	for (Town t : towns) {
+		const int i = clampi(int(js_round((t.x + C.WX / 2) / B.st)), 0, B.nx - 1), j = clampi(int(js_round((t.z + C.WZ / 2) / B.st)), 0, B.nz - 1);
+		double x, z;
+		C.bXY(C.bNode(i, j), x, z);
+		const double q = B.st * .3;
+		int cnt[NEU + 1] = {};
+		int best = -1;
+		for (auto d : {std::pair<double, double>{q, q}, {-q, q}, {q, -q}, {-q, -q}}) {
+			const int o = C.bOwn(x + d.first, z + d.second);
+			if (o >= 0 && ++cnt[o] > (best >= 0 ? cnt[best] : 0)) best = o;
+		}
+		if (best < 0) continue;   // in the sea
+		t.x = x;
+		t.z = z;
+		t.node = C.bNode(i, j);
+		t.cid = best;
+		if (!(t.pop > 0)) {
+			const double sp = size_t(best) < state_pop.size() ? state_pop[size_t(best)] : 10;
+			t.pop = t.type == "vil" ? .015 + rr() * .05 : t.type == "town" ? .12 + rr() * .4 : t.type == "cap" ? sp * (.08 + rr() * .06) : .5 + rr() * 2.2;
+		}
+		t.port = false;
+		t.wc_i = t.wc_j = -1;
+		B.towns.push_back(std::move(t));
+	}
+	finish_board(seed, C, fine, net, true);
+	return B;
+}
+
+std::vector<int> edit_path(const World &w, bool fine, int a, int b) {
+	Board B;
+	B.fine = fine;
+	if (fine) B.st = .0625;
+	Ctx C(w, B);
+	B.nx = int(js_round(C.WX / B.st)) + 1;
+	B.nz = int(js_round(C.WZ / B.st)) + 1;
+	const int NX = B.nx, NZ = B.nz, N = NX * NZ;
+	if (a < 0 || b < 0 || a >= N || b >= N) return {};
+	auto land = [&](double x, double z) { return C.bOwn(x, z) >= 0; };
+	// a step lies on land when, at a quarter, the middle and three quarters of it, land is on one side at least
+	auto ok = [&](int n, int m) {
+		double x1, z1, x2, z2;
+		C.bXY(n, x1, z1);
+		C.bXY(m, x2, z2);
+		for (double t : {.25, .5, .75}) {
+			const double x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t, px = -(z2 - z1) * .2, pz = (x2 - x1) * .2;
+			if (!land(x + px, z + pz) && !land(x - px, z - pz)) return false;
+		}
+		return true;
+	};
+	std::vector<float> g(size_t(N), 1e9f);
+	std::vector<int> prev(size_t(N), -1);
+	std::vector<uint8_t> done(size_t(N), 0);
+	Heap h;
+	const int bx = b % NX, bz = b / NX;
+	g[size_t(a)] = 0;
+	h.push(0, a);
+	while (!h.empty()) {
+		const int n = h.pop();
+		if (done[size_t(n)]) continue;
+		done[size_t(n)] = 1;
+		if (n == b) break;
+		const int x = n % NX, z = n / NX;
+		for (auto &d : D8) {
+			const int nx = x + d[0], nz = z + d[1];
+			if (nx < 0 || nz < 0 || nx >= NX || nz >= NZ) continue;
+			const int m = nz * NX + nx;
+			if (done[size_t(m)] || !ok(n, m)) continue;
+			const float ng = g[size_t(n)] + float(d[0] && d[1] ? 1.4142 : 1);
+			if (ng < g[size_t(m)]) {
+				g[size_t(m)] = ng;
+				prev[size_t(m)] = n;
+				h.push(ng + js_hypot(nx - bx, nz - bz), m);
+			}
+		}
+	}
+	if (g[size_t(b)] >= 1e9f) return {};
+	std::vector<int> nodes;
+	for (int n = b; n >= 0; n = prev[size_t(n)]) {
+		nodes.push_back(n);
+		if (n == a) break;
+	}
+	std::reverse(nodes.begin(), nodes.end());
+	return nodes;
 }
 
 } // namespace tr

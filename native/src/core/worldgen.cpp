@@ -846,7 +846,7 @@ inline double lerpd(double a, double b, double t) { return a + (b - a) * t; }
 
 } // namespace
 
-void build_render_data(World &w) {
+void build_render_data(World &w, bool lite) {
 	const int MW = w.p.mw, MH = w.p.mh, S = w.p.tri_s;
 	const size_t NPX = size_t(MW) * MH;
 	const float INF = float(1e10);
@@ -898,6 +898,26 @@ void build_render_data(World &w) {
 	}
 	// smoothed height for the lighting, signed distance to the coast, relief height
 	const double T = w.T, top = w.top, bot = w.bot;
+	if (lite) {
+		std::vector<float> sdl(NPX), sdw(NPX);
+		for (size_t i = 0; i < NPX; i++) {
+			bool L = own[i] >= 0;
+			sdl[i] = L ? INF : 0;
+			sdw[i] = L ? 0 : INF;
+		}
+		edt(sdl, MW, MH);
+		edt(sdw, MW, MH);
+		w.tf.assign(NPX * 4, .5f);
+		for (int y = 0; y < MH; y++)
+			for (int x = 0; x < MW; x++) {
+				size_t i = size_t(y) * MW + x;
+				double c_ = own[i] >= 0 ? std::sqrt(double(sdl[i])) - .5 : -(std::sqrt(double(sdw[i])) - .5);
+				double wv = std::min((double(w.H[i]) - T) / bot, -.001);
+				w.tf[i * 4] = float(c_ > 0 ? std::max(.002, std::min(c_ * .004, .02)) : lerpd(c_ * .004, std::min(wv, c_ * .004), sstep(10, 40, -c_)));
+				w.tf[i * 4 + 1] = float(w.sqd[size_t(y / S) * w.sqw + size_t(x / S)]);
+			}
+		return;
+	}
 	std::vector<float> Hs(NPX), sdl(NPX), sdw(NPX), cs(NPX), EV(NPX);
 	for (size_t i = 0; i < NPX; i++) {
 		double d = (double(w.H[i]) - T) / top;
@@ -934,6 +954,90 @@ void build_render_data(World &w) {
 			w.tf[i * 4 + 2] = float(clampd(.5 + (lit * .75 + lit2 * .25 - 1) * .85, 0, 1));
 			w.tf[i * 4 + 3] = float(noise(x * .006 + 20, y * .006 + 11) * .5 + noise(x * .018, y * .018 + 60) * .25 + .5);
 		}
+}
+
+void world_from_lattice(World &w, int n, const std::vector<int> &caps) {
+	const int MW = w.p.mw, MH = w.p.mh, S = w.p.tri_s;
+	const size_t NPX = size_t(MW) * MH;
+	n = clampi(n, 0, NEU - 1);
+	w.own.assign(NPX, -1);
+	w.land.assign(NPX, 0);
+	w.land_count = 0;
+	for (int y = 0; y < MH; y++)
+		for (int x = 0; x < MW; x++) {
+			double fx_ = (x + .5) / S, fy_ = (y + .5) / S;
+			int i = int(std::floor(fx_)), j = int(std::floor(fy_));
+			double fx = fx_ - i, fy = fy_ - j;
+			int d = w.sqd[size_t(j) * w.sqw + i];
+			int h = d ? (fx > fy ? 0 : 1) : (fx + fy < 1 ? 0 : 1);
+			int o = w.sql[(size_t(j) * w.sqw + i) * 2 + h];
+			if (o >= n && o != NEU) o = -1;   // a state that is gone
+			size_t q = size_t(y) * MW + x;
+			w.own[q] = int8_t(o);
+			if (o >= 0) {
+				w.land[q] = 1;
+				w.land_count++;
+			}
+		}
+	w.own_grow = w.own;
+	const auto &own = w.own;
+	std::vector<double> area(n, 0), cx(n, 0), cy(n, 0);
+	std::vector<std::vector<int>> adj(n, std::vector<int>(n, 0));
+	for (int y = 0; y < MH; y++)
+		for (int x = 0; x < MW; x++) {
+			size_t i = size_t(y) * MW + x;
+			int o = own[i];
+			if (o < 0 || o >= n) continue;
+			area[o]++;
+			cx[o] += x;
+			cy[o] += y;
+			int nbs[2] = {x < MW - 1 ? own[i + 1] : -1, y < MH - 1 ? own[i + MW] : -1};
+			for (int q : nbs)
+				if (q >= 0 && q < n && q != o) {
+					adj[o][q]++;
+					adj[q][o]++;
+				}
+		}
+	std::vector<Country> old = std::move(w.countries);
+	w.countries.clear();
+	for (int k = 0; k < n; k++) {
+		Country C;
+		C.idx = k;
+		C.area = area[k];
+		if (size_t(k) < old.size()) {
+			C.name = old[k].name;
+			C.epop = old[k].epop;
+			C.edev = old[k].edev;
+		}
+		int ix = 0, iy = 0;
+		if (area[k] == 0) C.no_label = true;
+		else {
+			double x = cx[k] / area[k], y = cy[k] / area[k];
+			ix = clampi(int(js_round(x)), 0, MW - 1);
+			iy = clampi(int(js_round(y)), 0, MH - 1);
+			if (own[size_t(iy) * MW + ix] != k) {   // a ring or a crescent: the nearest pixel of its own
+				double bd = 1e18;
+				for (int yy = 0; yy < MH; yy += 2)
+					for (int xx = 0; xx < MW; xx += 2)
+						if (own[size_t(yy) * MW + xx] == k) {
+							double d = (xx - x) * (xx - x) + (yy - y) * (yy - y);
+							if (d < bd) { bd = d; ix = xx; iy = yy; }
+						}
+			}
+		}
+		for (int q = 0; q < n; q++)
+			if (adj[k][q] > 6) C.neighbors.push_back(q);
+		C.lx = ix;
+		C.ly = iy;
+		const bool cap = size_t(k) * 2 + 1 < caps.size() && caps[size_t(k) * 2] >= 0;
+		C.cap_x = cap ? caps[size_t(k) * 2] : ix;
+		C.cap_y = cap ? caps[size_t(k) * 2 + 1] : iy;
+		C.land_share = w.land_count ? area[k] / w.land_count : 0;
+		w.countries.push_back(std::move(C));
+	}
+	std::vector<float>().swap(w.tf);
+	std::vector<float>().swap(w.hb);
+	w.hid.clear();
 }
 
 std::vector<BorderLine> extract_lines(const World &w) {

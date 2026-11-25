@@ -110,10 +110,12 @@ func _ready() -> void:
 ## Starts generating a world; world_ready fires when the map is on screen.
 ## size: "s" 2×1, "m" 3×2, "l" 4×3 sectors (a sector is 7.5 world units, 600 texture pixels)
 ## fine_roads: the test road net (TRWorldGen.set_fine_roads)
-func generate(seed_value: int, size_key: String = "m", fine_roads: bool = false) -> void:
+func generate(seed_value: int, size_key: String = "m", fine_roads: bool = false, edit: Dictionary = {}) -> void:
 	if _task >= 0:
 		return
 	_seed = seed_value
+	_edit = edit
+	_keep_cam = false
 	var sec: Vector2i = {"s": Vector2i(2, 1), "m": Vector2i(3, 2), "l": Vector2i(4, 3), "earth": Vector2i(4, 3)}.get(size_key, Vector2i(3, 2))
 	_mw = sec.x * 600
 	_mh = sec.y * 600
@@ -215,6 +217,11 @@ static func earth_apply(w: Dictionary, mw: int, mh: int) -> void:
 
 func _generate_in_thread() -> void:
 	var w: Dictionary = _gen.generate(_seed, _n_states, _mw, _mh)
+	w["seed"] = _seed
+	if not _edit.is_empty():   # a world of the map editor (a loaded game): the edit on the world of its seed
+		_result = MapEditor.build_world(_gen, w, _edit)
+		_result["seed"] = _seed
+		return
 	w["states"] = _gen.generate_states()
 	w["board"] = _gen.generate_board()
 	if _is_earth:
@@ -296,36 +303,115 @@ func _process_t(_delta: float) -> void:
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
-		_show(_result)
+		if _ed_img != null:
+			edit_end()
+		_show(_result, _keep_cam)
 		_result = {}
 
 
-func _show(w: Dictionary) -> void:
+var _edit := {}
+var _keep_cam := false
+
+
+## the world of the map editor's edit, on the generator that holds its base world (in a worker thread);
+## world_ready fires when it is on the map
+func build_edit(edit: Dictionary) -> void:
+	if _task >= 0:
+		return
+	var b := world.duplicate()
+	_keep_cam = true
+	_is_earth = false
+	_task = WorkerThreadPool.add_task(func():
+		_result = MapEditor.build_world(_gen, b, edit)
+		_result["seed"] = _seed, true, "edited world")
+
+
+## shows a world: its textures, layers and camera (keep_cam: the editor's world goes on where the view is)
+func _show(w: Dictionary, keep_cam: bool = false) -> void:
 	world = w
 	var tx: Dictionary = w.textures
 	var mw: int = tx.width
 	var mh: int = tx.height
-	var terrain := ImageTexture.create_from_image(Image.create_from_data(mw, mh, true, Image.FORMAT_RGBAH, tx.terrain))
-	var border := ImageTexture.create_from_image(Image.create_from_data(mw * 2, mh * 2, true, Image.FORMAT_RH, tx.border))
-	var states := ImageTexture.create_from_image(Image.create_from_data(mw * 2, mh * 2, false, Image.FORMAT_R8, tx.states))
+	set_textures(tx)
 	w.erase("textures")
 	var size := Vector2(mw / 80.0, mh / 80.0)
-	_mat.set_shader_parameter("t0", terrain)
-	_mat.set_shader_parameter("tb", border)
-	_mat.set_shader_parameter("t1", states)
 	_mat.set_shader_parameter("MWH", Vector2(mw, mh))
 	_mat.set_shader_parameter("WSZ", size)
 	_mat.set_shader_parameter("triS", float(w.tri_s))
 	set_colors(w.states.map(func(st): return Color(st.color)))
-	camera.set_world(size)
+	if not keep_cam:
+		camera.set_world(size)
 	_plane.visible = true
-	overlay.build(w.lines, w.board, size, w.own, Vector2i(mw, mh))
-	walls.build(w.lines, w.own, Vector2i(mw, mh))   # coastal side walls: a static 3D mesh
-	towns.setup(w.board, w.states, w.countries, Vector2(mw, mh))
+	show_layers(w.lines, w.board, w.states, w.countries, w.own, Vector2i(mw, mh))
 	sea_labels.build(w.own, mw, mh, int(w.tri_s), _is_earth, _seed)
-	inc_base.lines = w.lines
-	inc_top.lines = w.lines
+	sea_labels.hold = false
 	world_ready.emit(w)
+
+
+## the map shader's textures (TRWorldGen.build_textures)
+func set_textures(tx: Dictionary) -> void:
+	var mw: int = tx.width
+	var mh: int = tx.height
+	_mat.set_shader_parameter("t0", ImageTexture.create_from_image(Image.create_from_data(mw, mh, tx.get("terrain_mips", true), Image.FORMAT_RGBAH, tx.terrain)))
+	_mat.set_shader_parameter("tb", ImageTexture.create_from_image(Image.create_from_data(mw * 2, mh * 2, true, Image.FORMAT_RH, tx.border)))
+	_mat.set_shader_parameter("t1", ImageTexture.create_from_image(Image.create_from_data(mw * 2, mh * 2, false, Image.FORMAT_R8, tx.states)))
+
+
+## the vector layers, the coastal walls and the settlements of a world (or of the editor's world as it is now)
+func show_layers(lines: Array, board: Dictionary, states: Array, countries: Array, own: PackedByteArray, mwh: Vector2i) -> void:
+	var size := Vector2(mwh.x / 80.0, mwh.y / 80.0)
+	overlay.build(lines, board, size, own, mwh)
+	walls.build(lines, own, mwh)   # coastal side walls: a static 3D mesh
+	walls._mat.set_shader_parameter("haze", _haze_k)
+	towns.setup(board, states, countries, Vector2(mwh))
+	inc_base.lines = lines
+	inc_top.lines = lines
+	apply_vis()
+
+
+# ---------- the map editor ----------
+var _ed_img: Image
+var _ed_tex: ImageTexture
+
+
+## the editor's lattice drawn by the shader (one RGBA8 texel a square: owner of h0, of h1, the diagonal)
+func edit_begin(sqw: int, sqh: int, data: PackedByteArray) -> void:
+	_ed_img = Image.create_from_data(sqw, sqh, false, Image.FORMAT_RGBA8, data)
+	_ed_tex = ImageTexture.create_from_image(_ed_img)
+	_mat.set_shader_parameter("tE", _ed_tex)
+	_mat.set_shader_parameter("SQWH", Vector2(sqw, sqh))
+	_mat.set_shader_parameter("edit_on", true)
+	set_haze(0.0)
+	sea_labels.hold = true   # the names of the seas come back with the finished world
+
+
+func edit_update(data: PackedByteArray) -> void:
+	if _ed_img == null:
+		return
+	_ed_img.set_data(_ed_img.get_width(), _ed_img.get_height(), false, Image.FORMAT_RGBA8, data)
+	_ed_tex.update(_ed_img)
+
+
+func edit_end() -> void:
+	_mat.set_shader_parameter("edit_on", false)
+	set_haze(1.0)
+	sea_labels.hold = false
+	_ed_img = null
+	_ed_tex = null
+
+
+func set_haze(k: float) -> void:
+	_mat.set_shader_parameter("haze", k)
+	if walls._mat != null:
+		walls._mat.set_shader_parameter("haze", k)
+	_haze_k = k
+
+
+var _haze_k := 1.0
+
+
+func set_sel(cid: int) -> void:
+	_mat.set_shader_parameter("sel", cid)
 
 
 ## Colours by state, sRGB (the shader works in sRGB like the original).

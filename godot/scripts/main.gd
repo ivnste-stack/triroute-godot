@@ -27,7 +27,10 @@ var planner: Planner
 var course: Course
 var menu: StartMenu
 var _args := {}
-var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "norm"}
+var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "norm", "base": "gen"}
+var editor: MapEditor = null   # the map editor, while it is open
+var _edit := {}                # the map editor's edit of the world in play (saved with the game)
+var _pending_edit := {}
 var _loading: Control
 var backdrop: MenuBackdrop
 var legend: Legend
@@ -262,12 +265,17 @@ func _ready() -> void:
 	_ng.seed = int(_args.get("seed", str(randi() % 1000000000)))
 	if _args.has("load"):
 		_load_slot(_args.load)
+	elif _args.has("editor"):   # test: the map editor at once (--editor=blank: on an empty ocean)
+		_ng.map = "edit"
+		_ng.base = "blank" if _args.editor == "blank" else "gen"
+		_ng.size = String(_args.get("size", _ng.size))
+		_create_world()
 	elif _args.has("company") or _args.has("pick") or (_args.has("shot") and not _args.has("menu")):
 		_create_world()
 	else:
 		_show_menu()
 		if _args.has("newgame"):   # test: the new game dialog (--newgame=earth: the Earth chosen)
-			_ng.map = "earth" if _args.newgame == "earth" else "gen"
+			_ng.map = _args.newgame if _args.newgame in ["earth", "edit"] else "gen"
 			_new_game_dialog()
 		if _args.has("shot"):
 			for i in 12:
@@ -349,15 +357,21 @@ func _new_game_dialog() -> void:
 	var size_row: Control = field.call("Розмір мапи", Ui.seg(SIZE_N, _ng.size, func(v): _ng.size = v))
 	var size_note := Ui.note("Розмір у секторах. Сектор — 3×3 великі клітинки сітки.", Ui.MUTED)
 	var earth_note := Ui.note("Справжня карта світу: 119 найбільших держав з реальними назвами, населенням і рівнем розвитку, мапа 4×3. Карликові країни приєднано до сусідів.", Ui.MUTED)
+	var base_row: Control = field.call("Основа", Ui.seg([["gen", "Згенерований світ"], ["blank", "Порожній океан"]], _ng.base, func(v): _ng.base = v))
+	var edit_note := Ui.note("Редактор: малюй сушу й кордони держав пензлем, став міста, прокладай дороги й залізниці. «Почати гру» — і компанія стартує на твоїй мапі.", Ui.MUTED)
 	var map_vis := func() -> void:
 		var e: bool = _ng.map == "earth"
 		size_row.visible = not e
 		size_note.visible = not e
 		earth_note.visible = e
-	c.add_child(field.call("Світ", Ui.seg([["gen", "Згенерований"], ["earth", "Земля"]], _ng.map, func(v):
+		base_row.visible = _ng.map == "edit"
+		edit_note.visible = _ng.map == "edit"
+	c.add_child(field.call("Світ", Ui.seg([["gen", "Згенерований"], ["earth", "Земля"], ["edit", "Редактор мапи"]], _ng.map, func(v):
 		_ng.map = v
 		map_vis.call())))
 	c.add_child(earth_note)
+	c.add_child(edit_note)
+	c.add_child(base_row)
 	c.add_child(size_row)
 	c.add_child(size_note)
 	map_vis.call()
@@ -370,6 +384,7 @@ func _new_game_dialog() -> void:
 		seed_l.text = str(_ng.seed))])))
 	var go := Ui.btn("Створити світ", "pri", "globe", func():
 		modals.clear()
+		_edit = {}
 		_create_world())
 	go.custom_minimum_size.y = 44
 	c.add_child(go)
@@ -489,7 +504,8 @@ func _create_world() -> void:
 	_size_key = _args.get("size", "earth" if _ng.map == "earth" else _ng.size)
 	if _args.has("roads"):   # test: --roads=fine
 		_ng.roads = String(_args.roads)
-	map.generate(_ng.seed, _size_key, _ng.roads == "fine")
+	map.generate(_ng.seed, _size_key, _ng.roads == "fine", _pending_edit)
+	_pending_edit = {}
 
 
 var _perf_t := 0.0
@@ -512,7 +528,7 @@ func _process(delta: float) -> void:
 	_live_n += 1
 	if map != null and map.camera != null:
 		var fo := get_viewport().gui_get_focus_owner()
-		map.camera.keys_on = hud != null and hud.visible and not modals.is_open() and not (fo is LineEdit or fo is TextEdit)
+		map.camera.keys_on = ((hud != null and hud.visible) or editor != null) and not modals.is_open() and not (fo is LineEdit or fo is TextEdit)
 	if _live_n % 6 == 0 and win.visible and session != null and session.sim != null:
 		Windows.tick_trips(session.sim, get_tree())
 	_pick_process()
@@ -565,6 +581,13 @@ func _process_t(delta: float) -> void:
 # ---------- the world is ready: the headquarters ----------
 func _on_world(w: Dictionary) -> void:
 	_loading.visible = false
+	if editor == null and _ng.map == "edit" and not w.has("edit") and _pending == null:
+		_open_editor(w)
+		return
+	_edit = w.get("edit", {})
+	if not _edit.is_empty() and _args.has("shot"):   # test: the edited world as the game got it
+		print("TEST edited world: %d states, %d towns, %d roads, %d railways, %d checkpoints, own %s" % [w.states.size(), w.board.towns.size(), w.board.roads.size(),
+			w.board.railways.size(), w.board.checkpoints.size(), PackedByteArray(w.own).hex_encode().md5_text()])
 	if _args.has("colors"):   # test: the state colours of the HTML version, one #rrggbb per line
 		var cols := []
 		for l in FileAccess.get_file_as_string(_args.colors).split("\n", false):
@@ -1272,7 +1295,10 @@ func _goto_place(pid: int) -> void:
 func _save_data() -> Dictionary:
 	session.finish_day()   # a day half done is not saved
 	var sim := session.sim
-	return {"data": {"v": 1, "seed": GameState.world_seed, "size": _size_key, "roads": _ng.roads, "diff": sim.diff, "sim": sim.save_state()},
+	var data := {"v": 1, "seed": GameState.world_seed, "size": _size_key, "roads": _ng.roads, "diff": sim.diff, "sim": sim.save_state()}
+	if not _edit.is_empty():   # a world of the map editor: made again from its edit
+		data["edit"] = _edit
+	return {"data": data,
 		"meta": {"name": sim.CO.name, "col": sim.CO.get("col", "#ffb347"), "date": Ui.date_str(sim.date), "mode": "Логістична компанія",
 			"when": Time.get_datetime_string_from_system(false, true).substr(5, 11).replace("T", " ")}}
 
@@ -1331,6 +1357,53 @@ func _slots(save: bool) -> void:
 	modals.push({"icon": "doc" if save else "refresh", "eyebrow": "Збереження" if save else "Завантаження", "title": "Зберегти гру" if save else "Завантажити гру", "content": c, "close": true})
 
 
+# ---------- the map editor ----------
+func _open_editor(w: Dictionary) -> void:
+	backdrop.visible = false
+	editor = MapEditor.new()
+	editor.theme = Ui.theme()
+	editor.toast = func(tone, t, d): toasts.push(tone, t, d)
+	_ui.add_child(editor)
+	_ui.move_child(editor, toasts.get_index())   # under the toasts and the dialogs
+	editor.start(map, map.generator(), w, _ng.base == "blank")
+	editor.finished.connect(_editor_done)
+	editor.cancelled.connect(func():
+		modals.push({"icon": "alert", "tone": "warn", "eyebrow": "Редактор мапи", "title": "Вийти без гри?", "body": "Зміни мапи не збережуться.", "close": true, "width": 420,
+			"choices": [{"t": "Вийти в меню", "f": func():
+				_close_editor()
+				map.edit_end()
+				_show_menu()}, {"t": "Лишитися", "f": func(): pass}]}))
+	Music.menu()
+	toasts.push("", "Редактор мапи", "Обери державу й малюй пензлем, або створи нову")
+	if _args.has("edscript"):   # test: a scripted edit, then (--edscript=go) the game on it
+		await get_tree().process_frame
+		editor.test_script()
+		if _args.edscript == "go":
+			editor._finish()
+	if _args.has("shot") and editor != null and _args.get("edscript", "") != "go":
+		for i in 30:
+			await get_tree().process_frame
+		await get_tree().create_timer(float(_args.get("wait", "1.5"))).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(_args.shot)
+		get_tree().quit()
+
+
+func _close_editor() -> void:
+	if editor != null:
+		editor.stop()
+		editor.queue_free()
+		editor = null
+
+
+## «Почати гру»: the edited world is made (states, board, textures) and the game starts on it
+func _editor_done(e: Dictionary) -> void:
+	_close_editor()
+	_loading.visible = true
+	_load_t = 0.0
+	map.build_edit(e)
+
+
 func _end_game() -> void:
 	if planner.on:
 		planner.close()
@@ -1362,6 +1435,9 @@ func _load_slot(slot: String) -> void:
 		_ng.size = "l"
 	_ng.diff = int(d.get("diff", 1))
 	_ng.roads = String(d.get("roads", "norm"))
+	_pending_edit = d.get("edit", {})
+	if not _pending_edit.is_empty():
+		_ng.map = "edit"
 	_args.erase("size")
 	hud.visible = false
 	_create_world()
