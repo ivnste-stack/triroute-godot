@@ -170,7 +170,7 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 	var lakes := _shuffled(LAKES, r)
 	var oceans := _shuffled(OCEANS, r)
 	var used_side := {}
-	var placed := []   # [x, y, keep-away radius]
+	var placed := []   # [x, y, keep-away radius in its own body, half the text's width (squares), body]
 	var n_oc := 0
 	var n_sea := 0
 	var n_lake := 0
@@ -181,17 +181,28 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 		for c: int in buckets[d]:
 			var x: int = c % W
 			var y: int = c / W
+			var id: int = comp[c]
+			# the water to the left and right of the square in the same body: a long narrow sea gets its name
+			# along its length, centred on it
+			var rl := 0
+			while x - rl - 1 >= 0 and comp[c - rl - 1] == id:
+				rl += 1
+			var rr := 0
+			while x + rr + 1 < W and comp[c + rr + 1] == id:
+				rr += 1
+			var cx := x + (rr - rl) * .5
 			var ok := true
 			for p in placed:
-				if Vector2(x - p[0], y - p[1]).length() < p[2]:
+				# the same body: the names keep well apart; across land only their texts may not meet
+				if p[4] == id and Vector2(cx - p[0], y - p[1]).length() < p[2] or p[4] != id and absf(cx - p[0]) < p[3] + 4 and absf(y - p[1]) < 3:
 					ok = false
 					break
 			if not ok:
 				continue
-			var id: int = comp[c]
-			var lake: bool = not edge[id] and size[id] < N * .03
-			var kind := "lake" if lake else ("ocean" if id == big and d >= maxi(6, int(dmax * .55)) else "sea")
-			if kind == "sea" and d < 3 or kind == "lake" and d < 2:
+			# a body closed by land: a sea if it is of some size, a lake if small
+			var closed: bool = not edge[id] and size[id] < N * .03
+			var kind := ("lake" if size[id] < N * .0025 else "sea") if closed else ("ocean" if id == big and d >= maxi(6, int(dmax * .55)) else "sea")
+			if kind == "sea" and not closed and d < 3:
 				continue
 			var name := ""
 			match kind:
@@ -206,22 +217,25 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 						name = oceans[n_oc % oceans.size()]
 					n_oc += 1
 				"sea":
-					if n_sea >= 14:
+					if n_sea >= 20:
 						continue
 					name = seas[n_sea % seas.size()]
 					n_sea += 1
 				_:
-					if n_lake >= 5:
+					if n_lake >= 8:
 						continue
 					name = lakes[n_lake % lakes.size()]
 					n_lake += 1
-			placed.append([x, y, d * (3.2 if kind == "ocean" else (2.6 if kind == "sea" else 1.5)) + 4])
-			# the letters: as tall as about a third of the room, the whole name within its width
+			# the letters: as tall as about a third of the room above and below, the whole name within the water
+			# to its sides
 			var room := d * cell
+			var span := (rl + rr + 1) * cell
 			var hgt := room * (.42 if kind == "ocean" else .34)
-			hgt = minf(hgt, room * 1.9 / maxf(1.0, name.length() * (.9 if kind == "ocean" else .62)))
-			hgt = clampf(hgt, .07, .9)
-			_add(name, (x + .5) * cell - mw / 160.0, (y + .5) * cell - mh / 160.0, hgt, kind == "ocean")
+			hgt = minf(hgt, span * .88 / maxf(1.0, name.length() * (.9 if kind == "ocean" else .62)))
+			hgt = clampf(hgt, .06, .36 if kind == "ocean" else .24)
+			var half_w := name.length() * hgt * (.9 if kind == "ocean" else .62) * .5 / cell
+			placed.append([cx, y, d * (2.6 if kind == "ocean" else (2.2 if kind == "sea" else 1.5)) + 3, half_w, id])
+			_add(name, (cx + .5) * cell - mw / 160.0, (y + .5) * cell - mh / 160.0, hgt, kind == "ocean")
 
 
 static func _side(x: int, y: int, W: int, H: int) -> String:
