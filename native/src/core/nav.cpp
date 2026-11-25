@@ -286,27 +286,41 @@ std::vector<float> Nav::air(double x0, double z0, double x1, double z1, const Bl
 		x = -b_.wx / 2 + (c % W) * ST;
 		z = -b_.wz / 2 + (c / W) * ST;
 	};
+	// a node under a closed sky (it or a neighbour in a closed state): worked out once per node, not at every look
+	std::vector<int8_t> badc(size_t(N), -1);
 	auto bad = [&](int c) {
+		if (badc[size_t(c)] >= 0) return badc[size_t(c)] != 0;
 		int x = c % W, z = c / W;
-		for (int dz = -1; dz <= 1; dz++)
+		bool r = false;
+		for (int dz = -1; dz <= 1 && !r; dz++)
 			for (int dx = -1; dx <= 1; dx++) {
 				int i = x + dx, k = z + dz;
 				if (i < 0 || k < 0 || i >= W || k >= H) continue;
 				int o = own_at(-b_.wx / 2 + i * ST + 1e-4, -b_.wz / 2 + k * ST + 1e-4);
-				if (o >= 0 && sky.count(o)) return true;
+				if (o >= 0 && sky.count(o)) {
+					r = true;
+					break;
+				}
 			}
-		return false;
+		badc[size_t(c)] = r ? 1 : 0;
+		return r;
 	};
 	const int s0 = id(x0, z0), e0 = id(x1, z1);
 	double ex, ez;
 	xy(e0, ex, ez);
-	std::vector<float> g(N, 1e9f);
-	std::vector<int> prev(N, -1);
+	// A* with every node expanded once (the heuristic is consistent: a step costs at least its length) and the
+	// costs in doubles; before, stale heap entries were expanded again and again — under a closed sky over a fine
+	// lattice one path took seconds
+	std::vector<double> g(size_t(N), 1e18);
+	std::vector<int> prev(size_t(N), -1);
+	std::vector<uint8_t> done(size_t(N), 0);
 	Heap h;
 	g[s0] = 0;
 	h.push(0, s0);
 	while (!h.empty()) {
 		int n = h.pop();
+		if (done[size_t(n)]) continue;
+		done[size_t(n)] = 1;
 		if (n == e0) break;
 		int x = n % W, z = n / W;
 		for (int dz = -1; dz <= 1; dz++)
@@ -315,9 +329,10 @@ std::vector<float> Nav::air(double x0, double z0, double x1, double z1, const Bl
 				int nx = x + dx, nz = z + dz;
 				if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue;
 				int m = nz * W + nx;
-				double ng = double(g[n]) + ((dx && dz) ? 1.4142 : 1) * ((m != e0 && bad(m)) ? 25 : 1);
-				if (ng < double(g[m])) {
-					g[m] = float(ng);
+				if (done[size_t(m)]) continue;
+				double ng = g[n] + ((dx && dz) ? 1.4142 : 1) * ((m != e0 && bad(m)) ? 25 : 1);
+				if (ng < g[m]) {
+					g[m] = ng;
 					prev[m] = n;
 					double mx, mz;
 					xy(m, mx, mz);
@@ -325,7 +340,7 @@ std::vector<float> Nav::air(double x0, double z0, double x1, double z1, const Bl
 				}
 			}
 	}
-	if (!(g[e0] < 1e9f)) return {};
+	if (!(g[e0] < 1e17)) return {};
 	std::vector<int> cells;
 	for (int n = e0; n >= 0; n = prev[n]) {
 		cells.push_back(n);
@@ -409,14 +424,18 @@ std::vector<double> Nav::grid(bool sea, double x0, double z0, double x1, double 
 				}
 		}
 	}
-	std::vector<float> g(N, 1e9f);
-	std::vector<int> prev(N, -1);
+	// every cell expanded once (see air), the costs in doubles
+	std::vector<double> g(size_t(N), 1e18);
+	std::vector<int> prev(size_t(N), -1);
+	std::vector<uint8_t> done(size_t(N), 0);
 	const int ex = e0 % W, ey = e0 / W;
 	Heap h;
 	g[s0] = 0;
 	h.push(0, s0);
 	while (!h.empty()) {
 		int n = h.pop();
+		if (done[size_t(n)]) continue;
+		done[size_t(n)] = 1;
 		if (n == e0) break;
 		int x = n % W, y = n / W;
 		for (int dy = -1; dy <= 1; dy++)
@@ -427,15 +446,16 @@ std::vector<double> Nav::grid(bool sea, double x0, double z0, double x1, double 
 				int c = ny * W + nx;
 				if (!pass(c)) continue;
 				if (dx && dy && (!pass(y * W + nx) || !pass(ny * W + x))) continue;
-				double ng = double(g[n]) + ((dx && dy) ? 1.4142 : 1) + (pen.empty() ? 0.0 : double(pen[c]));
-				if (ng < double(g[c])) {
-					g[c] = float(ng);
+				if (done[size_t(c)]) continue;
+				double ng = g[n] + ((dx && dy) ? 1.4142 : 1) + (pen.empty() ? 0.0 : double(pen[c]));
+				if (ng < g[c]) {
+					g[c] = ng;
 					prev[c] = n;
 					h.push(ng + js_hypot(nx - ex, ny - ey), c);
 				}
 			}
 	}
-	if (!(g[e0] < 1e9f)) return {};
+	if (!(g[e0] < 1e17)) return {};
 	std::vector<int> cells;
 	for (int n = e0; n >= 0; n = prev[n]) {
 		cells.push_back(n);

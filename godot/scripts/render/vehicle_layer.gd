@@ -159,7 +159,16 @@ func _draw_t() -> void:
 			_text("×%d" % j.n, Vector2(sp.x + r + 3 * dpr, sp.y - r - 3 * dpr), int(round(9 * dpr)), Color(rgb, gv))
 		if gv < 1 and camera.dist < 18:
 			_text("GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
-		hits.append({"j": j, "x": sp.x, "y": sp.y, "r": 14, "wx": pos[0], "wz": pos[1]})
+		var hit := {"j": j, "x": sp.x, "y": sp.y, "r": 14, "wx": pos[0], "wz": pos[1]}
+		if is_same(selected, j) and st.seg >= 0:   # where it heads on the screen: its card stays clear of the trail
+			var ds: float = .04 * sim.CO_DU
+			var pa := sim.co_pos_at(j, maxf(0.0, st.s - ds))
+			var pb := sim.co_pos_at(j, st.s + ds)
+			var qa: Variant = _P(pa[0], alt, pa[1])
+			var qb: Variant = _P(pb[0], alt, pb[1])
+			if qa != null and qb != null:
+				hit.dx = (qb - qa).normalized().x if qb != qa else 0.0
+		hits.append(hit)
 	_marks()
 	_anim = anim or not session.sim.CO.get("imk", []).is_empty()
 

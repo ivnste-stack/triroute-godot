@@ -667,6 +667,9 @@ func _follow() -> void:
 
 
 ## placeUnitCard: next to its vehicle, on the side away from the screen edge
+var _card_side := 1   # the trip card right (1) or left (-1) of its vehicle
+
+
 func _place_card() -> void:
 	if not _card.visible:
 		return
@@ -677,9 +680,18 @@ func _place_card() -> void:
 		if h.has("j") and is_same(h.j, j):
 			var w := _card.size.x
 			var hh := _card.size.y
-			var lx: float = h.x + 22
+			# on the side the vehicle heads to, so the trail behind it stays in view; the side changes only on a
+			# clear turn, not at every wobble of the road
+			var dx: float = h.get("dx", 0.0)
+			if dx > .35:
+				_card_side = 1
+			elif dx < -.35:
+				_card_side = -1
+			var lx: float = h.x + 22 if _card_side > 0 else h.x - w - 22
 			if lx + w > size.x - 12:
 				lx = h.x - w - 22
+			elif lx < 12:
+				lx = h.x + 22
 			_card.position = Vector2(lx, clampf(h.y - hh / 2, 70, size.y - hh - 90))
 			return
 

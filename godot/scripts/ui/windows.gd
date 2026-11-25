@@ -70,7 +70,13 @@ func _pause() -> void:
 		slices += 1
 		slice_max = maxi(slice_max, dt)
 		Perf.end("window.build")
+		# the plans' count of the fleet is not kept over a frame: the game may send a trip in between
+		var batch := sim._plan_batch
+		if batch:
+			sim.plan_batch(false)
 		await Engine.get_main_loop().process_frame
+		if batch:
+			sim.plan_batch(true)
 		Perf.begin("window.build")
 		_bt = Time.get_ticks_usec()
 
@@ -95,7 +101,7 @@ func build(id: String, body: VBoxContainer, slice := false) -> void:
 		_plan_c = {}
 	match id:
 		"coHome": _home(body)
-		"coJobs": _jobs(body)
+		"coJobs": await _jobs(body)
 		"coTrips": _trips(body)
 		"coFleet":
 			sim.plan_batch(false)   # no plans here, and the build may wait for the next frame
@@ -947,6 +953,7 @@ func _jobs(body: VBoxContainer) -> void:
 		var n: int = maxi(st.bmore, 15)
 		var v := Ui.vbox(8)
 		for k in bd.slice(0, n):
+			await _pause()
 			v.add_child(_multi_card(k) if k.get("multi") else _board_card(k))
 		body.add_child(v)
 		if bd.size() > n:

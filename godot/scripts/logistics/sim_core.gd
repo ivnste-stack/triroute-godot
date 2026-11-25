@@ -335,6 +335,7 @@ func co_route(mode: String, a: int, b: int) -> Variant:
 	if routes.has(key):
 		return routes[key]
 	var B: Dictionary = PL[b]
+	Perf.begin("route")   # a route not known yet: the search in the native module (the F4 record shows it)
 	var p := PackedFloat32Array()
 	if mode == "road":
 		if av != "":   # the planner's choice: around the toll motorways and/or the heavy-vehicle bans
@@ -351,6 +352,7 @@ func co_route(mode: String, a: int, b: int) -> Variant:
 		p = gen.route("rail", a, b)
 	elif mode == "air" and A.air and B.air:
 		p = gen.air_path(A.x, A.z, B.x, B.z)
+	Perf.end("route")
 	var res: Variant = null
 	if p.size() >= 4:
 		var L := 0.0

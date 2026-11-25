@@ -1454,6 +1454,7 @@ func _perf_context() -> Dictionary:
 		c.zoom = snappedf(map.camera.dist, .01)
 		c.yaw = snappedf(map.camera.yaw, .01)
 		c.layer = map.mode
+		c.map = "%d/%s/%s" % [GameState.world_seed, _size_key, _ng.roads]   # seed / size / road net: to make the world again
 		c.win = hud.open_window if hud.open_window != "" else "-"
 		c.dialog = modals.is_open()
 		c.trips = CO.jobs.size()
