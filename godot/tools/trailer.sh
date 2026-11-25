@@ -8,6 +8,10 @@ OUT=${1:?out dir}
 shift || true
 GODOT=${GODOT:-godot}
 mkdir -p "$OUT"
+# Movie Maker records at the project's window size: 1920×1080 for the recording only (override.cfg is read
+# by the engine over project.godot); removed at the end unless KEEP_OVERRIDE is set (parallel runs)
+printf '[display]\n\nwindow/size/viewport_width=1920\nwindow/size/viewport_height=1080\nwindow/size/mode=0\n' > override.cfg
+[ -n "${KEEP_OVERRIDE:-}" ] || trap 'rm -f override.cfg' EXIT
 # scene: duration, world
 declare -A DUR=([intro]=8 [network]=10 [pirates]=8 [border]=7 [storm]=7 [money]=9 [night]=6 [end]=6)
 declare -A WORLD=([intro]="--size=earth" [end]="--size=earth")
