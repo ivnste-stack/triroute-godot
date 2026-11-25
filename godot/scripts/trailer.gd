@@ -38,6 +38,7 @@ var _flash := 0.0
 var _flash_col := Color.WHITE
 var _cap: Label
 var _title: VBoxContainer
+var _dim: ColorRect
 var _floats := []     # [Label, age]
 var _drop_ok := -1.0  # until this second a big drop of the money is shown as it is (an event's)
 var _calls := []      # [Control, world Vector2, t0]
@@ -385,7 +386,12 @@ func _overlay() -> void:
 	_cap.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .5))
 	_cap.add_theme_constant_override("shadow_offset_y", 4)
 	root.add_child(_cap)
-	# the title card
+	# the title card, over the map darkened
+	_dim = ColorRect.new()
+	_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dim.color = Color(0, .01, .02, 0)
+	root.add_child(_dim)
 	_title = VBoxContainer.new()
 	_title.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # the whole screen, its lines centred
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -458,6 +464,7 @@ func _tick_overlay(dt: float) -> void:
 			kind = c[3]
 			a = minf(clampf((_t - c[0]) / .35, 0, 1), clampf((c[1] - _t) / .35, 0, 1))
 	_title.visible = kind == "title" and a > 0
+	_dim.color.a = .62 * a if kind == "title" else 0.0
 	if kind == "title":
 		_title.modulate.a = a
 		_title.scale = Vector2.ONE * (1.0 + .04 * (1 - a))
