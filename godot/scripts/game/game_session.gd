@@ -27,6 +27,9 @@ var choices: Array = []
 
 
 ## a new company before the headquarters is chosen (coInit with the first suggested capital, as the original)
+var alt := false   # a new game of the alternative balance (SimNet), set before the headquarters is chosen
+
+
 func begin(gen: Object, seed_value: int, states: Array, board: Dictionary, world: Dictionary, diff: int = 1) -> void:
 	sim = Sim.new()
 	sim.setup(gen, seed_value, states, board, world)
@@ -38,6 +41,8 @@ func begin(gen: Object, seed_value: int, states: Array, board: Dictionary, world
 ## the headquarters (coSetHQ); decisions wait for the interface unless auto_choice is set
 func choose_hq(pid: int, auto_decisions: bool = true) -> void:
 	sim.co_set_hq(pid)
+	if alt:   # the alternative balance: the terminals and its own board from the first day
+		sim.net_init()
 	sim.auto_choice = 0 if auto_decisions else -1
 	acc = 0.0
 	sim.co_frame(0.0)

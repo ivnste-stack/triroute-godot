@@ -1,5 +1,5 @@
 class_name Sim
-extends SimActions
+extends SimNet
 ## The route planner's calculations (legacy/src/08q-planner.js without its panel and map drawing): the player
 ## puts points on the map (cities, or road/rail nodes to steer through) and a mode for every step; this works
 ## out the legs, who carries each (own vehicles or a partner carrier), the time, the cost, the risks and

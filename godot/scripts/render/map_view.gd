@@ -34,6 +34,7 @@ var _tw_vp: SubViewport
 var towns: TownLayer
 var inc_base: IncidentLayer
 var inc_top: IncidentLayer
+var net: NetLayer               # the alternative balance: flows, warehouses, cargo waiting
 var vehicles: VehicleLayer
 
 
@@ -98,6 +99,9 @@ func _ready() -> void:
 	inc_top.camera = camera
 	inc_top.top = true
 	cl.add_child(inc_top)
+	net = NetLayer.new()
+	net.camera = camera
+	cl.add_child(net)
 	vehicles = VehicleLayer.new()
 	vehicles.camera = camera
 	cl.add_child(vehicles)
@@ -453,6 +457,7 @@ func attach_session(session: GameSession) -> void:
 	for L in [inc_base, inc_top]:
 		L.session = session
 	vehicles.session = session
+	net.session = session
 	_session = session
 	session.day_passed.connect(func(_d): company_colors())
 	company_colors()
@@ -470,6 +475,8 @@ func detach_session() -> void:
 		L._border_cache = {}
 		L.queue_redraw()
 	vehicles.session = null
+	net.session = null
+	net.queue_redraw()
 	vehicles.selected = null
 	vehicles.hits = []
 	vehicles.queue_redraw()

@@ -14,6 +14,8 @@ const RAIL := [["coHome", "briefcase", "Компанія", "Огляд, рейт
 	["coTrips", "road", "Рейси в дорозі", "Техніка в рейсах, ділянки маршрутів, повернення в хаби, останні доставки."],
 	["coFleet", "truck", "Автопарк", "Купівля, продаж і ремонт техніки."],
 	["coNet", "globe", "Мережа хабів", "Ваші хаби та їхні рівні, країни й міста для нових хабів."],
+	["coCargo", "sack", "Вантажі в мережі", "Альтернативний баланс: де кожен вантаж і куди йому далі — забрати, відправити.", "alt"],
+	["coTerm", "building", "Термінали", "Альтернативний баланс: склади, черги, модулі й покращення хабів, транзит партнерів, лінії за розкладом.", "alt"],
 	["coStaff", "users", "Персонал і менеджмент", "Водії, машиністи, моряки й пілоти з кандидатів, зарплати, моральний дух, менеджери."],
 	["coFin", "coins", "Фінанси", "Прибутки й витрати, кредити, рейтинг компаній світу."],
 	["|"],
@@ -254,7 +256,8 @@ func _build_rail() -> void:
 			window_requested.emit(id)
 			_rail_state())
 		v.add_child(b)
-		_rail_btns[id] = [b, r[1]]
+		_rail_btns[id] = [b, r[1], r.size() > 4]   # the last: shown only in the alternative balance
+		b.visible = r.size() <= 4
 		# a red badge (the orders on the board, the trips under way)
 		var bd := Label.new()
 		bd.add_theme_font_override("font", Ui.font("mono", 600))
@@ -457,6 +460,8 @@ func _process_t(delta: float) -> void:
 		if not j.get("ret"):
 			trips += 1
 	_badge("coTrips", trips)
+	if CO.get("alt"):   # the cargo waiting for a pick-up
+		_badge("coCargo", CO.net.cs.filter(func(c): return c.st == "wait" and c.run < 0).size())
 
 
 ## the ticker: the latest news, scrolling (every frame)
@@ -564,9 +569,12 @@ func _speed_state() -> void:
 
 
 func _rail_state() -> void:
+	var alt: bool = session != null and session.sim != null and not session.sim.CO.is_empty() and session.sim.alt()
 	for id in _rail_btns:
 		var on: bool = id == open_window
 		var b: Button = _rail_btns[id][0]
+		if _rail_btns[id][2]:
+			b.visible = alt
 		if not b.has_meta("on") or b.get_meta("on") != on:
 			b.set_meta("on", on)
 			b.icon = Icons.tex(_rail_btns[id][1], Ui.ACCENT_INK if on else Ui.FG2, 20)

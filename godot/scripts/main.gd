@@ -371,8 +371,16 @@ func _new_game_dialog() -> void:
 	c.add_child(size_note)
 	map_vis.call()
 	c.add_child(field.call("Складність", Ui.seg(DIFF_N, _ng.diff, func(v): _ng.diff = v)))
-	c.add_child(field.call("Режим", Ui.seg([["classic", "Класичний"], ["mm", "Мультимодальний (тест)"]], _ng.mode, func(v): _ng.mode = v)))
-	c.add_child(Ui.note("Мультимодальний: на біржі немає поділу на авто, потяги, кораблі й літаки — кожне замовлення ви берете й самі будуєте маршрут з ділянок, обираючи для кожної вид транспорту й конкретну техніку.", Ui.MUTED))
+	var mode_note := Ui.note("", Ui.MUTED)
+	var mode_txt := func() -> void:
+		mode_note.text = {"classic": "Класичний: замовлення з біржі — окремі рейси від міста до міста.",
+			"mm": "Мультимодальний: на біржі немає поділу на авто, потяги, кораблі й літаки — кожне замовлення ви берете й самі будуєте маршрут з ділянок, обираючи для кожної вид транспорту й конкретну техніку.",
+			"alt": "Альтернативний баланс — мережа терміналів: вантаж чекає у відправника, ви забираєте його кільцевими рейсами, збираєте на складах хабів і везете магістралями (своєю технікою чи партнерами), консолідуючи багато вантажів в одному рейсі. Хаби мають склад, пропускну здатність, модулі для потягів, суден і літаків; рейси можна поставити на розклад."}.get(_ng.mode, "")
+	c.add_child(field.call("Режим", Ui.seg([["classic", "Класичний"], ["mm", "Мультимодальний (тест)"], ["alt", "Альтернативний баланс"]], _ng.mode, func(v):
+		_ng.mode = v
+		mode_txt.call())))
+	mode_txt.call()
+	c.add_child(mode_note)
 	var seed_l := Ui.num(str(_ng.seed), 14, Ui.MUTED)
 	c.add_child(field.call("Зерно світу", Ui.hbox(12, [seed_l, Ui.btn("Інше", "sm", "dice", func():
 		_ng.seed = randi() % 1000000000
@@ -625,6 +633,8 @@ func _on_world(w: Dictionary) -> void:
 	session.begin(map.generator(), GameState.world_seed, w.states, w.board, w, _ng.diff)
 	if _ng.mode == "mm" or _args.get("gmode", "") == "mm":   # the multimodal mode (test): every order is built by hand
 		session.sim.CO.mm = true
+	if _ng.mode == "alt" or _args.get("gmode", "") == "alt":   # the alternative balance: the network of terminals (SimNet)
+		session.alt = true
 	hud.session = session
 	var loaded := _pending != null
 	if loaded:
@@ -669,7 +679,18 @@ func _on_world(w: Dictionary) -> void:
 			fast_mode()
 		if _args.get("plan", "") == "mm":   # test: the orders stay on the board for the player
 			session.sim.CO.auto = false
-		if _args.has("days"):
+		if _args.has("days") and _args.has("netbot") and session.sim.alt():   # test: the network played by NetBot
+			var sm := session.sim
+			for d in int(_args.days):
+				NetBot.policy(sm)
+				for f in 8:
+					sm.co_frame(f / 8.0)
+				sm.co_day()
+			if _args.netbot != "true":   # --netbot=N: a few more orders taken, the trips of today under way
+				for i in int(_args.netbot):
+					NetBot.policy(sm, false)
+			map.company_colors()
+		elif _args.has("days"):
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
 		if _args.has("select") and session.sim.CO.jobs.size():
@@ -744,6 +765,23 @@ func _on_world(w: Dictionary) -> void:
 			_toggle_window(_args.win)
 			if _args.has("countryhubs"):   # test: the cities of a country, from «Відкрити хаб у країні»
 				wins.country_hubs.emit(session.sim.PL[session.sim.CO.hq].cid)
+		if _args.has("netdlg"):   # test: a run dialog of the network (round / trunk / pick)
+			var sm := session.sim
+			if _args.has("netacc"):   # --netacc=N: N orders taken into the network first, some brought to the hub
+				for k in sm.CO.board.slice(0, int(_args.netacc)):
+					sm.net_accept(k)
+				for c in sm.CO.net.cs.slice(0, 3):
+					c.at = sm.CO.hq
+					c.st = "ready"
+			match String(_args.netdlg):
+				"pick":
+					var wt: Array = sm.CO.net.cs.filter(func(c): return c.st == "wait" and c.run < 0)
+					if wt.size():
+						_net_dialog("pick", {"cs": wt[0].id})
+				"trunk":
+					_net_dialog("trunk", {"a": sm.CO.hq})
+				_:
+					_net_dialog("round", {"a": sm.CO.hq})
 		if _args.has("thenedit"):   # test: from a running game back to a new world in the editor
 			await get_tree().create_timer(1.0).timeout
 			_end_game()
@@ -784,6 +822,9 @@ func _on_world(w: Dictionary) -> void:
 				await get_tree().process_frame
 	if _args.has("cam"):
 		var c: PackedStringArray = String(_args.cam).split(",")
+		if c[0] == "hq" and session != null:   # --cam=hq,dist: the headquarters
+			var hp: Dictionary = session.sim.PL[session.sim.CO.hq]
+			c = PackedStringArray([str(hp.x), str(hp.z), c[1]])
 		map.camera.look_at_point(Vector2(float(c[0]), float(c[1])), float(c[2]))
 		map.camera.tx = map.camera.ttx
 		map.camera.tz = map.camera.ttz
@@ -1120,6 +1161,7 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 		map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
 	wins.rename_requested.connect(_rename_dialog)
+	wins.net_dialog.connect(_net_dialog)
 	wins.country_hubs.connect(func(cid):   # «Відкрити хаб у країні»: its cities, to buy or rent a hub
 		var sm := session.sim
 		modals.push({"icon": "building", "eyebrow": "Відкрити хаб", "title": sm.states[cid].name, "close": true, "width": 760,
@@ -1155,7 +1197,8 @@ func _decision(spec: Dictionary) -> Dictionary:
 
 # ---------- windows ----------
 const WIN_HEAD := {"coHome": ["briefcase", "Компанія"], "coJobs": ["box", "Біржа вантажів"], "coTrips": ["road", "Рейси в дорозі"], "coFleet": ["truck", "Автопарк"],
-	"coNet": ["globe", "Мережа хабів"], "coStaff": ["users", "Персонал і менеджмент"], "coFin": ["coins", "Фінанси"], "news": ["news", "Стрічка новин"]}
+	"coNet": ["globe", "Мережа хабів"], "coStaff": ["users", "Персонал і менеджмент"], "coFin": ["coins", "Фінанси"], "news": ["news", "Стрічка новин"],
+	"coTerm": ["building", "Термінали"], "coCargo": ["sack", "Вантажі в мережі"]}
 
 
 func _toggle_window(id: String) -> void:
@@ -1315,6 +1358,21 @@ func _on_act(res: Dictionary) -> void:
 	if win.visible:
 		_win_tick()
 	map_ui.refresh()
+
+
+## the alternative balance: a run of the network (a round of a hub's area, a haul, a pick-up) in a dialog
+func _net_dialog(kind: String, args: Dictionary) -> void:
+	var sim := session.sim
+	var t: String = {"round": "Кільцевий рейс", "trunk": "Магістральний рейс", "pick": "Забрати вантаж"}.get(kind, "Рейс")
+	var sub := ""
+	if args.has("a"):
+		sub = sim.PL[args.a].name
+	elif args.has("cs"):
+		var c: Variant = sim._cs(args.cs)
+		if c != null:
+			sub = sim.PL[c.at].name
+	modals.push({"icon": {"round": "refresh", "trunk": "send", "pick": "truck"}.get(kind, "road"), "eyebrow": "Мережа терміналів · " + sub, "title": t, "close": true, "width": 780,
+		"content": NetWin.new(wins).dialog(kind, args, func(): modals.clear())})
 
 
 ## ACT.lpPlan: the route planner over the map; the windows, the rail and the cards step aside

@@ -318,6 +318,20 @@ func _place_tip(p: Dictionary) -> Control:
 		if p.get("air"):
 			iv.add_child(W._icl("check", "аеропорт%s" % (", важкі літаки" if s.get("heavy") else ""), Ui.GOOD, 12))
 		v.add_child(_sep_top(iv))
+	if sim.alt():   # the alternative balance: the warehouse here, the cargo waiting for a pick-up
+		var nv := Ui.vbox(3)
+		if h != null:
+			nv.add_child(W._icl("building", "Склад %s / %s т · %s т/добу" % [Ui.loc(sim.n_stored(p.id)), Ui.grp(sim.n_cap(p.id)), Ui.grp(sim.n_thr(p.id))], Ui.FG2, 12))
+		var wn := 0
+		for c in sim.CO.net.cs:
+			if c.at == p.id and c.st == "wait" and c.run < 0:
+				wn += 1
+		if wn:
+			nv.add_child(W._icl("box", "Чекають забору: %d" % wn, Ui.WARN, 12))
+		elif h == null and sim.n_kind(p.id) == "part":
+			nv.add_child(W._icl("handshake", "Термінал партнерів: перевалка й зберігання за плату", Ui.FG2, 12))
+		if nv.get_child_count():
+			v.add_child(_sep_top(nv))
 	if F.size():
 		var fv := Ui.vbox(4, [Ui.lbl("Підприємства · %d" % F.size())])
 		for f in F.slice(0, 3):
@@ -973,6 +987,10 @@ func _build_insp(keep: bool = false) -> void:
 			row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 			row.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: fly(pid))
 			B.add_child(row)
+			if sim.alt():   # the alternative balance: the terminal of this hub
+				var tb := W._btn("Термінал · склад %s / %s т · черга %s" % [Ui.loc(sim.n_stored(pid)), Ui.grp(sim.n_cap(pid)), Ui.days(sim.n_queue(pid)) if sim.n_queue(pid) > .05 else "немає"], "sm", "building", func(): open_window.emit("coTerm"))
+				tb.size_flags_horizontal = Control.SIZE_FILL
+				B.add_child(tb)
 	# the settlements
 	B.add_child(W._sect("Поруч" if sp != null else "Міста й села"))
 	for p in pls:

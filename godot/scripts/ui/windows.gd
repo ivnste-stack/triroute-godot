@@ -13,6 +13,7 @@ signal move_vehicle(v: Dictionary)  # ACT.coMove: pick a new home hub on the map
 signal show_order(k: Variant)       # ACT.coShow: the order's A and B on the map (null: hide)
 signal rename_requested             # the pencil by the company's name
 signal country_hubs(cid: int)        # a country of «Відкрити хаб»: the list of its cities to open a hub in
+signal net_dialog(kind: String, args: Dictionary)   # the alternative balance: a run dialog (NetWin.dialog)
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -93,7 +94,13 @@ func build(id: String, body: VBoxContainer, slice := false) -> void:
 		_plan_c = {}
 	match id:
 		"coHome": _home(body)
-		"coJobs": await _jobs(body)
+		"coJobs":
+			if sim.alt():
+				await NetWin.new(self).board(body)
+			else:
+				await _jobs(body)
+		"coTerm": NetWin.new(self).terms(body)
+		"coCargo": NetWin.new(self).cargo(body)
 		"coTrips": _trips(body)
 		"coFleet":
 			sim.plan_batch(false)   # no plans here, and the build may wait for the next frame
@@ -1066,7 +1073,7 @@ func _job_row(j: Dictionary) -> PanelContainer:
 	var e: float = sim.co_now() - j.t0
 	var stt := sim.co_job_state(j, e)
 	var T: Dictionary = D.VT[j.t]
-	var cg_n: String = "повернення в хаб" if j.get("ret") else sim.cargo_i[j.k.cg].n
+	var cg_n: String = "повернення в хаб" if j.get("ret") else ("вантажів мережі: %d" % j.net.n if j.get("net") != null else sim.cargo_i[j.k.cg].n)
 	var prog := clampf(e / j.tot, 0, 1)
 	var left := maxf(0, j.tot - e)
 	var late_by: float = sim.day + left - j.dl
