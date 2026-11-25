@@ -396,7 +396,15 @@ func in_game() -> bool:
 	return session != null and session.sim != null and hud.visible
 
 
-## the test sandbox of the settings (Sim.act_sandbox)
+## the fast progress of the settings (Sim.act_fast)
+func fast_mode() -> void:
+	if not in_game():
+		return
+	_on_act(session.sim.act_fast())
+	_win_tick(true)
+
+
+## the test sandbox (Sim.act_sandbox): the command-line tests only
 func sandbox() -> void:
 	if not in_game():
 		return
@@ -631,6 +639,8 @@ func _on_world(w: Dictionary) -> void:
 				for p in ps.slice(0, maxi(0, int(_args.hubs) - CO.hubs.size())):
 					CO.cash = maxf(CO.cash, sm.hub_cost(p) * 2)
 					sm.act_hub(p.id, false)
+		if _args.has("fast"):   # test: the fast progress of the settings
+			fast_mode()
 		if _args.get("plan", "") == "mm":   # test: the orders stay on the board for the player
 			session.sim.CO.auto = false
 		if _args.has("days"):

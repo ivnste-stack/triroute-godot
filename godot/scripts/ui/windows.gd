@@ -538,7 +538,7 @@ func _home(body: VBoxContainer) -> void:
 		var got: bool = i <= CO.tier
 		var cur: bool = i == CO.tier
 		var nx: bool = i == CO.tier + 1
-		var pill_t: String = "Поточна" if cur else ("Отримано" if got else ("Наступна" if nx else "%.1f★ · %s" % [l.rat, Ui.usd(l.cost)]))
+		var pill_t: String = "Поточна" if cur else ("Отримано" if got else ("Наступна" if nx else "%.1f★ · %s" % [(maxf(3.0, l.rat - .5) if CO.get("fast", false) and l.rat > 0 else l.rat), Ui.usd(l.cost)]))
 		var head := Ui.hbox(10, [_tt("%d. %s" % [i, l.n], l.d, "check" if got else "lock", Ui.GOOD if got else (Ui.WARN if nx else Ui.MUTED)),
 			Ui.pill(pill_t, "acc" if cur else ("good" if got else ("warn" if nx else "")))])
 		var v := Ui.vbox(10, [head])

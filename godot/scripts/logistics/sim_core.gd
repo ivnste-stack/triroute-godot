@@ -100,6 +100,11 @@ func _places() -> void:
 
 
 # ---------- helpers (08e-company.js) ----------
+## the fast progress (settings, for testing every stage of the game quickly): orders pay ×10
+func fast_k() -> float:
+	return 10.0 if CO.get("fast", false) else 1.0
+
+
 func msk(id: String) -> float:
 	return CO.mgr[id].skill / 10.0 if CO.has("mgr") and CO.mgr.has(id) else 0.0
 
@@ -986,6 +991,7 @@ func _co_gen() -> Variant:
 	for L in legs:
 		base += D.CH_BASE[L.m] * (1.0 if is_same(L, ml) else .25) + D.CH_RATE[L.m] * L.len * JS.pow(tons, .85)
 	var pay := JS.round_js(base * cg.k * pk * (1 + urg * .45) * (1 + risk * .18) * (.8 + CO.rating * .07) * (1 + msk("cco") * .12) * (1.3 if min_r else 1.0) * (1.4 if aid else 1.0) * rnd(.9, 1.1) * (1 + gr * .03) * (rnd(1.4, 1.6) if prem else 1.0) * (1.35 if vip else 1.0))
+	pay *= fast_k()   # the fast progress of the settings: every order pays ten times as much
 	var dl_k := .65 if prem else (1.25 if gr < 2 else 1.0)
 	var k := {"id": CO.uid, "from": from, "to": to, "cg": cg.id, "tons": tons, "pay": pay, "dlDays": JS.fixed1(dl_days * dl_k), "mode": ml.m, "risk": risk,
 		"minR": min_r, "len": len_, "exp": day + (rint(2, 4) if prem else rint(5, 12))}
@@ -1846,7 +1852,7 @@ func lp_make_multi(k: Dictionary) -> Variant:
 		var r: Dictionary = co_route("air", A.id, d.id)
 		var crit: bool = d.id == crit_id
 		multi.append({"to": d.id, "tons": tn, "dl": dl[d.id], "crit": crit,
-			"pay": JS.round_js((6000 + 260 * r.len * JS.pow(tn, .85)) * cg.k * price_k(d.cid) * (1.35 if crit else 1.0) * rnd(.95, 1.1) * 1.15)})
+			"pay": JS.round_js((6000 + 260 * r.len * JS.pow(tn, .85)) * cg.k * price_k(d.cid) * (1.35 if crit else 1.0) * rnd(.95, 1.1) * 1.15) * fast_k()})
 	var mk := k.duplicate()
 	mk.to = best.back().id
 	var tt := 0.0
@@ -1885,7 +1891,7 @@ func cons_pay(j: Dictionary, o: Dictionary) -> void:
 	var w := minf(.05, .01 + JS.log10(1 + pay) * .005)
 	CO.rating = JS.clamp_js(CO.rating + (s - CO.rating) * w, 1, 5)
 	var xp := int(JS.round_js(co_xp(j, o, late) * 1.25))   # planning a shared trip teaches more
-	CO.xp = CO.get("xp", 0) + xp
+	CO.xp = CO.get("xp", 0) + xp * (5.0 if CO.get("fast") else 1.0)
 	var tone := "warn" if late > 0 else "good"
 	co_news(tone, "truck", "%s: %s доставлено в %s (збірний рейс)" % [CO.name, cg.n.to_lower(), PL[o.to].name])
 	_last({"d": date.duplicate(), "from": o.from, "to": o.to, "cg": o.cg, "pay": pay, "tone": tone, "mode": "road"})
@@ -2208,7 +2214,7 @@ func co_complete(j: Dictionary) -> void:
 		CO.deliv += 1
 		CO.tons += k.tons
 		var xp := co_xp(j, k, late)
-		CO.xp = CO.get("xp", 0) + xp
+		CO.xp = CO.get("xp", 0) + xp * (5.0 if CO.get("fast") else 1.0)
 		j.xp = xp
 	var tone := "bad" if j.lost else ("warn" if late > 0 or j.dmg > .05 else "good")
 	co_news(tone, "", "%s: %s доставлено в %s" % [CO.name, cg.n.to_lower(), PL[k.to].name])

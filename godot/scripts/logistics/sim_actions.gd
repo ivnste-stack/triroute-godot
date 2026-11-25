@@ -302,8 +302,11 @@ func lic_ok() -> Dictionary:
 		return {"ok": false, "r": []}
 	var n: Dictionary = D.LIC[CO.tier + 1]
 	var r := []
-	r.append([CO.rating >= n.rat, "Рейтинг %.1f" % n.rat, "%.2f" % CO.rating])
-	r.append([CO.cdel >= n.del, "Доставок %d" % n.del, str(int(CO.cdel))])
+	var f: bool = CO.get("fast", false)   # the fast progress: a fifth of the deliveries, a lower rating
+	var rat: float = maxf(3.0, n.rat - .5) if f and n.rat > 0 else float(n.rat)
+	var dn: int = int(ceil(n.del * .2)) if f else int(n.del)
+	r.append([CO.rating >= rat, "Рейтинг %.1f" % rat, "%.2f" % CO.rating])
+	r.append([CO.cdel >= dn, "Доставок %d" % dn, str(int(CO.cdel))])
 	if n.con > 0:
 		r.append([CO.cdel >= n.con, "Контрактів %d" % n.con, str(int(CO.cdel))])
 	if n.get("xp", 0) > 0:
@@ -606,6 +609,20 @@ func act_move(v: Dictionary, pid: int) -> Dictionary:
 ## the test switch of the settings: endless money (topped up by the game), the highest grade, licence and
 ## rating, every permit, upgrade and manager, hubs of the highest level in the headquarters and in the
 ## nearest port, airport and railway cities, 100 vehicles of every type with their crews
+## the fast progress of the settings: the orders pay ten times as much (those on the board too), experience
+## comes five times as fast, a licence needs a fifth of the deliveries and a lower rating — every stage of the
+## game within reach in a short while, with the money still earned
+func act_fast() -> Dictionary:
+	if CO.get("fast", false):
+		return {}
+	CO.fast = true
+	for k in CO.board:
+		k.pay = JS.round_js(k.pay * 10.0)
+		for d in k.get("multi", []) if k.get("multi") != null else []:
+			d.pay = JS.round_js(d.pay * 10.0)
+	return _toast("good", "Швидкий прогрес", "Замовлення платять ×10, досвід ×5, ліцензії вимагають у 5 разів менше доставок")
+
+
 func act_sandbox() -> Dictionary:
 	CO.sandbox = true
 	CO.cash = 1e12
