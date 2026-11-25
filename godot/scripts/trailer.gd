@@ -418,7 +418,7 @@ func _tick_overlay(dt: float) -> void:
 	_cash_last = cash
 	_cash_acc += d
 	_cash_acc_t += dt
-	if _cash_acc_t > .5 and absf(_cash_acc) >= 4000:
+	if _cash_acc_t > .5 and absf(_cash_acc) >= 4000 and show_cash:
 		_float(_cash_acc)
 		_flash = 1.0
 		_flash_col = GREEN if _cash_acc > 0 else RED
