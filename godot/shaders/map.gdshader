@@ -5,7 +5,7 @@
 // Not ported because the board never uses them: the coastal wall slab (wallOff=1 on the board),
 // the occupation hatching (hasOcc), the fine logistics grid (lgrid: only off the board).
 shader_type spatial;
-render_mode unshaded, cull_disabled;   // the distance haze is the engine's depth fog (MapView)
+render_mode unshaded, cull_disabled, fog_disabled;
 
 uniform sampler2D t0 : filter_linear_mipmap_anisotropic, repeat_disable;   // terrain: coast/height, diagonal, light, noise
 uniform sampler2D tb : filter_linear_mipmap_anisotropic, repeat_disable;   // distance to a state border
@@ -152,6 +152,9 @@ void fragment() {
 		c += vec3(.6, .8, 1.) * g1 * .03 * (1. - land * .75) + vec3(.6, .8, 1.) * g2 * .05 * (1. - land * .6);
 		c = mix(cf, c, mask);
 	}
+	// the distance haze: the farther from the camera, the more the background (zoomed out the board darkens)
+	float fd = length(wp - CAMERA_POSITION_WORLD);
+	c = mix(c, bg, smoothstep(14., 34., fd));
 	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	// the depth: land where it is, water far below (3 world units, the tallest wall is ~.4): a wall shows

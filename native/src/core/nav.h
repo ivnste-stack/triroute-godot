@@ -48,6 +48,7 @@ private:
 	const Board &b_;
 	std::vector<int> nown_;         // state per lattice node
 	std::vector<uint8_t> water_;    // water cell per lattice square (boardSea)
+	std::vector<int> wcomp_;        // the connected body of water of every water square (-1 land)
 	bool blocked(int n, int m, bool rail, const Blocks &blk) const;
 };
 

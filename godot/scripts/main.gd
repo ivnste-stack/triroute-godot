@@ -635,7 +635,7 @@ func _on_world(w: Dictionary) -> void:
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
 		if _args.has("select") and session.sim.CO.jobs.size():
-			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret"))
+			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret") and (String(_args.select) in ["", "true"] or x.mode == _args.select))
 			map_ui.select_job(js[0] if js.size() else session.sim.CO.jobs[0], true)
 		if _args.has("plan"):
 			if _args.plan == "road" and _args.has("sandbox"):   # test: plenty of vehicles and every licence first

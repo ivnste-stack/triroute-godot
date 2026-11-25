@@ -160,7 +160,7 @@ func _draw_t() -> void:
 		if gv < 1 and camera.dist < 18:
 			_text("GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
 		var hit := {"j": j, "x": sp.x, "y": sp.y, "r": 14, "wx": pos[0], "wz": pos[1]}
-		if is_same(selected, j) and st.seg >= 0:   # where it heads on the screen: its card stays clear of the trail
+		if is_same(selected, j) and st.seg >= 0:   # where it heads on the screen: its card stays clear of the route ahead
 			var ds: float = .04 * sim.CO_DU
 			var pa := sim.co_pos_at(j, maxf(0.0, st.s - ds))
 			var pb := sim.co_pos_at(j, st.s + ds)

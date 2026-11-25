@@ -680,13 +680,13 @@ func _place_card() -> void:
 		if h.has("j") and is_same(h.j, j):
 			var w := _card.size.x
 			var hh := _card.size.y
-			# on the side the vehicle heads to, so the trail behind it stays in view; the side changes only on a
-			# clear turn, not at every wobble of the road
+			# behind the vehicle, away from where it heads: the dashed route ahead stays in view; the side changes
+			# only on a clear turn, not at every wobble of the road
 			var dx: float = h.get("dx", 0.0)
 			if dx > .35:
-				_card_side = 1
-			elif dx < -.35:
 				_card_side = -1
+			elif dx < -.35:
+				_card_side = 1
 			var lx: float = h.x + 22 if _card_side > 0 else h.x - w - 22
 			if lx + w > size.x - 12:
 				lx = h.x - w - 22

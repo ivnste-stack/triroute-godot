@@ -69,6 +69,30 @@ Nav::Nav(const World &w, const Board &b) : w_(w), b_(b) {
 				if (own_at(x0 + p[0] * b.st, z0 + p[1] * b.st) >= 0) { wat = false; break; }
 			water_[size_t(j) * W + i] = wat ? 1 : 0;
 		}
+	// the bodies of water (squares joined by a side): ports on different ones have no sea route
+	wcomp_.assign(size_t(W) * H, -1);
+	int nc = 0;
+	std::vector<int> q;
+	for (int c0 = 0; c0 < W * H; c0++) {
+		if (!water_[size_t(c0)] || wcomp_[size_t(c0)] >= 0) continue;
+		wcomp_[size_t(c0)] = nc;
+		q.assign(1, c0);
+		while (!q.empty()) {
+			const int c = q.back();
+			q.pop_back();
+			const int x = c % W, y = c / W;
+			const int nb[4][2] = {{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}};
+			for (auto &e : nb) {
+				if (e[0] < 0 || e[1] < 0 || e[0] >= W || e[1] >= H) continue;
+				const size_t m = size_t(e[1]) * W + e[0];
+				if (water_[m] && wcomp_[m] < 0) {
+					wcomp_[m] = nc;
+					q.push_back(int(m));
+				}
+			}
+		}
+		nc++;
+	}
 }
 
 int Nav::own_at(double x, double z) const {
@@ -201,60 +225,115 @@ std::vector<float> Nav::path_w(int a, int b, bool rail, const Blocks *blk, const
 	return pts;
 }
 
+// Sea routes along the lines of the map's triangle mesh: from corner to corner of the lattice squares, along
+// their sides and along the diagonal each square is drawn with (World::sqd: 1 the (0,0)-(1,1) diagonal, 0 the
+// other one), so a route on the water follows the triangles instead of stepping through the squares' centres.
+// A route keeps to open water (a side with land next to it costs more) and goes straight where it can: a small
+// cost for every turn joins equal ways into long runs instead of a zigzag of short ones.
 std::vector<float> Nav::sea(int ta, int tb) const {
 	const Town &A = b_.towns[ta], &B = b_.towns[tb];
 	if (A.wc_i < 0 || B.wc_i < 0) return {};
-	const int W = b_.nx - 1, H = b_.nz - 1, N = W * H;
-	std::vector<float> g(N, 1e9f);
-	std::vector<int> prev(N, -1);
-	const int s0 = A.wc_j * W + A.wc_i, e0 = B.wc_j * W + B.wc_i, ex = B.wc_i, ey = B.wc_j;
+	const int W = b_.nx - 1, H = b_.nz - 1;          // lattice squares (water_)
+	const int NX = b_.nx, NZ = b_.nz, N = NX * NZ;   // corners
+	if (wcomp_[size_t(A.wc_j) * W + A.wc_i] != wcomp_[size_t(B.wc_j) * W + B.wc_i]) return {};   // different seas
+	const double ST = b_.st;
+	// map squares per lattice square: 1, or 2 on the fine test lattice (a map line every other lattice line)
+	const int R = std::max(1, int(js_round(.125 / ST)));
+	auto wat = [&](int i, int j) { return i >= 0 && j >= 0 && i < W && j < H && water_[size_t(j) * W + i] != 0; };
+	auto diag = [&](int i, int j) {   // the diagonal of lattice square (i, j): 1 main, 0 the other, -1 none
+		const int si = i / R, sj = j / R, a = i % R, b = j % R;
+		const int d = (si < w_.sqw && sj < w_.sqh) ? w_.sqd[size_t(sj) * w_.sqw + si] : 0;
+		if (d == 1) return a == b ? 1 : -1;
+		return a + b == R - 1 ? 0 : -1;
+	};
+	static const int DX[8] = {1, 1, 0, -1, -1, -1, 0, 1}, DZ[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+	// the cost of the step from corner (x, z) in direction d, or < 0 when it is not a line of the mesh on water
+	// relaxed: a second try when the mesh lines alone do not connect the ports (a strait one fine square wide):
+	// steps off the lines are allowed then, at a price
+	bool relaxed = false;
+	auto step = [&](int x, int z, int d) -> double {
+		const int dx = DX[d], dz = DZ[d], x2 = x + dx, z2 = z + dz;
+		if (x2 < 0 || z2 < 0 || x2 >= NX || z2 >= NZ) return -1;
+		if (dx && dz) {
+			const int ci = std::min(x, x2), cj = std::min(z, z2);
+			if (!wat(ci, cj)) return -1;
+			const int want = (dx == dz) ? 1 : 0;
+			return diag(ci, cj) == want ? 1.4142 : (relaxed ? 1.4142 * 3 : -1);
+		}
+		const double off = relaxed ? 3.0 : -1.0;
+		if (dz == 0) {   // along a horizontal line: the squares above and below it
+			const int ci = std::min(x, x2);
+			const bool u = wat(ci, z - 1), v = wat(ci, z);
+			const double c = (u && v) ? 1.0 : ((u || v) ? 2.5 : -1);
+			return (c < 0 || z % R == 0) ? c : (off < 0 ? -1 : c * off);
+		}
+		const int cj = std::min(z, z2);
+		const bool u = wat(x - 1, cj), v = wat(x, cj);
+		const double c = (u && v) ? 1.0 : ((u || v) ? 2.5 : -1);
+		return (c < 0 || x % R == 0) ? c : (off < 0 ? -1 : c * off);
+	};
+	const double TURN = .06;
+	const int S = 9;   // a state: a corner and the direction it was reached in (8: the start)
+	std::vector<double> g;
+	std::vector<int> prev;
+	std::vector<uint8_t> done;
+	const double bx = B.wc_i + .5, bz = B.wc_j + .5;
+	auto hfun = [&](int x, int z) {   // octile distance to the target square (a lower bound: turns cost extra)
+		const double ax = std::fabs(x - bx), az = std::fabs(z - bz);
+		return std::max(ax, az) + (1.4142 - 1) * std::min(ax, az);
+	};
+	std::vector<uint8_t> goal(size_t(N), 0);
+	for (int c = 0; c < 4; c++) goal[size_t(B.wc_j + c / 2) * NX + B.wc_i + c % 2] = 1;
+	int end = -1;
+	for (int pass = 0; pass < 2 && end < 0; pass++) {
+	relaxed = pass == 1;
+	g.assign(size_t(N) * S, 1e18);
+	prev.assign(size_t(N) * S, -1);
+	done.assign(size_t(N) * S, 0);
 	Heap h;
-	// the key each cell was last pushed with: an older, larger entry popped later is stale and skipped (its
-	// expansion would change nothing: the cell's best cost was already spread to its neighbours)
-	std::vector<double> lastk(N, -1.0);
-	// on the fine test lattice a float cost "improves" by rounding noise along thousands of equal paths
-	// (millions of pushes, seconds a route): an improvement must be real there
-	const double eps = b_.fine ? 1e-3 : 0.0;
-	g[s0] = 0;
-	h.push(0, s0);
-	lastk[s0] = 0;
+	for (int c = 0; c < 4; c++) {   // the start: the corners of the port's water square
+		const int x = A.wc_i + c % 2, z = A.wc_j + c / 2;
+		const double g0 = js_hypot(-b_.wx / 2 + x * ST - A.x, -b_.wz / 2 + z * ST - A.z) / ST;
+		const size_t s = (size_t(z) * NX + x) * S + 8;
+		if (g0 < g[s]) {
+			g[s] = g0;
+			h.push(g0 + hfun(x, z), int(s));
+		}
+	}
 	while (!h.empty()) {
-		double kk = h.top();
-		int n = h.pop();
-		if (n == e0) break;
-		if (kk != lastk[n]) continue;
-		int x = n % W, y = n / W;
-		for (int dy = -1; dy <= 1; dy++)
-			for (int dx = -1; dx <= 1; dx++) {
-				if (!dx && !dy) continue;
-				int nx = x + dx, ny = y + dy;
-				if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-				int m = ny * W + nx;
-				if (!water_[m]) continue;
-				if (dx && dy && (!water_[size_t(y) * W + nx] || !water_[size_t(ny) * W + x])) continue;
-				double ng = double(g[n]) + ((dx && dy) ? 1.4142 : 1);
-				if (ng < double(g[m]) - eps) {
-					g[m] = float(ng);
-					prev[m] = n;
-					double k2 = ng + js_hypot(nx - ex, ny - ey);
-					h.push(k2, m);
-					lastk[m] = k2;
-				}
+		const int s = h.pop();
+		if (done[size_t(s)]) continue;
+		done[size_t(s)] = 1;
+		const int n = s / S, dir = s % S, x = n % NX, z = n / NX;
+		if (goal[size_t(n)]) {
+			end = s;
+			break;
+		}
+		for (int d = 0; d < 8; d++) {
+			const double c = step(x, z, d);
+			if (c < 0) continue;
+			const int m = (z + DZ[d]) * NX + x + DX[d];
+			const size_t t = size_t(m) * S + d;
+			if (done[t]) continue;
+			const double ng = g[size_t(s)] + c + ((dir != 8 && dir != d) ? TURN : 0.0);
+			if (ng < g[t]) {
+				g[t] = ng;
+				prev[t] = s;
+				h.push(ng + hfun(m % NX, m / NX), int(t));
 			}
+		}
 	}
-	if (!(g[e0] < 1e9f)) return {};
-	std::vector<int> cells;
-	for (int n = e0; n >= 0; n = prev[n]) {
-		cells.push_back(n);
-		if (n == s0) break;
 	}
-	std::reverse(cells.begin(), cells.end());
+	if (end < 0) return {};
+	std::vector<int> nodes;
+	for (int s = end; s >= 0; s = prev[size_t(s)]) nodes.push_back(s / S);
+	std::reverse(nodes.begin(), nodes.end());
 	std::vector<float> pts = {float(A.x), float(A.z)};
-	for (size_t k = 0; k < cells.size(); k++) {
-		int c = cells[k];
-		if (k > 0 && k < cells.size() - 1 && c - cells[k - 1] == cells[k + 1] - c) continue;
-		pts.push_back(float(-b_.wx / 2 + (c % W + .5) * b_.st));
-		pts.push_back(float(-b_.wz / 2 + (c / W + .5) * b_.st));
+	for (size_t k = 0; k < nodes.size(); k++) {
+		const int c = nodes[k];
+		if (k > 0 && k < nodes.size() - 1 && c - nodes[k - 1] == nodes[k + 1] - c) continue;
+		pts.push_back(float(-b_.wx / 2 + (c % NX) * ST));
+		pts.push_back(float(-b_.wz / 2 + (c / NX) * ST));
 	}
 	pts.push_back(float(B.x));
 	pts.push_back(float(B.z));

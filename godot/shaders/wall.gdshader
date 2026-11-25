@@ -5,7 +5,7 @@
 // The upper half is soil shaded by the light, the lower half water; thin dark lines at the ends and a light
 // line at the water level, ~1.5 px whatever the zoom.
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never;   // fogged by the engine like the map
+render_mode unshaded, cull_disabled, depth_draw_never, fog_disabled;
 
 uniform float wall_h = 0.0625;    // the height, following the view like the original (set by MapView)
 
@@ -45,6 +45,9 @@ void fragment() {
 	c = mix(c, vec3(10.0, 16.0, 22.0) / 255.0, al_end);
 	c = mix(c, vec3(170.0, 225.0, 250.0) / 255.0, al_lvl);
 	a = max(a, max(al_end, al_lvl));
+	// the same distance haze as the map
+	float fd = length(v_wp - CAMERA_POSITION_WORLD);
+	c = mix(c, vec3(.022, .038, .055), smoothstep(14., 34., fd));
 	c = mix(c, c * vec3(.26, .33, .52) + vec3(.004, .01, .03), night);
 	ALBEDO = srgb_to_linear(pow(c, vec3(.95)));
 	ALPHA = a;
