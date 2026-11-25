@@ -119,10 +119,6 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 					q.append(m)
 	if size.is_empty():
 		return
-	var big := 0
-	for i in size.size():
-		if size[i] > size[big]:
-			big = i
 	# the distance of every water square to the land (8 neighbours), and to the edge of the board
 	var dist := PackedInt32Array()
 	dist.resize(N)
@@ -148,6 +144,24 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 				if dist[m] > dist[c] + 1:
 					dist[m] = dist[c] + 1
 					q.append(m)
+	# a bay, a gulf, a strait: water that land surrounds on most sides — rays in 12 directions, how many meet
+	# land within R squares (the board's edge is open ocean); worked out only for the squares a name could take
+	const R := 14
+	var dirs := []
+	for k in 12:
+		dirs.append(Vector2(cos(k * TAU / 12), sin(k * TAU / 12)))
+	var enclosed := func(x: int, y: int) -> float:
+		var hit := 0
+		for dv: Vector2 in dirs:
+			for t in range(1, R + 1):
+				var px := int(round(x + dv.x * t))
+				var py := int(round(y + dv.y * t))
+				if px < 0 or py < 0 or px >= W or py >= H:
+					break
+				if not wat[py * W + px]:
+					hit += 1
+					break
+		return hit / 12.0
 	# the squares by their room (the distance to land and to the edge), the widest first
 	var buckets := {}
 	var dmax := 0
@@ -165,6 +179,8 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 			buckets[d] = PackedInt32Array()
 		buckets[d].append(c)
 		dmax = maxi(dmax, d)
+	var max_sea := clampi(N / 2600, 4, 12)   # a few seas: the water is mostly ocean
+	var ocean_gap := minf(W, H) * .42      # one ocean name for each wide expanse
 	var r := Mulberry.new((seed_value * 7919 + 17) & 0xFFFFFFFF)
 	var seas := _shuffled(SEAS, r)
 	var lakes := _shuffled(LAKES, r)
@@ -191,18 +207,27 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 			while x + rr + 1 < W and comp[c + rr + 1] == id:
 				rr += 1
 			var cx := x + (rr - rl) * .5
+			# water closed by land (inside a continent): a sea, or a lake when small; open water: an ocean where it
+			# is wide, a sea only in a bay or a gulf that reaches deep into the land
+			var closed: bool = not edge[id]
+			var kind := ""
+			if closed:
+				kind = "lake" if size[id] < N * .0025 else "sea"
+			elif d >= maxi(6, int(dmax * .5)):
+				kind = "ocean"
+			elif d >= 2 and d <= 7 and x % 2 == 0 and y % 2 == 0 and n_sea < max_sea and enclosed.call(x, y) >= .82:
+				kind = "sea"
+			else:
+				continue
 			var ok := true
 			for p in placed:
-				# the same body: the names keep well apart; across land only their texts may not meet
-				if p[4] == id and Vector2(cx - p[0], y - p[1]).length() < p[2] or p[4] != id and absf(cx - p[0]) < p[3] + 4 and absf(y - p[1]) < 3:
+				# the same body: the names keep apart (an ocean far from another ocean); across land only their
+				# texts may not meet
+				var rad: float = p[2] if p[5] == kind else p[6]
+				if p[4] == id and Vector2(cx - p[0], y - p[1]).length() < rad or p[4] != id and absf(cx - p[0]) < p[3] + 4 and absf(y - p[1]) < 3:
 					ok = false
 					break
 			if not ok:
-				continue
-			# a body closed by land: a sea if it is of some size, a lake if small
-			var closed: bool = not edge[id] and size[id] < N * .03
-			var kind := ("lake" if size[id] < N * .0025 else "sea") if closed else ("ocean" if id == big and d >= maxi(6, int(dmax * .55)) else "sea")
-			if kind == "sea" and not closed and d < 3:
 				continue
 			var name := ""
 			match kind:
@@ -217,7 +242,7 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 						name = oceans[n_oc % oceans.size()]
 					n_oc += 1
 				"sea":
-					if n_sea >= 20:
+					if n_sea >= max_sea:
 						continue
 					name = seas[n_sea % seas.size()]
 					n_sea += 1
@@ -234,7 +259,8 @@ func _generated(own: PackedByteArray, mw: int, mh: int, S: int, seed_value: int)
 			hgt = minf(hgt, span * .88 / maxf(1.0, name.length() * (.9 if kind == "ocean" else .62)))
 			hgt = clampf(hgt, .06, .36 if kind == "ocean" else .24)
 			var half_w := name.length() * hgt * (.9 if kind == "ocean" else .62) * .5 / cell
-			placed.append([cx, y, d * (2.6 if kind == "ocean" else (2.2 if kind == "sea" else 1.5)) + 3, half_w, id])
+			var near: float = d * (2.6 if kind == "ocean" else (2.2 if kind == "sea" else 1.5)) + 3
+			placed.append([cx, y, maxf(near, ocean_gap) if kind == "ocean" else near, half_w, id, kind, maxf(near, half_w + 3)])
 			_add(name, (cx + .5) * cell - mw / 160.0, (y + .5) * cell - mh / 160.0, hgt, kind == "ocean")
 
 

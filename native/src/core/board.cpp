@@ -282,7 +282,7 @@ void gen_towns(Ctx &C, uint32_t seed, const std::vector<double> &state_pop) {
 }
 
 // ---------- bCrossings ----------
-struct Cross { double ws, s, x, z; int a, b; };
+struct Cross { double ws, s, x, z; int a, b; double x0 = 0, z0 = 0, x1 = 0, z1 = 0; };   // x0..x1: the sampled step it lies in
 template <typename F>
 std::vector<Cross> b_crossings(const Ctx &C, const std::vector<F> &pts, double eco) {
 	std::vector<Cross> out;
@@ -300,6 +300,7 @@ std::vector<Cross> b_crossings(const Ctx &C, const std::vector<F> &pts, double e
 			if (o >= 0) {
 				if (prev >= 0 && o != prev) {
 					double ax = px, az = pz, bx = x, bz = z, as = ps, bs = s + L * t;
+					const double ox0 = ax, oz0 = az, ox1 = bx, oz1 = bz;
 					for (int q = 0; q < 14; q++) {
 						double mx = (ax + bx) / 2, mz = (az + bz) / 2, ms = (as + bs) / 2;
 						int m = C.bOwn(mx, mz);
@@ -307,7 +308,7 @@ std::vector<Cross> b_crossings(const Ctx &C, const std::vector<F> &pts, double e
 						else { bx = mx; bz = mz; bs = ms; }
 					}
 					double ws = (as + bs) / 2;
-					if (out.empty() || ws - out.back().ws > .12) out.push_back({ws, ws * eco, (ax + bx) / 2, (az + bz) / 2, prev, o});
+					if (out.empty() || ws - out.back().ws > .12) out.push_back({ws, ws * eco, (ax + bx) / 2, (az + bz) / 2, prev, o, ox0, oz0, ox1, oz1});
 				}
 				prev = o;
 				px = x;
@@ -462,6 +463,39 @@ std::vector<Crossing> board_crossings(const World &w, const Board &b, const std:
 }
 
 namespace {
+// the owner of a world point by the lattice triangles themselves (the borders as they are drawn), not by
+// the raster of texture pixels: -1 sea or neutral
+int lat_own(const Ctx &C, double x, double z) {
+	const World &w = C.w;
+	const double u = (x + C.WX / 2) / C.WX * C.MW / w.p.tri_s, v = (z + C.WZ / 2) / C.WZ * C.MH / w.p.tri_s;
+	const int i = int(std::floor(u)), j = int(std::floor(v));
+	if (i < 0 || j < 0 || i >= w.sqw || j >= w.sqh) return -1;
+	const double fx = u - i, fy = v - j;
+	const size_t k = size_t(j) * w.sqw + i;
+	const int h = w.sqd[k] ? (fx > fy ? 0 : 1) : (fx + fy < 1 ? 0 : 1);
+	const int o = w.sql[k * 2 + h];
+	return o >= 0 && o < NEU ? o : -1;
+}
+
+// where a crossing meets the border line exactly (the crossing itself is found on the pixel raster, up to
+// a pixel off the drawn line): bisected along the road by the lattice owner; the crossing when that fails
+void exact_cross(const Ctx &C, const Cross &c, double &dx, double &dz) {
+	dx = c.x;
+	dz = c.z;
+	const double L = js_hypot(c.x1 - c.x0, c.z1 - c.z0);
+	if (L < 1e-9) return;
+	const double ux = (c.x1 - c.x0) / L, uz = (c.z1 - c.z0) / L, r = C.B.st * .3;
+	double ax = c.x - ux * r, az = c.z - uz * r, bx = c.x + ux * r, bz = c.z + uz * r;
+	if (lat_own(C, ax, az) != c.a || lat_own(C, bx, bz) != c.b) return;
+	for (int q = 0; q < 30; q++) {
+		const double mx = (ax + bx) / 2, mz = (az + bz) / 2;
+		if (lat_own(C, mx, mz) == c.a) { ax = mx; az = mz; }
+		else { bx = mx; bz = mz; }
+	}
+	dx = (ax + bx) / 2;
+	dz = (az + bz) / 2;
+}
+
 // the roads, railways, ports, airports and checkpoints of a board whose towns are placed (boardRoads,
 // boardPorts, boardCheckpoints); net: the roads and railways drawn in the editor (nullptr: generated)
 void finish_board(uint32_t seed, Ctx &C, bool fine, const BoardNet *net, bool given_towns) {
@@ -917,7 +951,9 @@ void finish_board(uint32_t seed, Ctx &C, bool fine, const BoardNet *net, bool gi
 					if (js_hypot(q.first - c.x, q.second - c.z) < B.st * .3) { near = true; break; }
 				if (near) continue;
 				seenP.push_back({c.x, c.z});
-				B.cps.push_back({c.x, c.z, c.a, c.b, rail});
+				Checkpoint cp{c.x, c.z, c.a, c.b, rail};
+				exact_cross(C, c, cp.dx, cp.dz);
+				B.cps.push_back(cp);
 			}
 		};
 		for (auto &h : B.hw) scan(h.p, false);

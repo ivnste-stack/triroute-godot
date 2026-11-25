@@ -138,6 +138,11 @@ func _draw_t() -> void:
 			var tp := PackedVector2Array([sp])
 			var tc := PackedColorArray([Color(rgb, .75 * gv)])
 			var kk := 6.0 / tn
+			if j.mode != "air":   # on the ground and at sea: along the route itself, through its every bend
+				var trl := _trail_path(j, st.s, 9 * step, rgb, gv, tp, tc)
+				tp = trl[0]
+				tc = trl[1]
+				tn = 0
 			for k in range(1, tn + 1):   # 6 points 1.5 steps apart (the original's 9), or 3 points 3 steps apart
 				var s2: float = st.s - k * step * 1.5 * kk
 				if s2 < 0:
@@ -158,9 +163,9 @@ func _draw_t() -> void:
 				if fx != null and fx.live:   # a GPS blackout fades the trail too: drawn with it
 					fx.tp = tp
 					fx.tc = tc
-					fx.w = (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8
-				else:
-					draw_polyline_colors(tp, tc, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8, true)
+					fx.w = maxf(2.0 * dpr, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8)
+				else:   # at least 2 px: a thinner antialiased line shimmers at its edges as it moves
+					draw_polyline_colors(tp, tc, maxf(2.0 * dpr, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8), true)
 		if j.mode == "air" and alt > 0:
 			var sh: Variant = _P(pos[0], 0, pos[1])
 			if sh != null:
@@ -203,7 +208,6 @@ func _marker(ci: CanvasItem, j: Dictionary, sp: Vector2, r: float, rgb: Color, i
 		for w in (2 if amb else 1):
 			var f := fmod(t / .9 + w * .5, 1.0)
 			ci.draw_arc(sp, r + 2 * dpr + f * 14 * dpr, 0, TAU, 32, Color(wc, .9 * (1 - f) * gv), 1.8 * dpr, true)
-	DotTex.draw(ci, DotTex.soft(), sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv))
 	DotTex.draw(ci, DotTex.dot(), sp, r, Color(rgb, ((.35 + .65 * bl) if red and inc != null else 1.0) * gv))
 	if inc != null and red and camera.dist < 16:
 		_text_on(ci, "!", Vector2(sp.x - 2.5 * dpr, sp.y), int(round(9 * dpr)), Color(Color("#06121b"), gv))
@@ -211,6 +215,40 @@ func _marker(ci: CanvasItem, j: Dictionary, sp: Vector2, r: float, rgb: Color, i
 		_text_on(ci, "×%d" % j.n, Vector2(sp.x + r + 3 * dpr, sp.y - r - 3 * dpr), int(round(9 * dpr)), Color(rgb, gv))
 	if gv < 1 and camera.dist < 18:
 		_text_on(ci, "GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
+
+
+## the trail of a trip on the ground or at sea: from the vehicle back along its route by len, through the
+## route's own corners (points sampled at fixed steps cut the corners, and the cut slid along as the vehicle
+## moved: the trail crawled like a worm), fading out towards its end
+func _trail_path(j: Dictionary, s: float, len_: float, rgb: Color, gv: float, tp: PackedVector2Array, tc: PackedColorArray) -> Array:
+	var sim := session.sim
+	var c := sim.co_cum(j)
+	var p: PackedFloat32Array = j.p
+	var du: float = sim.CO_DU
+	var s0 := maxf(0.0, s - len_)
+	if s - s0 < 1e-6:
+		return [tp, tc]
+	var a := func(sv: float) -> Color: return Color(rgb, .75 * (1.0 - .9 * (s - sv) / len_) * gv)
+	var here: int = sim.co_pos_at(j, s)[2]
+	var n := 0
+	for i in range(here, -1, -1):   # the corners behind the vehicle, newest first
+		var si: float = c[i] * du
+		if si >= s:
+			continue
+		if si <= s0 or n >= 48:
+			break
+		var q: Variant = _P(p[i * 2], 0, p[i * 2 + 1])
+		if q == null:
+			return [tp, tc]
+		tp.append(q)
+		tc.append(a.call(si))
+		n += 1
+	var e := sim.co_pos_at(j, s0)
+	var q: Variant = _P(e[0], 0, e[1])
+	if q != null:
+		tp.append(q)
+		tc.append(a.call(s0))
+	return [tp, tc]
 
 
 ## every frame: what blinks and pulses (the trips of the last picture whose marker moves on its own, the

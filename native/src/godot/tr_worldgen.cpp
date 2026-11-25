@@ -264,6 +264,8 @@ Dictionary TRWorldGen::board_dict_() const {
 		cd["a"] = c.a;
 		cd["b"] = c.b;
 		cd["rail"] = c.rail;
+		cd["dx"] = c.dx;
+		cd["dz"] = c.dz;
 		cps.push_back(cd);
 	}
 	d["roads"] = roads;

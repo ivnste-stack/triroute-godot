@@ -282,7 +282,7 @@ func _draw_top() -> void:
 				pts.append([cl, cl])
 		var seen := []
 		for o in pts:
-			var q: Variant = _P(o[0].x, o[0].z)
+			var q: Variant = _P(o[0].get("dx", o[0].x), o[0].get("dz", o[0].z))   # on the border line, like the icon
 			if q == null or q.x < -20 or q.y < -20 or q.x > W + 20 or q.y > H + 20:
 				continue
 			if seen.any(func(s): return s.distance_to(q) < 4 * dpr):

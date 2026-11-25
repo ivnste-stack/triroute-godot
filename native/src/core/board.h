@@ -34,6 +34,7 @@ struct Checkpoint {
 	double x, z;
 	int a, b;                     // from state, to state
 	bool rail;
+	double dx = 0, dz = 0;        // where it is drawn: on the border line itself (x, z: on the pixel raster)
 };
 
 struct Board {

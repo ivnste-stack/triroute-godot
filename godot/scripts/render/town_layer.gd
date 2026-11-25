@@ -161,7 +161,7 @@ func setup(board: Dictionary, states_: Array, countries_: Array, mwh_: Vector2) 
 	var cxz := PackedFloat32Array()
 	var ci := PackedInt32Array()
 	for i in cps.size():
-		cxz.append_array([cps[i].x, cps[i].z])
+		cxz.append_array([cps[i].get("dx", cps[i].x), cps[i].get("dz", cps[i].z)])   # on the border line itself
 		ci.append(i)
 	_lay.set_points(cxz, ci)
 	_n_inst += _chips.size() * 2
