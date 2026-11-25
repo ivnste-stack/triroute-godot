@@ -32,7 +32,6 @@ var night_lights: NightLights
 var night_hour := -1.0
 var _tw_vp: SubViewport
 var towns: TownLayer
-var sea_labels: SeaLabels
 var inc_base: IncidentLayer
 var inc_top: IncidentLayer
 var vehicles: VehicleLayer
@@ -91,9 +90,6 @@ func _ready() -> void:
 	inc_base = IncidentLayer.new()
 	inc_base.camera = camera
 	cl.add_child(inc_base)
-	sea_labels = SeaLabels.new()   # the names of the oceans and seas, flat on the board
-	sea_labels.camera = camera
-	add_child(sea_labels)
 	towns = TownLayer.new()
 	towns.camera = camera
 	_tw_vp = _cached(towns, cl)
@@ -343,8 +339,6 @@ func _show(w: Dictionary, keep_cam: bool = false) -> void:
 		camera.set_world(size)
 	_plane.visible = true
 	show_layers(w.lines, w.board, w.states, w.countries, w.own, Vector2i(mw, mh))
-	sea_labels.build(w.own, mw, mh, int(w.tri_s), _is_earth, _seed)
-	sea_labels.hold = false
 	world_ready.emit(w)
 
 
@@ -382,7 +376,6 @@ func edit_begin(sqw: int, sqh: int, data: PackedByteArray) -> void:
 	_mat.set_shader_parameter("SQWH", Vector2(sqw, sqh))
 	_mat.set_shader_parameter("edit_on", true)
 	set_haze(0.0)
-	sea_labels.hold = true   # the names of the seas come back with the finished world
 
 
 func edit_update(data: PackedByteArray) -> void:
@@ -402,7 +395,6 @@ func edit_end() -> void:
 	_mat.set_shader_parameter("edit_on", false)
 	_mat.set_shader_parameter("ed_deep", false)
 	set_haze(1.0)
-	sea_labels.hold = false
 	_ed_img = null
 	_ed_tex = null
 

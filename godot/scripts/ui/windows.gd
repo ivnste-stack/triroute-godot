@@ -495,7 +495,7 @@ func _home(body: VBoxContainer) -> void:
 	var where := Ui.hbox(4, [Ui.icon("pin", 14, Ui.FG2), Ui.label("Штаб: %s" % hq.name, 13, Ui.FG2)])
 	where.mouse_filter = Control.MOUSE_FILTER_STOP
 	where.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	where.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: goto_place.emit(CO.hq))
+	where.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: goto_place.emit(CO.hq))
 	var nh: int = CO.hubs.size()
 	var sub := Ui.hbox(0, [where, Ui.label(", %s · %d %s · %d країн" % [_cn(hq.cid), nh, "хаб" if nh == 1 else "хаби", cids.size()], 13, Ui.FG2)])
 	var logo := Control.new()
@@ -1273,7 +1273,7 @@ func _net(body: VBoxContainer) -> void:
 		var name_c := _place(pid)
 		name_c.mouse_filter = Control.MOUSE_FILTER_STOP
 		name_c.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		name_c.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: goto_place.emit(pid))
+		name_c.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: goto_place.emit(pid))
 		var hi := Ui.icon("star" if pid == CO.hq else "building", 18, Ui.ACCENT)
 		hi.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		var info := Ui.vbox(2, [name_c, _note("%s · %s · %s · %s" % [D.HUB_LV[lvl], TYPE_N.get(p.type, ""), Ui.people(p.pop), ", ".join(infra) if infra.size() else "тільки автодороги"])])
@@ -1352,7 +1352,7 @@ func country_hub_list(cid: int, done: Callable) -> Control:
 		var nm := _place(pid, 14, true, false)
 		nm.mouse_filter = Control.MOUSE_FILTER_STOP
 		nm.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		nm.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed:
+		nm.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			done.call()
 			goto_place.emit(pid))
 		var ics := Ui.hbox(4)

@@ -110,6 +110,15 @@ func undo() -> void:
 		_panel_build()
 
 
+## «Очистити маршрут»: every leg goes, the route starts again from the sender
+func clear_route() -> void:
+	if LP.pts.size() > 1:
+		LP.pts = [LP.k.from]
+		LP.modes = []
+		LP.byMgr = false
+		_panel_build()
+
+
 ## ACT.lpAutoUse: the dispatcher's route as the plan
 func auto_use() -> void:
 	if not sim.CO.mgr.has("cto"):
@@ -543,6 +552,7 @@ func _panel_build() -> void:
 	acts.add_theme_constant_override("h_separation", 6)
 	acts.add_theme_constant_override("v_separation", 6)
 	acts.add_child(W._btn("Прибрати ділянку", "sm", "refresh", undo, LP.pts.size() > 1))
+	acts.add_child(W._btn("Очистити маршрут", "sm", "trash", clear_route, LP.pts.size() > 1))
 	if A != null:
 		acts.add_child(W._btn("Маршрут від диспетчера", "sm", "cpu", auto_use))
 	if k.get("multi"):

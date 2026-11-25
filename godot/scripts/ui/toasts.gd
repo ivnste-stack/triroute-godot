@@ -50,7 +50,7 @@ func _push(tone: String, title: String, text: String = "") -> void:
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	g.add_child(Ui.margin(Ui.hbox(10, [ic, tt]), 15, 10, 12, 10))   # padding 10px 12px after the 3 px edge
 	g.mouse_filter = Control.MOUSE_FILTER_PASS
-	g.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: g.queue_free())
+	g.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: g.queue_free())
 	add_child(g)
 	move_child(g, 0)   # the newest on top
 	while get_child_count() > 4:
