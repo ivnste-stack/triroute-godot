@@ -320,8 +320,9 @@ func lp_block(LP: Dictionary, C: Dictionary) -> Variant:
 		return C.consBlock
 	if LP.get("veh0") != null and C.legs.size() and not C.legs[0].own:
 		var nm := "Обрана техніка"
+		var ids: Array = LP.veh0 if LP.veh0 is Array else [LP.veh0]
 		for v in CO.veh:
-			if v.id == LP.veh0:
+			if v.id == ids[0]:
 				nm = D.VT[v.t].n
 		return "%s не підходить%s" % [nm, ": " + C.legs[0].why.to_lower() if C.legs[0].get("why") else ""]
 	var vs: Dictionary = LP.get("vehs", {})

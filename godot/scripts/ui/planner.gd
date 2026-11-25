@@ -407,6 +407,27 @@ func _leg_veh(Lg: Dictionary) -> Control:
 	return Ui.margin(v, 26, 0, 0, 6)
 
 
+## the panel as tall as its content (up to the room between the top bar and the bottom bar)
+func _fit() -> void:
+	await get_tree().process_frame   # the new content has its size after a layout pass
+	if not is_inside_tree():
+		return
+	var vs := get_viewport_rect().size
+	var mx := vs.y - 84 - 86
+	var h := minf(mx, _body.get_combined_minimum_size().y + 30)
+	_scroll.custom_minimum_size = Vector2(_scroll.custom_minimum_size.x, h)
+	_panel.size = Vector2(_panel.size.x, h)
+	_panel.reset_size()
+	_panel.size = Vector2(_panel.size.x, h)
+
+
+func _veh_t(vid: int) -> String:
+	for v in sim.CO.veh:
+		if v.id == vid:
+			return v.t
+	return "truck"
+
+
 func _bar(v: float, mx: float, col: Color) -> Control:
 	var m := W._meter(clampf(v / mx, .02, 1), col)
 	return Ui.margin(m, 0, 4, 0, 0)
@@ -426,7 +447,7 @@ func _gap(h: int) -> Control:
 func _panel_build() -> void:
 	var vs := get_viewport_rect().size
 	_panel.position = Vector2(14, 84)
-	_panel.size = Vector2(minf(360, vs.x - 32), vs.y - 84 - 86)
+	_panel.size = Vector2(minf(360, vs.x - 32), minf(vs.y - 84 - 86, maxf(_panel.size.y, 200)))   # fitted to the content after the build (_fit)
 	_scroll.custom_minimum_size = _panel.size
 	var keep := _scroll.scroll_vertical
 	for c in _body.get_children():
@@ -463,9 +484,24 @@ func _panel_build() -> void:
 		if L.is_empty():
 			B.add_child(Ui.margin(W._icl("alert", "У країні %s немає вільної техніки: %s" % [sim.states[sim.PL[LP.pts[0]].cid].name if not Sim.lp_is_w(LP.pts[0]) else "", String(D.MODE_N[m0]).to_lower()], Ui.WARN), 0, 10, 0, 0))
 		else:
-			B.add_child(Ui.margin(Ui.lbl("Хто їде · " + sim.states[sim.PL[LP.pts[0]].cid].name), 0, 10, 0, 6))
+			# the vehicles for the first leg: as many as the load needs (several trucks for a heavy order)
+			var sel: Array = LP.veh0 if LP.veh0 is Array else []
+			var need := 1
+			if sel.size():
+				var T0: Dictionary = D.VT[_veh_t(sel[0])]
+				var cv: Variant = sim.cargo_i.get(k.cg)
+				var vol: float = k._vol if k.get("_vol") != null else k.tons * (cv.v if cv != null and cv.get("v", 0) else 3)
+				need = maxi(int(ceil(k.tons / T0.cap)), int(ceil(vol / T0.vol)) if T0.get("vol", 0) else 1)
+			elif C.legs.size() and C.legs[0].own and C.legs[0].get("P") != null:
+				need = C.legs[0].P.n
+			var hd: String = "Призначення машини · " + String(sim.states[sim.PL[LP.pts[0]].cid].name)
+			if sel.size():
+				hd += " · обрано %d з %d" % [sel.size(), need]
+			elif need > 1:
+				hd += " · потрібно %d" % need
+			B.add_child(Ui.margin(Ui.lbl(hd), 0, 10, 0, 6))
 			var vl := Ui.vbox(4)
-			var vb := W._btn("Найближча, що вміщує вантаж", "pri sm" if LP.veh0 == null else "sm", "cpu", func():
+			var vb := W._btn("Найближчі, що вміщують вантаж" if need > 1 else "Найближча, що вміщує вантаж", "pri sm" if sel.is_empty() else "sm", "cpu", func():
 				LP.veh0 = null
 				_panel_build())
 			vb.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -474,8 +510,17 @@ func _panel_build() -> void:
 				var T: Dictionary = D.VT[v.t]
 				var stt: String = "повертається в хаб" if v.st == "trip" else ("у хабі" if sim.hub_at(v.loc) != null else "чекає після доставки")
 				var vid: int = v.id
-				var b := W._btn("%s · %s · %s · %s т / %s м³%s" % [T.n, sim.PL[v.loc].name, stt, Ui.loc(T.cap), Ui.loc(T.get("vol", 0)), (" · стан %.0f%%" % v.cond) if v.cond < 60 else ""], "pri sm" if LP.veh0 == vid else "sm", T.ic, func():
-					LP.veh0 = vid
+				var b := W._btn("%s · %s · %s · %s т / %s м³%s" % [T.n, sim.PL[v.loc].name, stt, Ui.loc(T.cap), Ui.loc(T.get("vol", 0)), (" · стан %.0f%%" % v.cond) if v.cond < 60 else ""], "pri sm" if sel.has(vid) else "sm", T.ic, func():
+					var cur: Array = LP.veh0 if LP.veh0 is Array else []
+					if k.get("cons"):   # a consolidated trip: one vehicle carries it all
+						cur = [] if cur.has(vid) else [vid]
+					elif cur.has(vid):
+						cur.erase(vid)
+					else:   # several of one kind: another kind starts the choice again
+						if cur.size() and _veh_t(cur[0]) != _veh_t(vid):
+							cur = []
+						cur.append(vid)
+					LP.veh0 = cur if cur.size() else null
 					_panel_build())
 				b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 				b.clip_text = true
@@ -663,6 +708,7 @@ func _panel_build() -> void:
 	gb.size_flags_horizontal = Control.SIZE_FILL
 	B.add_child(Ui.margin(gb, 0, 10, 0, 0))
 	_restore(keep)
+	_fit.call_deferred()
 	# the blocks over the map: departure and arrival
 	_tags = []
 	if k.get("multi"):
@@ -727,8 +773,28 @@ func _drops(B: VBoxContainer, C: Dictionary) -> void:
 
 
 ## consPlanHTML: the orders of a consolidated trip, picked up, on board or delivered along the route
+## a consolidated trip: the orders move up and down while no leg is laid — the first one's pick-up is where
+## the trip starts, the dispatcher's sequence follows the list
+func _cons_move(i: int, d: int) -> void:
+	var O: Array = LP.k.cons
+	var j := i + d
+	if j < 0 or j >= O.size():
+		return
+	var t: Variant = O[i]
+	O[i] = O[j]
+	O[j] = t
+	LP.k.from = O[0].from
+	LP.k.to = O.back().to
+	LP.pts = [LP.k.from]
+	LP.modes = []
+	LP.veh0 = null
+	_panel_build()
+
+
 func _cons_plan(B: VBoxContainer, C: Dictionary) -> void:
 	var v := Ui.vbox(5, [Ui.lbl("Замовлення збірного рейсу")])
+	if LP.pts.size() == 1:
+		v.add_child(W._note("Стрілками змініть порядок: з першого замовлення рейс починається.", Ui.MUTED))
 	var veh: Variant = null
 	for x in sim.CO.veh:
 		if x.id == LP.get("consVeh", -1):
@@ -759,6 +825,15 @@ func _cons_plan(B: VBoxContainer, C: Dictionary) -> void:
 		else:
 			st = "у кузові" if r.picked else "ще не забрано"
 		var right := Ui.hbox(0, [Ui.label(st, 12, col), Ui.label(" · ≤ " + Ui.days(o.dl), 12, Ui.FG2)])
+		if LP.pts.size() == 1:   # no leg yet: the order of the orders can change
+			var oi := -1
+			for q in LP.k.cons.size():
+				if LP.k.cons[q].id == o.id:
+					oi = q
+			var n: int = LP.k.cons.size()
+			right.add_theme_constant_override("separation", 4)
+			right.add_child(W._btn("", "sm", "up", func(): _cons_move(oi, -1), oi > 0, "Вище"))
+			right.add_child(W._btn("", "sm", "down", func(): _cons_move(oi, 1), oi >= 0 and oi < n - 1, "Нижче"))
 		v.add_child(_row(left, right))
 	B.add_child(Ui.margin(W._blk(v), 0, 10, 0, 0))
 

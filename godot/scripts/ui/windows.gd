@@ -477,7 +477,7 @@ func advice() -> Array:
 	if CO.lm != null and CO.lm.get("stolen", 0) > 0 and not CO.mgr.has("cfo"):
 		A.append(["warn", "Нез'ясовані втрати %s минулого місяця. Без фінансового директора ніхто не перевірить менеджерів." % Ui.usd(CO.lm.stolen)])
 	if not CO.ins and CO.tier >= 2:
-		A.append(["", "Без страховки кожна крадіжка чи аварія з вантажем лягає на вас. Увімкніть у вікні «Фінанси»."])
+		A.append(["", "Без страховки кожна крадіжка чи аварія з вантажем лягає на вас. Її веде фінансовий директор: найміть його у вікні «Персонал» і ввімкніть страхування в його картці."])
 	if A.is_empty():
 		A.append(["good", "Усе під контролем. Розширюйтеся: нові хаби, техніка, ліцензії."])
 	return A.slice(0, 5)
@@ -880,9 +880,20 @@ func _board_card(k: Dictionary) -> PanelContainer:
 	add_p.call("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info", _tip("Термін пропозиції", "Скільки днів замовлення ще висітиме на біржі. Потім замовник віддасть його іншому перевізнику і воно зникне. Це не дедлайн доставки — дедлайн рахується з моменту, коли ви приймете замовлення."))
 	var v := Ui.vbox(8, [top, pills])
 	var id: int = k.id
+	# how many vehicles it takes: a tag instead of a line of text
+	var need: Variant = null
+	if P.ok and P.get("n", 1) > 1:
+		need = [P.n, D.VT[P.t].mode, -1]
+	elif not P.ok:
+		var rx := RegEx.create_from_string("^Потрібно (\\d+) × (.+), вільних (\\d+)$")
+		var mt := rx.search(String(P.why))
+		if mt != null:
+			need = [int(mt.get_string(1)), k.mode, int(mt.get_string(3))]
+	if need != null:
+		var word: String = {"road": "Вантажівок", "rail": "Потягів", "sea": "Суден", "air": "Літаків"}.get(need[1], "Машин")
+		add_p.call("%s %d" % [word, need[0]] + (" · вільних %d" % need[2] if need[2] >= 0 else ""), "warn" if need[2] >= 0 else "acc", MODE_IC.get(need[1], "truck"),
+			_tip("Скільки техніки потрібно", "Вантаж не вміщується в одну машину: їде кілька однакових одиниць разом." + (" Зараз вільних лише %d — купіть ще в «Автопарку» або дочекайтеся тих, що в рейсі." % need[2] if need[2] >= 0 else "")))
 	if P.ok:
-		var pl := _plan_line(k, P)
-		v.add_child(pl)
 		var bs := Ui.hbox(8)
 		if sim.cons_ok(k):
 			bs.add_child(_cons_btn(k, false, ""))
@@ -893,7 +904,7 @@ func _board_card(k: Dictionary) -> PanelContainer:
 		var why: String = P.why
 		var quiet: bool = why.begins_with("Замовник хоче рейтинг") or why.begins_with("Немає вільної техніки") \
 			or (sim.perm_need(cg, k.mode).any(func(x): return not sim.perm_ok(x)) and why.begins_with("Потрібна ліцензія «"))
-		if not quiet:
+		if not quiet and need == null:
 			v.add_child(_icl("alert", why, Ui.WARN))
 		var bs := Ui.hbox(8)
 		if sim.cons_ok(k):

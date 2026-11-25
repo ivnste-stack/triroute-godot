@@ -1403,6 +1403,7 @@ func co_plan1(k: Dictionary) -> Dictionary:
 		var idle := []
 		var kc: Variant = k.get("_ctry")
 		var kv: Variant = k.get("_veh")
+		var kvs: Array = kv if kv is Array else ([kv] if kv != null else [])   # one vehicle chosen, or several
 		if kc == null and kv == null and ex.is_empty():   # the common case: only the reserved ones drop out
 			for v in pre.idle[t]:
 				if not v.get("resv"):
@@ -1413,9 +1414,9 @@ func co_plan1(k: Dictionary) -> Dictionary:
 					continue
 				if ex.has(v.id):
 					continue
-				if kv != null and v.id != kv:
+				if kv != null and not kvs.has(v.id):
 					continue
-				if v.get("resv") and v.id != kv:
+				if v.get("resv") and not kvs.has(v.id):
 					continue
 				idle.append(v)
 		if idle.is_empty():
