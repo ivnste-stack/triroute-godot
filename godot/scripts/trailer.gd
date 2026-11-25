@@ -39,6 +39,7 @@ var _flash_col := Color.WHITE
 var _cap: Label
 var _title: VBoxContainer
 var _floats := []     # [Label, age]
+var _drop_ok := -1.0  # until this second a big drop of the money is shown as it is (an event's)
 var _calls := []      # [Control, world Vector2, t0]
 
 const GREEN := Color("#5bd68c")
@@ -252,6 +253,7 @@ func _money() -> void:   # the whole company from above at full speed: money in,
 		_callout(Vector2(q[0], q[1]), text, RED)
 	events = [[4.9, func(): hit.call("theft", "CARGO STOLEN")], [6.2, func(): hit.call("acc", "ACCIDENT")],
 		[7.3, func():
+			_drop_ok = _t + 3.0
 			sim.CO.cash -= 1_250_000.0   # the month's wages
 			_callout(Vector2(c.x - 2, c.y + 1.2), "PAYDAY: WAGES", AMBER)]]
 
@@ -413,7 +415,12 @@ func _tick_overlay(dt: float) -> void:
 	var root: Control = _ov.get_child(0)
 	var vw := root.size
 	# the cash: shown ticking towards the real one; every change makes a floating sum and a flash
+	# the day's running costs of a fleet this size come as one big drop at midnight: in the trailer the money
+	# falls with the events only (they open a window for it), the rest is mostly given back
 	var cash: float = sim.CO.cash
+	if cash - _cash_last < -150000 and _t > _drop_ok:
+		sim.CO.cash -= (cash - _cash_last) * .95
+		cash = sim.CO.cash
 	var d := cash - _cash_last
 	_cash_last = cash
 	_cash_acc += d
@@ -495,6 +502,7 @@ func _float(x: float) -> void:
 
 
 func _callout(at: Vector2, text: String, col: Color) -> void:
+	_drop_ok = _t + 3.0
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", Ui.box(Color(col.r * .25, col.g * .12, col.b * .12, .92), col, 3, Vector4(26, 12, 26, 12)))
 	var l := Label.new()
