@@ -12,6 +12,7 @@ signal plan_order(k: Dictionary)    # ACT.lpPlan: open the route planner
 signal move_vehicle(v: Dictionary)  # ACT.coMove: pick a new home hub on the map
 signal show_order(k: Variant)       # ACT.coShow: the order's A and B on the map (null: hide)
 signal rename_requested             # the pencil by the company's name
+signal country_hubs(cid: int)        # a country of «Відкрити хаб»: the list of its cities to open a hub in
 
 const D = preload("res://scripts/logistics/game_data.gd")
 const MODE_IC := {"local": "van", "road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
@@ -22,15 +23,6 @@ const CO_MS := [["d100", "Перша сотня", "100 доставок"], ["f5"
 	["d10k", "Десять тисяч", "10 000 доставок"], ["rail", "Сталеві колії", "Перший потяг"], ["ocean", "Через океан", "Рейс між материками"],
 	["air", "У небі", "Перший вантажний літак"], ["m1", "Мільйон на місяць", "Виручка $1 млн за місяць"], ["c3", "Три материки", "Хаби на трьох материках"],
 	["r45", "Бездоганна репутація", "Рейтинг 4.5"], ["top3", "Призер", "Топ-3 логістичних компаній світу"], ["top1", "Лідер ринку", "№1 серед логістичних компаній світу"]]
-const CO_MYTH := [
-	["Найшвидший транспорт — найвигідніший.", "Літак перевозить тонну в 10–20 разів дорожче за корабель. Авіацією везуть лише те, що дороге або термінове: ліки, електроніку, запчастини."],
-	["Повна машина завжди вигідніша.", "Якщо заради повного завантаження машина три дні чекає вантаж, втрачені дні коштують дорожче. Важливий баланс завантаження і швидкості."],
-	["Головні витрати перевізника — пальне.", "У міських доставках найбільша стаття — люди. На дальніх маршрутах пальне, але зарплати, ремонт і простої разом часто більші."],
-	["Страхування — викинуті гроші.", "Одна викрадена фура з електронікою може коштувати як рік страхових внесків."],
-	["Дешевша робоча сила завжди краща.", "Низькі зарплати — це плинність кадрів, аварії й страйки. Мотивований водій береже техніку і вантаж."],
-	["Залізниця застаріла.", "На відстанях понад 500–800 км потяг везе тонну вантажу в 3–4 рази дешевше за вантажівку і з меншими викидами."],
-	["Порожній зворотний рейс — дрібниця.", "Порожній пробіг — одна з головних втрат галузі. Диспетчери шукають попутні вантажі, щоб машина не їхала назад порожньою."],
-	["Велика компанія не може збанкрутувати.", "У логістиці маржа тонка: 3–8%. Кредити на техніку, падіння попиту і дорожнеча пального швидко з'їдають запас."]]
 
 var sim: Sim
 ## the state of the interface (UI.jfl, UI.ffl, UI.bmore… of the HTML version)
@@ -586,21 +578,6 @@ func _home(body: VBoxContainer) -> void:
 		it.modulate.a = 1.0 if ok else .45
 		ms.append(it)
 	body.add_child(_grid(2, ms))
-	body.add_child(_sect("Логістичний лікбез"))
-	var my: Array = CO_MYTH[(sim.date.m + sim.date.y) % CO_MYTH.size()]
-	var g := GridContainer.new()
-	g.columns = 2
-	g.add_theme_constant_override("h_separation", 10)
-	g.add_theme_constant_override("v_separation", 4)
-	g.add_child(Ui.label("МІФ", 10, Ui.BAD, Ui.font("mono", 600, 1)))
-	var mt := Ui.rich("[s]%s[/s]" % my[0], 13)
-	g.add_child(mt)
-	g.add_child(Ui.label("ФАКТ", 10, Ui.GOOD, Ui.font("mono", 600, 1)))
-	g.add_child(Ui.rich(my[1], 13, Ui.FG))
-	var mp := PanelContainer.new()
-	mp.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(12, 10, 12, 10)))
-	mp.add_child(g)
-	body.add_child(mp)
 
 
 ## permSect: permits for special cargo
@@ -1279,7 +1256,7 @@ func _upg_sect(body: VBoxContainer, ff: String) -> void:
 # ====================================================================== coNet
 func _net(body: VBoxContainer) -> void:
 	var CO := sim.CO
-	body.add_child(Ui.hint("Хаб — база вашої техніки в місті: звідси машини виїздять на рейси й сюди повертаються. Підприємства навколо хаба дають [b]замовлення[/b] на біржу. Рівні: 1, 2, 3, а хаб 3 рівня можна перетворити на [b]Логістичний хаб[/b]. Щоб відкрити хаб, клацніть на країну на мапі або оберіть місто зі списку нижче.", "bulb"))
+	body.add_child(Ui.hint("Хаб — база вашої техніки в місті: звідси машини виїздять на рейси й сюди повертаються. Підприємства навколо хаба дають [b]замовлення[/b] на біржу. Рівні: 1, 2, 3, а хаб 3 рівня можна перетворити на [b]Логістичний хаб[/b]. Щоб відкрити хаб, клацніть на країну на мапі або оберіть її в списку нижче — там її міста.", "bulb"))
 	body.add_child(_sect("Ваші хаби"))
 	var list := Ui.vbox(8)
 	for h in CO.hubs:
@@ -1319,40 +1296,89 @@ func _net(body: VBoxContainer) -> void:
 		facts.add_child(_icl("doc", "Замовлень ×%s" % str(D.HUB_ORD[lvl])))
 		list.add_child(_blk(Ui.vbox(10, [Ui.hbox(10, [hi, info, acts]), facts])))
 	body.add_child(list)
-	body.add_child(_sect("Де відкрити наступний хаб"))
+	body.add_child(_sect("Відкрити хаб у країні"))
 	if CO.tier < 1:
 		body.add_child(_icl("lock", "Нові хаби відкриваються з ліцензією «Міжміська доставка».", Ui.FG2))
+		return
+	# the countries within the licence where a hub can still be opened: a click lists their cities
+	var by := {}
+	for p in sim.PL:
+		if sim.hub_at(p.id) == null and sim.co_scope(p):
+			if not by.has(p.cid):
+				by[p.cid] = []
+			by[p.cid].append(p)
+	var mine := {}
+	for h in CO.hubs:
+		var c: int = sim.PL[h.pid].cid
+		mine[c] = mine.get(c, 0) + 1
+	var cids: Array = by.keys()
+	cids.sort_custom(func(x, y): return mine.get(x, 0) > mine.get(y, 0) or (mine.get(x, 0) == mine.get(y, 0) and by[x].size() > by[y].size()))
+	var rows := []
+	for cid in cids:
+		var ps: Array = by[cid]
+		var cheapest := INF
+		var big: Dictionary = ps[0]
+		for p in ps:
+			cheapest = minf(cheapest, sim.hub_cost(p))
+			if p.pop > big.pop:
+				big = p
+		var st: Dictionary = sim.states[cid]
+		var c_: int = cid
+		var nm := Ui.hbox(8, [Flags.rect(st, 18, 12), _b(st.name, 14)])
+		var sub := "%d міст для хаба · найбільше — %s" % [ps.size(), big.name]
+		if mine.get(cid, 0):
+			sub = "ваших хабів: %d · " % mine[cid] + sub
+		rows.append([Ui.vbox(2, [nm, _note(sub)]), Ui.label("від " + Ui.usd(cheapest), 13, Ui.FG2),
+			_right([_btn("Міста", "sm", "building", func(): country_hubs.emit(c_))])])
+	if rows.is_empty():
+		body.add_child(_note("У межах ліцензії хаби вже відкрито в усіх містах. Нова ліцензія відкриє інші країни."))
 	else:
-		var recs: Array = sim.PL.filter(func(p): return sim.hub_at(p.id) == null and sim.co_scope(p))
-		recs.sort_custom(func(a, b): return a.pop > b.pop)
-		var rows := []
-		for p in recs.slice(0, 8):
-			var pid: int = p.id
-			var nm := _place(pid)
-			nm.mouse_filter = Control.MOUSE_FILTER_STOP
-			nm.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-			nm.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: goto_place.emit(pid))
-			var ics := Ui.hbox(4)
-			if p.get("air"):
-				ics.add_child(Ui.icon("plane", 14, Ui.FG2))
-			if p.get("port") != null:
-				ics.add_child(Ui.icon("anchor", 14, Ui.FG2))
-			if p.get("rail"):
-				ics.add_child(Ui.icon("train", 14, Ui.FG2))
-			rows.append([Ui.vbox(2, [nm, _note("%s · %s" % [TYPE_N.get(p.type, "").capitalize(), Ui.people(p.pop)])]), ics,
-				_right([_btn("Купити " + Ui.usd(sim.hub_cost(p)), "pri sm" if CO.cash >= sim.hub_cost(p) else "sm", "plus", func(): _do(sim.act_hub(pid, false)), CO.cash >= sim.hub_cost(p)),
-					_btn("Оренда " + Ui.usd(sim.hub_rent_deposit(p)), "sm", "doc", func(): _do(sim.act_hub(pid, true)), CO.cash >= sim.hub_rent_deposit(p),
-						_tip("Орендувати хаб", "Застава, далі щомісячна оренда ≈ %s. Розширити можна лише до 2 рівня." % Ui.usd(sim.hub_rent_m({"pid": pid, "lvl": 1, "rent": 1}))))])])
-		body.add_child(_table_rows(rows, [["", 0, false], ["", 70, false], ["", 280, true]]))
-	body.add_child(_sect("Ліцензії"))
-	for i in D.LIC.size():
-		var l: Dictionary = D.LIC[i]
-		if l.get("hide"):
-			continue
-		var got: bool = i <= CO.tier
-		var r := _tt("%d. %s" % [i, l.n], l.d, "check" if got else "lock", Ui.GOOD if got else Ui.MUTED)
-		r.modulate.a = 1.0 if got else .55
-		body.add_child(_tr([r], [["", 0, false]], 6))
+		body.add_child(_table_rows(rows, [["", 0, false], ["", 110, false], ["", 110, true]]))
+
+
+## the cities of a country where a hub can be opened, the biggest first, with «Купити» and «Оренда» (the
+## dialog of «Відкрити хаб у країні»); done: called after a hub is opened (closes the dialog)
+func country_hub_list(cid: int, done: Callable) -> Control:
+	var CO := sim.CO
+	var v := Ui.vbox(10)
+	var recs: Array = sim.PL.filter(func(p): return p.cid == cid and sim.hub_at(p.id) == null and sim.co_scope(p))
+	recs.sort_custom(func(a, b): return a.pop > b.pop)
+	if recs.is_empty():
+		v.add_child(_note("У цій країні немає міст, де можна відкрити хаб."))
+		return v
+	var rows := []
+	for p in recs:
+		var pid: int = p.id
+		var nm := _place(pid, 14, true, false)
+		nm.mouse_filter = Control.MOUSE_FILTER_STOP
+		nm.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		nm.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed:
+			done.call()
+			goto_place.emit(pid))
+		var ics := Ui.hbox(4)
+		if p.get("air"):
+			ics.add_child(Ui.icon("plane", 14, Ui.FG2))
+		if p.get("port") != null:
+			ics.add_child(Ui.icon("anchor", 14, Ui.FG2))
+		if p.get("rail"):
+			ics.add_child(Ui.icon("train", 14, Ui.FG2))
+		var cost := sim.hub_cost(p)
+		var dep := sim.hub_rent_deposit(p)
+		rows.append([Ui.vbox(2, [nm, _note("%s · %s" % [TYPE_N.get(p.type, "").capitalize(), Ui.people(p.pop)])]), ics,
+			_right([_btn("Купити " + Ui.usd(cost), "pri sm" if CO.cash >= cost else "sm", "plus", func():
+				done.call()
+				_do(sim.act_hub(pid, false)), CO.cash >= cost),
+				_btn("Оренда " + Ui.usd(dep), "sm", "doc", func():
+					done.call()
+					_do(sim.act_hub(pid, true)), CO.cash >= dep,
+					_tip("Орендувати хаб", "Застава, далі щомісячна оренда ≈ %s. Розширити можна лише до 2 рівня." % Ui.usd(sim.hub_rent_m({"pid": pid, "lvl": 1, "rent": 1}))))])])
+	v.add_child(_table_rows(rows, [["", 0, false], ["", 70, false], ["", 280, true]]))
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.custom_minimum_size = Vector2(660, mini(rows.size() * 58 + 10, 520))
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(v)
+	return sc
 
 
 # ====================================================================== coStaff
@@ -1391,67 +1417,125 @@ func _staff(body: VBoxContainer) -> void:
 	wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_child(_blk(Ui.vbox(8, [Ui.hbox(8, [wl, wv]), sl, _note("Нижче 100% — економія, але падає дух і ростуть аварії. Вище — дорожче, зате надійно.")])))
 	body.add_child(_sect("Працівники"))
-	var rows := []
+	body.add_child(_note("Як і менеджерів, людей обираєте з кандидатів ринку праці: досвідчені дорожче коштують при наймі, зате з ними менше аварій і пошкоджень вантажу. Кандидатів стільки, скільки людей цього місяця шукає роботу."))
 	for r in D.ROLE:
-		var R_: Dictionary = D.ROLE[r]
-		var have := _crew_have(r)
-		var lack: int = need[r] - have
-		var pool: int = int(CO.pool.get(r, 0))
-		var rr: String = r
-		var k5: int = maxi(5, lack)
-		rows.append([Ui.hbox(6, [Ui.icon(R_.ic, 16), _b(R_.n, 13)]), Ui.num(str(have), 13), Ui.num(str(need[r]), 13, Ui.BAD if lack > 0 else Ui.FG),
-			Ui.label(Ui.usd(R_.w * wk) + "/міс", 13, Ui.FG2), Ui.num(str(pool), 13, Ui.FG if pool > 0 else Ui.MUTED),
-			_right([_btn("", "sm", "minus", func(): _do(sim.act_hire(rr, -1)), true, "Звільнити"), _btn("1", "sm", "plus", func(): _do(sim.act_hire(rr, 1))),
-				_btn(str(k5), "pri sm" if lack > 0 else "sm", "plus", func(): _do(sim.act_hire(rr, k5)))])])
-	var tb := _table([["Роль", 0, false], ["Є", 40, false], ["Потрібно", 64, false], ["Зарплата", 90, false], ["Кандидати", 74, false], ["Найм", 150, true]], rows)
-	tb.get_child(0).get_child(0).get_child(0).get_child(4).tooltip_text = _tip("Ринок праці", "Скільки людей готові прийти до вас цього місяця. Поповнюється щомісяця: більше при вищих зарплатах, з HR-директором і великою мережею хабів.")
-	tb.get_child(0).get_child(0).get_child(0).get_child(4).mouse_filter = Control.MOUSE_FILTER_STOP
-	body.add_child(tb)
-	body.add_child(_note("Найм коштує пів місячної зарплати (оголошення, навчання). Звільнення — місячна компенсація. Що більше людей, то дорожчі офіс, бухгалтерія й диспетчери."))
-	body.add_child(_sect("Топменеджмент"))
-	var mv := Ui.vbox(10)
-	for s in D.MG:
-		var sid: String = s.id
-		var g: Variant = CO.mgr.get(sid)
+		body.add_child(_crew_block(r, need[r], wk))
+	# the hired top managers, under the crews
+	var hired := Ui.vbox(10)
+	for s_ in D.MG:
+		var g: Variant = CO.mgr.get(s_.id)
 		if g != null:
-			var av := PanelContainer.new()
-			av.custom_minimum_size = Vector2(44, 44)
-			av.add_theme_stylebox_override("panel", Ui.box(Ui.ACCENT))
-			av.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-			var ini := Ui.label(_initials(g.name), 15, Ui.ACCENT_INK, Ui.font("display", 600))
-			ini.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			ini.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			av.add_child(ini)
-			var info := Ui.vbox(2, [Ui.hbox(6, [Ui.icon(s.ic, 16, Ui.ACCENT), _b(s.n)]),
-				_note("%s, %d · %s · навичка %s · лояльність %s" % [g.name, g.age, g.trait, _stars(g.skill), str(g.loyal)]), _note(s.d)])
-			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			var rt := Ui.hbox(8, [Ui.num(Ui.usd(g.sal) + "/міс", 13), _dng("Звільнити", func(): _do(sim.act_fire_mgr(sid)))])
-			rt.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-			var card := PanelContainer.new()
-			card.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(12, 12, 12, 12)))
-			card.add_child(Ui.hbox(12, [av, info, rt]))
-			mv.add_child(card)
-			continue
-		var cs: Array = CO.cand.get(sid, [])
-		var t := Ui.hbox(6, [Ui.icon(s.ic, 16, Ui.MUTED), _b(s.n), Ui.pill("вакансія")])
-		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var v := Ui.vbox(6, [Ui.hbox(8, [t, _btn("Інші кандидати · " + Ui.usd(1500 * sim.price_k(sim.me)), "sm", "refresh", func(): _do(sim.act_recand(sid)))]), _note(s.d)])
-		for i in cs.size():
-			var c: Dictionary = cs[i]
-			var ci: int = i
-			var who := Ui.rich("[b]%s[/b], %d [color=#b3c2cf]· %s · навичка %s[/color]" % [c.name, c.age, c.trait, _stars(c.skill)], 13, Ui.FG)
-			var row := _tr([who, Ui.hbox(8, [Ui.num(Ui.usd(c.sal) + "/міс", 13), _btn("Найняти", "pri sm" if CO.cash >= c.sal else "sm", "", func(): if sid != "cto" or gr_ok("cto"): _do(sim.act_hire_mgr(sid, ci)), CO.cash >= c.sal)])],
-				[["", 0, false], ["", 0, true]], 6)
-			var sb: StyleBoxFlat = row.get_theme_stylebox("panel").duplicate()
-			sb.border_width_bottom = 0
-			sb.border_width_top = 1
-			row.add_theme_stylebox_override("panel", sb)
-			row.get_child(0).add_theme_constant_override("margin_left", 0)
-			row.get_child(0).add_theme_constant_override("margin_right", 0)
-			v.add_child(row)
-		mv.add_child(_blk(v))
-	body.add_child(mv)
+			hired.add_child(_mgr_card(s_, g))
+	if hired.get_child_count():
+		body.add_child(_sect("Менеджмент"))
+		body.add_child(hired)
+	var vac := Ui.vbox(10)
+	for s_ in D.MG:
+		if CO.mgr.get(s_.id) == null:
+			vac.add_child(_mgr_vacancy(s_))
+	if vac.get_child_count():
+		body.add_child(_sect("Вакансії топменеджменту"))
+		body.add_child(vac)
 	body.add_child(_note("Чесність кандидата не видно в резюме. Нечесний менеджер потроху виводить гроші — ловить їх тільки фінансовий директор."))
+
+
+## a crew of drivers, train drivers, sailors or pilots: how many there are and are needed, the wage, their
+## average experience, a layoff, and up to three candidates of the labour market to hire
+func _crew_block(r: String, need_n: int, wk: float) -> Control:
+	var CO := sim.CO
+	var R_: Dictionary = D.ROLE[r]
+	var have := _crew_have(r)
+	var lack: int = need_n - have
+	var rr := r
+	var sk := sim.crew_sk(r)
+	var head := Ui.hbox(8, [Ui.icon(R_.ic, 18, Ui.ACCENT), _b(R_.n)])
+	head.add_child(Ui.pill("є %d" % have, ""))
+	head.add_child(Ui.pill("потрібно %d" % need_n, "bad" if lack > 0 else ""))
+	var hs := Ui.spacer()
+	head.add_child(hs)
+	head.add_child(Ui.label(Ui.usd(R_.w * wk) + "/міс", 13, Ui.FG2))
+	head.add_child(_btn("", "sm", "minus", func(): _do(sim.act_hire(rr, -1)), have > 0, "Звільнити одного (місячна компенсація)"))
+	var v := Ui.vbox(6, [head])
+	if have > 0:
+		v.add_child(_note("Досвід команди %s" % _crew_stars(sk), Ui.MUTED))
+	var cs := sim.crew_cands(r)
+	if cs.is_empty():
+		v.add_child(_note("Ринок праці вичерпано: нові люди з'являться наступного місяця. Вищі зарплати й HR-директор приводять більше.", Ui.MUTED))
+	for i in cs.size():
+		var c: Dictionary = cs[i]
+		var ci: int = i
+		var fee := sim.crew_fee(r, c)
+		var who := Ui.rich("[b]%s[/b], %d [color=#b3c2cf]· %s · %s %d р.[/color]" % [c.name, c.age, c.trait, _crew_stars(c.skill), c.yrs], 13, Ui.FG)
+		var row := _tr([who, Ui.hbox(8, [_btn("Найняти · " + Ui.usd(fee), "pri sm" if lack > 0 and CO.cash >= fee else "sm", "plus", func(): _do(sim.act_hire_crew(rr, ci)), CO.cash >= fee)])],
+			[["", 0, false], ["", 0, true]], 6)
+		var sb: StyleBoxFlat = row.get_theme_stylebox("panel").duplicate()
+		sb.border_width_bottom = 0
+		sb.border_width_top = 1
+		row.add_theme_stylebox_override("panel", sb)
+		row.get_child(0).add_theme_constant_override("margin_left", 0)
+		row.get_child(0).add_theme_constant_override("margin_right", 0)
+		v.add_child(row)
+	if int(floor(CO.pool.get(r, 0))) > 0:
+		v.add_child(Ui.hbox(0, [_btn("Інші кандидати · " + Ui.usd(JS.round_js(400 * sim.price_k(sim.me))), "sm", "refresh", func(): _do(sim.act_recrew(rr)))]))
+	return _blk(v, Color(Ui.BAD, .45) if lack > 0 else Ui.LINE)
+
+
+static func _crew_stars(k: float) -> String:
+	var n := clampi(int(JS.round_js(k)), 0, 5)
+	return "★".repeat(n) + "☆".repeat(5 - n)
+
+
+## a hired top manager; the financial director also keeps the cargo insurance
+func _mgr_card(s: Dictionary, g: Dictionary) -> Control:
+	var CO := sim.CO
+	var sid: String = s.id
+	var av := PanelContainer.new()
+	av.custom_minimum_size = Vector2(44, 44)
+	av.add_theme_stylebox_override("panel", Ui.box(Ui.ACCENT))
+	av.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var ini := Ui.label(_initials(g.name), 15, Ui.ACCENT_INK, Ui.font("display", 600))
+	ini.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ini.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	av.add_child(ini)
+	var info := Ui.vbox(2, [Ui.hbox(6, [Ui.icon(s.ic, 16, Ui.ACCENT), _b(s.n)]),
+		_note("%s, %d · %s · навичка %s · лояльність %s" % [g.name, g.age, g.trait, _stars(g.skill), str(g.loyal)]), _note(s.d)])
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var rt := Ui.hbox(8, [Ui.num(Ui.usd(g.sal) + "/міс", 13), _dng("Звільнити", func(): _do(sim.act_fire_mgr(sid)))])
+	rt.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var v := Ui.vbox(10, [Ui.hbox(12, [av, info, rt])])
+	if sid == "cfo":
+		var vc := 0.0
+		for veh in CO.veh:
+			vc += D.VT[veh.t].cost
+		v.add_child(_tg_row("Страхування вантажів", "Покриває 80%% претензій за викрадені й пошкоджені вантажі. ≈ %s/міс." % Ui.usd(500 + vc * .0035), CO.ins, func(): _do(sim.act_ins())))
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(12, 12, 12, 12)))
+	card.add_child(v)
+	return card
+
+
+## a top manager's vacancy: three candidates and «Інші кандидати»
+func _mgr_vacancy(s: Dictionary) -> Control:
+	var CO := sim.CO
+	var sid: String = s.id
+	var cs: Array = CO.cand.get(sid, [])
+	var t := Ui.hbox(6, [Ui.icon(s.ic, 16, Ui.MUTED), _b(s.n), Ui.pill("вакансія")])
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := Ui.vbox(6, [Ui.hbox(8, [t, _btn("Інші кандидати · " + Ui.usd(1500 * sim.price_k(sim.me)), "sm", "refresh", func(): _do(sim.act_recand(sid)))]), _note(s.d)])
+	for i in cs.size():
+		var c: Dictionary = cs[i]
+		var ci: int = i
+		var who := Ui.rich("[b]%s[/b], %d [color=#b3c2cf]· %s · навичка %s[/color]" % [c.name, c.age, c.trait, _stars(c.skill)], 13, Ui.FG)
+		var row := _tr([who, Ui.hbox(8, [Ui.num(Ui.usd(c.sal) + "/міс", 13), _btn("Найняти", "pri sm" if CO.cash >= c.sal else "sm", "", func(): if sid != "cto" or gr_ok("cto"): _do(sim.act_hire_mgr(sid, ci)), CO.cash >= c.sal)])],
+			[["", 0, false], ["", 0, true]], 6)
+		var sb: StyleBoxFlat = row.get_theme_stylebox("panel").duplicate()
+		sb.border_width_bottom = 0
+		sb.border_width_top = 1
+		row.add_theme_stylebox_override("panel", sb)
+		row.get_child(0).add_theme_constant_override("margin_left", 0)
+		row.get_child(0).add_theme_constant_override("margin_right", 0)
+		v.add_child(row)
+	return _blk(v)
 
 
 static func _initials(n: String) -> String:
@@ -1509,7 +1593,7 @@ func _fin(body: VBoxContainer) -> void:
 	trs.append([_b("Разом", 13), Ui.num(Ui.usd(sim.co_rev(m) - sim.co_cost(m), true), 13), Ui.num(Ui.usd(sim.co_rev(l) - sim.co_cost(l), true) if l != null else "—", 13)])
 	body.add_child(_table(cols, trs))
 	body.add_child(_note("Зарплати, оренда, реклама, страховка і кредити списуються на початку місяця."))
-	body.add_child(_sect("Кредити і страхування"))
+	body.add_child(_sect("Кредити"))
 	var room := maxf(0, lim - debt)
 	var lr := HFlowContainer.new()
 	lr.add_theme_constant_override("h_separation", 8)
@@ -1519,12 +1603,7 @@ func _fin(body: VBoxContainer) -> void:
 		sim.act_repay()
 		_do({}), debt > 0))
 	body.add_child(lr)
-	var vc := 0.0
-	for v in CO.veh:
-		vc += D.VT[v.t].cost
-	body.add_child(_tg_row("Страхування вантажів", "Покриває 80%% претензій за викрадені й пошкоджені вантажі. ≈ %s/міс." % Ui.usd(500 + vc * .0035), CO.ins, func():
-		sim.act_ins()
-		_do({})))
+	body.add_child(_note("Страхування вантажів веде фінансовий директор: його картка у вікні «Персонал».", Ui.MUTED))
 	body.add_child(_sect("Найбільші логістичні компанії світу"))
 	var lb := []
 	for c in CO.comp:

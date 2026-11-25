@@ -27,7 +27,7 @@ var planner: Planner
 var course: Course
 var menu: StartMenu
 var _args := {}
-var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "norm", "base": "gen"}
+var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "fine", "base": "gen"}
 var editor: MapEditor = null   # the map editor, while it is open
 var _edit := {}                # the map editor's edit of the world in play (saved with the game)
 var _pending_edit := {}
@@ -127,17 +127,9 @@ func _notification(what: int) -> void:
 ## a 2D map does not need hundreds of frames when nothing moves: 15 in the background, 30 when the game is
 ## paused and the player has not touched anything for a few seconds, the chosen limit otherwise
 func _pace_frames() -> void:
-	var cap := _fps_cap
-	if not _focused and Time.get_ticks_msec() / 1000.0 - _last_input > 1.0:   # in the background (the pointer over it counts as use)
-		cap = 15
-	elif menu != null and menu.visible:
-		pass   # the main menu's backgrounds float: every frame counts
-	elif (session == null or session.speed == 0) and Time.get_ticks_msec() / 1000.0 - _last_input > 3.0 and not modals.is_open():
-		var c := map.camera
-		if absf(c.tx - c.ttx) + absf(c.tz - c.ttz) + absf(c.dist - c.tdist) < 1e-4:
-			cap = 30
-	if Engine.max_fps != cap:
-		Engine.max_fps = cap
+	# frames at the chosen limit always: on pause, with a still camera, in the background
+	if Engine.max_fps != _fps_cap:
+		Engine.max_fps = _fps_cap
 
 
 func apply_ui_scale() -> void:
@@ -378,14 +370,13 @@ func _new_game_dialog() -> void:
 	c.add_child(size_note)
 	map_vis.call()
 	c.add_child(field.call("Складність", Ui.seg(DIFF_N, _ng.diff, func(v): _ng.diff = v)))
-	c.add_child(field.call("Дороги", Ui.seg([["norm", "Звичайні"], ["fine", "Тест: дрібна сітка"]], _ng.roads, func(v): _ng.roads = v)))
-	c.add_child(Ui.note("Тестова мережа: кожна клітинка поділена на 4 з діагоналями, доріг більше, між містами кілька різних шляхів.", Ui.MUTED))
 	var seed_l := Ui.num(str(_ng.seed), 14, Ui.MUTED)
 	c.add_child(field.call("Зерно світу", Ui.hbox(12, [seed_l, Ui.btn("Інше", "sm", "dice", func():
 		_ng.seed = randi() % 1000000000
 		seed_l.text = str(_ng.seed))])))
 	var go := Ui.btn("Створити світ", "pri", "globe", func():
 		modals.clear()
+		_ng.roads = "fine"   # every new world has the dense road net (a loaded game keeps its own)
 		_edit = {}
 		_create_world())
 	go.custom_minimum_size.y = 44
@@ -686,6 +677,8 @@ func _on_world(w: Dictionary) -> void:
 			map_ui.show_country(int(_args.country))
 		if _args.has("win"):
 			_toggle_window(_args.win)
+			if _args.has("countryhubs"):   # test: the cities of a country, from «Відкрити хаб у країні»
+				wins.country_hubs.emit(session.sim.PL[session.sim.CO.hq].cid)
 		if _args.has("thenedit"):   # test: from a running game back to a new world in the editor
 			await get_tree().create_timer(1.0).timeout
 			_end_game()
@@ -1063,6 +1056,10 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 		map_ui.reroute.connect(_reroute)
 	wins.plan_order.connect(_plan)
 	wins.rename_requested.connect(_rename_dialog)
+	wins.country_hubs.connect(func(cid):   # «Відкрити хаб у країні»: its cities, to buy or rent a hub
+		var sm := session.sim
+		modals.push({"icon": "building", "eyebrow": "Відкрити хаб", "title": sm.states[cid].name, "close": true, "width": 760,
+			"content": wins.country_hub_list(cid, func(): modals.clear())}))
 	_warm_flags(session.sim)
 	wins.show_order.connect(func(k):
 		map_ui.show_order(k)

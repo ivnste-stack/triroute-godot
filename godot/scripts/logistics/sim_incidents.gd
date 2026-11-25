@@ -353,13 +353,32 @@ func inc_band_k(j: Dictionary, st: Dictionary) -> float:
 	return .6
 
 
+## the crew's average experience of a role (1…5, 3 for everyone hired without a choice)
+func crew_sk(r: String) -> float:
+	var n: int = CO.staff.get(r, 0)
+	if n <= 0:
+		return 3.0
+	var k: Dictionary = CO.get("crew_sk", {}).get(r, {"n": 0, "s": 0.0})
+	var kn := mini(int(k.n), n)
+	return (float(k.s) * (kn / maxf(1.0, float(k.n))) + 3.0 * (n - kn)) / n
+
+
+## incidents caused by the crew: an experienced crew has fewer (1.0 with the market's average crew)
+func crew_k(mode: String) -> float:
+	var r: String = {"road": "driver", "rail": "rail", "sea": "sailor", "air": "pilot"}.get(mode, "driver")
+	if not CO.has("crew_sk") or not CO.crew_sk.has(r):
+		return 1.0
+	return 1.0 + (3.0 - crew_sk(r)) * .08
+
+
+
 func inc_roll(j: Dictionary, st: Dictionary, cc: Dictionary, cg: Dictionary) -> Variant:
 	var m: String = j.mode
 	var dk := dfk()
 	var mt: float = [1.4, 1.0, .65][CO.maint]
 	var mor: float = 1.35 - CO.morale / 100
 	var dev: float = 1.4 - cc.dev * .6
-	var saf := 1 - .45 * msk("coo")
+	var saf := (1 - .45 * msk("coo")) * crew_k(m)   # the crew's experience (1.0 with the market's average)
 	var frg: float = cg.fr * 4 + .3
 	var theft_k: float = cg.get("theft", .6) if cg.get("theft", 0) else .6
 	var P := []

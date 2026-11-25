@@ -171,8 +171,85 @@ func act_hire(r: String, k: int) -> Dictionary:
 		var sev := JS.round_js(D.ROLE[r].w * wage_k(me) * CO.wageLv * q)
 		CO.cash -= sev
 		CO.m.wage += sev
+		if CO.has("crew_sk") and CO.crew_sk.has(r):   # the chosen ones leave like the rest: the average stays
+			var ck: Dictionary = CO.crew_sk[r]
+			var kept := 1.0 - float(q) / maxf(1, CO.staff[r])
+			ck.n = int(floor(ck.n * kept))
+			ck.s = float(ck.s) * kept
 		CO.staff[r] -= q
 		CO.morale -= q * .6
+	return {}
+
+
+# ---------- crew candidates: drivers, train drivers, sailors, pilots (like the top managers, three to choose) ----------
+const CREW_TR := ["Обережний", "Пунктуальний", "Досвідчений", "Новачок", "Ризиковий", "Ветеран", "Старанний", "Спокійний"]
+
+
+## the candidates of a role this month (up to three, no more than the labour market has); drawn from their own
+## generator, so looking at them never changes the game's chances
+func crew_cands(r: String) -> Array:
+	if not CO.has("crew_cand"):
+		CO.crew_cand = {}
+	var mk: int = int(date.y) * 12 + int(date.m)
+	var c: Variant = CO.crew_cand.get(r)
+	if c == null or c.m != mk:
+		c = {"m": mk, "g": 0, "L": _crew_gen(r, mk, 0)}
+		CO.crew_cand[r] = c
+	var n := mini(3, int(floor(CO.pool.get(r, 0))))
+	return c.L.slice(0, n)
+
+
+func _crew_gen(r: String, mk: int, g: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed_value, r, mk, g, CO.get("uid", 0)])
+	var L := []
+	for i in 3:
+		var sk := rng.randi_range(1, 5)
+		L.append({"name": "%s %s" % [D.FIRST[rng.randi() % D.FIRST.size()], D.LAST[rng.randi() % D.LAST.size()]], "age": rng.randi_range(21, 58),
+			"skill": sk, "yrs": maxi(0, sk * 3 - 2 + rng.randi_range(-2, 3)), "trait": CREW_TR[rng.randi() % CREW_TR.size()]})
+	return L
+
+
+## the signing fee of a candidate: half a month's wage, more for the experienced
+func crew_fee(r: String, c: Dictionary) -> float:
+	return JS.round_js(hire_fee(r, 1) * (.6 + .2 * c.skill))
+
+
+func act_hire_crew(r: String, i: int) -> Dictionary:
+	var L := crew_cands(r)
+	if i < 0 or i >= L.size():
+		return _toast("warn", "Ринок праці вичерпано", "%s: нові кандидати з'являться наступного місяця." % D.ROLE[r].n)
+	var c: Dictionary = L[i]
+	var room := staff_cap() - staff_total()
+	if room <= 0:
+		return _toast("warn", "Немає робочих місць", "Хаби вміщують %d працівників. Покращіть хаби або відкрийте нові." % staff_cap())
+	var fee := crew_fee(r, c)
+	if CO.cash < fee:
+		return _toast("warn", "Бракує грошей", "Найм коштує " + usd_s(fee))
+	CO.cash -= fee
+	CO.m.wage += fee
+	CO.staff[r] += 1
+	CO.pool[r] -= 1
+	if not CO.has("crew_sk"):
+		CO.crew_sk = {}
+	var k: Dictionary = CO.crew_sk.get(r, {"n": 0, "s": 0.0})
+	k.n = int(k.n) + 1
+	k.s = float(k.s) + c.skill
+	CO.crew_sk[r] = k
+	CO.crew_cand[r].L.remove_at(i)
+	return _toast("good", "Найнято", "%s · %s" % [c.name, D.ROLE[r].n.to_lower()])
+
+
+func act_recrew(r: String) -> Dictionary:
+	var c := JS.round_js(400 * price_k(me))
+	if CO.cash < c:
+		return _toast("warn", "Бракує грошей", "Пошук коштує " + usd_s(c))
+	CO.cash -= c
+	CO.m.other += c
+	crew_cands(r)
+	var e: Dictionary = CO.crew_cand[r]
+	e.g += 1
+	e.L = _crew_gen(r, e.m, e.g)
 	return {}
 
 
@@ -203,6 +280,8 @@ func act_fire_mgr(id: String) -> Dictionary:
 	co_mgr_cand(id)
 	if id == "cto":
 		CO.auto = false
+	if id == "cfo":   # no one to keep the insurance
+		CO.ins = false
 	return {}
 
 
@@ -345,8 +424,12 @@ func act_hub_close(pid: int) -> Dictionary:
 
 
 # ---------- finance ----------
-func act_ins() -> void:
+## cargo insurance: arranged by the financial director
+func act_ins() -> Dictionary:
+	if not CO.ins and not CO.mgr.has("cfo"):
+		return _toast("warn", "Потрібен фінансовий директор", "Страхування вантажів веде він. Найміть його у вікні «Персонал»")
 	CO.ins = not CO.ins
+	return {}
 
 
 func act_auto() -> Dictionary:
