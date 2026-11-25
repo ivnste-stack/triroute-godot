@@ -66,7 +66,7 @@ var slice_max := 0
 
 func _pause() -> void:
 	var dt := Time.get_ticks_usec() - _bt
-	if _slice and dt > 6000:
+	if _slice and dt > 4000:
 		slices += 1
 		slice_max = maxi(slice_max, dt)
 		Perf.end("window.build")

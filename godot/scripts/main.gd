@@ -1097,6 +1097,7 @@ func _win_tick(force: bool = false) -> void:
 	_win_day = sim.day
 	_win_dirty = false
 	var id := hud.open_window
+	var opened := id != _win_id   # another window: what the last one showed goes at once
 	_win_id = id
 	if smooth and _args.has("perf"):
 		print("PERF day %.1f ms" % (Perf.acc.get("co_day", 0) / 1000.0))
@@ -1123,10 +1124,17 @@ func _win_tick(force: bool = false) -> void:
 		if sim.news.is_empty():
 			off.add_child(Ui.note("Поки що новин немає.", Ui.MUTED))
 	else:
+		# every build goes over as many frames as it needs (a few ms each): the content shown stays until the new
+		# one is ready; of builds that overlap, the latest is the one shown
+		if opened:
+			win.clear_body()
+		_build_gen += 1
+		var bg := _build_gen
 		_win_building = smooth
-		await wins.build(id, off, smooth)
-		_win_building = false
-		if smooth and hud.open_window != id:   # closed or switched while it was built over several frames
+		await wins.build(id, off, true)
+		if bg == _build_gen:
+			_win_building = false
+		if bg != _build_gen or hud.open_window != id:   # a newer build, or the window closed or switched meanwhile
 			Perf.end("window.build")
 			off.free()
 			return
@@ -1156,6 +1164,7 @@ func _win_tick(force: bool = false) -> void:
 
 
 var _win_id := ""
+var _build_gen := 0
 var _swap_gen := 0
 var _swap_t := 0
 

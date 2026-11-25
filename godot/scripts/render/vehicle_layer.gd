@@ -21,11 +21,24 @@ var dpr := 1.0
 var hits: Array = []              # {j | ids, x, y, r}: what is under the pointer (CO_HITS / CO_CL)
 
 
+## what moves on its own between two pictures of the map (the pulse of the selected trip, incident waves and
+## blinking, a GPS blackout, attack marks) is drawn by this child every frame; the trips, trails and the route
+## only when the game's clock, the camera or the trips change
+var _fx: Control
+var _fx_items: Array = []   # [{j, sp, r, rgb, inc, red, amb, tp, tc, w, sel}] from the last picture
+
+
 func _ready() -> void:
 	# the markers are small textures (DotTex): filtered through their mipmaps, smooth at any zoom
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fx = Control.new()
+	_fx.texture_filter = texture_filter
+	_fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fx.draw.connect(_draw_fx)
+	add_child(_fx)
 
 
 func _process(_delta: float) -> void:
@@ -39,10 +52,13 @@ func _process_t(_delta: float) -> void:
 		return
 	# redrawn when something on it moves: the game's clock, the camera, the legend, or a blinking marker
 	# (paused with a still camera a fleet of hundreds cost 2+ ms a frame for the same picture)
-	var k := "%.6f|%s|%s|%d|%d" % [session.sim.co_now(), camera.global_transform, size, MapVis.ver, session.sim.CO.get("jobs", []).size()]
-	if k != _key or _anim or selected != null:
+	var k := "%.6f|%s|%s|%d|%d|%d" % [session.sim.co_now(), camera.global_transform, size, MapVis.ver, session.sim.CO.get("jobs", []).size(),
+		selected.id if selected != null else -1]
+	if k != _key:
 		_key = k
 		queue_redraw()
+	if _anim:
+		_fx.queue_redraw()
 
 
 var _key := ""
@@ -67,6 +83,7 @@ func _draw() -> void:
 
 
 func _draw_t() -> void:
+	_fx_items = []
 	if Perf.off("veh"):
 		return
 	hits = []
@@ -76,7 +93,6 @@ func _draw_t() -> void:
 	var CO := sim.CO
 	if CO.is_empty() or not CO.has("hubs"):
 		return
-	var now := session.anim_t
 	var anim := false
 	var zf := clampf(11.0 / camera.dist, 1, 1.8)
 	var T0 := sim.co_now()
@@ -98,15 +114,18 @@ func _draw_t() -> void:
 		# off the screen: nothing to draw or to point at (its trail could reach in, by at most a few dots)
 		if sp.x < -60 or sp.y < -60 or sp.x > vw.x + 60 or sp.y > vw.y + 60:
 			continue
-		var gv := _gps_vis(j, T0)
-		if gv <= 0:
-			continue
+		var gv := 1.0   # a GPS blackout fades it: the effects child draws it with its blink
 		var inc: Variant = st.get("inc") if st.get("inc") != null and st.inc.k != "stop" else null
 		var red: bool = j.get("hold", 0) > 0 or j.lost or (inc != null and INC_RED.has(inc.k))
 		var amb: bool = inc != null and not red
 		var rgb: Color = RED if red else MODE_RGB.get(j.mode, HUB_RGB)
-		if inc != null or gv < 1:
+		# a trip whose marker blinks or waves is drawn by the effects child (_draw_fx), every frame
+		var live: bool = inc != null or j.get("gps") != null and T0 < j.gps.until
+		var fx: Variant = null
+		if live or is_same(selected, j):
 			anim = true
+			fx = {"j": j, "sp": sp, "r": 4.2 * dpr * zf, "rgb": rgb, "inc": inc, "red": red, "amb": amb, "live": live, "sel": is_same(selected, j), "tp": null, "tc": null, "w": 0.0}
+			_fx_items.append(fx)
 		# trail: full close up, shorter farther out, none at the far zoom (a dot or two of pixels there)
 		# fewer trail points as the camera goes back, and none from far for road and rail (hundreds of them); planes
 		# and ships keep theirs at any distance (few of them, and the trail shows where they head over open sea)
@@ -135,30 +154,18 @@ func _draw_t() -> void:
 				tp.append(q)
 				tc.append(Color(rgb, .75 * (1 - k * kk * 1.5 / 10.0) * gv))
 			if tp.size() > 1:
-				draw_polyline_colors(tp, tc, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8, true)
+				if fx != null and fx.live:   # a GPS blackout fades the trail too: drawn with it
+					fx.tp = tp
+					fx.tc = tc
+					fx.w = (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8
+				else:
+					draw_polyline_colors(tp, tc, (2.4 if j.mode == "sea" else 1.8) * dpr * zf * .8, true)
 		if j.mode == "air" and alt > 0:
 			var sh: Variant = _P(pos[0], 0, pos[1])
 			if sh != null:
 				_ellipse(sh, 3 * dpr * zf, 1.6 * dpr * zf, Color(0, 0, 0, .35 * gv))
-		var r := 4.2 * dpr * zf
-		var t := _ms()
-		if is_same(selected, j):
-			var f := fmod(now * 1.2, 1.0)
-			draw_arc(sp, r + 3 * dpr + f * 10 * dpr, 0, TAU, 32, Color(rgb, (.9 - f * .9) * gv), 1.5 * dpr, true)
-		var bl := .5 + .5 * sin(t * (9.0 if red else 5.0)) if inc != null else 1.0
-		if inc != null:
-			var wc := AMBER if amb else rgb
-			for w in (2 if amb else 1):
-				var f := fmod(t / .9 + w * .5, 1.0)
-				draw_arc(sp, r + 2 * dpr + f * 14 * dpr, 0, TAU, 32, Color(wc, .9 * (1 - f) * gv), 1.8 * dpr, true)
-		DotTex.draw(self, DotTex.soft(), sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv))
-		DotTex.draw(self, DotTex.dot(), sp, r, Color(rgb, ((.35 + .65 * bl) if red and inc != null else 1.0) * gv))
-		if inc != null and red and camera.dist < 16:
-			_text("!", Vector2(sp.x - 2.5 * dpr, sp.y), int(round(9 * dpr)), Color(Color("#06121b"), gv))
-		if j.n > 1 and camera.dist < 12:
-			_text("×%d" % j.n, Vector2(sp.x + r + 3 * dpr, sp.y - r - 3 * dpr), int(round(9 * dpr)), Color(rgb, gv))
-		if gv < 1 and camera.dist < 18:
-			_text("GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
+		if fx == null or not fx.live:
+			_marker(self, j, sp, 4.2 * dpr * zf, rgb, null, false, false, 1.0)
 		var hit := {"j": j, "x": sp.x, "y": sp.y, "r": 14, "wx": pos[0], "wz": pos[1]}
 		if is_same(selected, j) and st.seg >= 0:   # where it heads on the screen: its card stays clear of the route ahead
 			var ds: float = .04 * sim.CO_DU
@@ -169,8 +176,8 @@ func _draw_t() -> void:
 			if qa != null and qb != null:
 				hit.dx = (qb - qa).normalized().x if qb != qa else 0.0
 		hits.append(hit)
-	_marks()
 	_anim = anim or not session.sim.CO.get("imk", []).is_empty()
+	_fx.queue_redraw()
 
 
 ## the fading trails behind moving vehicles (settings «Сліди техніки»)
@@ -178,8 +185,56 @@ static var trails := true
 
 
 func _dot(c: Vector2, r: float, fill: Color, stroke: Color, w: float) -> void:
-	draw_circle(c, r, fill, true, -1.0, true)
-	draw_arc(c, r, 0, TAU, 24, stroke, w, true)
+	_dot_on(self, c, r, fill, stroke, w)
+
+
+func _dot_on(ci: CanvasItem, c: Vector2, r: float, fill: Color, stroke: Color, w: float) -> void:
+	ci.draw_circle(c, r, fill, true, -1.0, true)
+	ci.draw_arc(c, r, 0, TAU, 24, stroke, w, true)
+
+
+## a trip's marker on ci: the dot with its glow, incident waves and blink, "!", the count, "GPS?" (gv: GPS fade)
+func _marker(ci: CanvasItem, j: Dictionary, sp: Vector2, r: float, rgb: Color, inc: Variant, red: bool, amb: bool, gv: float) -> void:
+	var t := _ms()
+	var bl := .5 + .5 * sin(t * (9.0 if red else 5.0)) if inc != null else 1.0
+	if inc != null:
+		var wc := AMBER if amb else rgb
+		for w in (2 if amb else 1):
+			var f := fmod(t / .9 + w * .5, 1.0)
+			ci.draw_arc(sp, r + 2 * dpr + f * 14 * dpr, 0, TAU, 32, Color(wc, .9 * (1 - f) * gv), 1.8 * dpr, true)
+	DotTex.draw(ci, DotTex.soft(), sp, r * 2.1, Color(rgb, (.22 * bl + .06) * gv))
+	DotTex.draw(ci, DotTex.dot(), sp, r, Color(rgb, ((.35 + .65 * bl) if red and inc != null else 1.0) * gv))
+	if inc != null and red and camera.dist < 16:
+		_text_on(ci, "!", Vector2(sp.x - 2.5 * dpr, sp.y), int(round(9 * dpr)), Color(Color("#06121b"), gv))
+	if j.n > 1 and camera.dist < 12:
+		_text_on(ci, "×%d" % j.n, Vector2(sp.x + r + 3 * dpr, sp.y - r - 3 * dpr), int(round(9 * dpr)), Color(rgb, gv))
+	if gv < 1 and camera.dist < 18:
+		_text_on(ci, "GPS?", Vector2(sp.x + r + 3 * dpr, sp.y + r + 3 * dpr), int(round(8.5 * dpr)), Color(Color("#c9d4de"), gv))
+
+
+## every frame: what blinks and pulses (the trips of the last picture whose marker moves on its own, the
+## selected trip's ring, attack marks)
+func _draw_fx() -> void:
+	if session == null or session.sim == null or camera == null:
+		return
+	var T0 := session.sim.co_now()
+	var now := session.anim_t
+	for it in _fx_items:
+		var j: Dictionary = it.j
+		var gv := _gps_vis(j, T0) if it.live else 1.0
+		if gv <= 0:
+			continue
+		if it.tp != null:
+			var tc: PackedColorArray = it.tc.duplicate()
+			for i in tc.size():
+				tc[i].a *= gv
+			_fx.draw_polyline_colors(it.tp, tc, it.w, true)
+		if it.sel:
+			var f := fmod(now * 1.2, 1.0)
+			_fx.draw_arc(it.sp, it.r + 3 * dpr + f * 10 * dpr, 0, TAU, 32, Color(it.rgb, (.9 - f * .9) * gv), 1.5 * dpr, true)
+		if it.live:
+			_marker(_fx, j, it.sp, it.r, it.rgb, it.inc, it.red, it.amb, gv)
+	_marks()
 
 
 func _ellipse(c: Vector2, rx: float, ry: float, col: Color) -> void:
@@ -191,9 +246,13 @@ func _ellipse(c: Vector2, rx: float, ry: float, col: Color) -> void:
 
 
 func _text(s: String, pos: Vector2, fs: int, col: Color) -> void:
+	_text_on(self, s, pos, fs, col)
+
+
+func _text_on(ci: CanvasItem, s: String, pos: Vector2, fs: int, col: Color) -> void:
 	var asc := F_MONO_B.get_ascent(fs)
 	var desc := F_MONO_B.get_descent(fs)
-	draw_string(F_MONO_B, Vector2(pos.x, pos.y + (asc - desc) / 2), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+	ci.draw_string(F_MONO_B, Vector2(pos.x, pos.y + (asc - desc) / 2), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 
 
 ## GPS blackout: blink, vanish for a few seconds, flicker back, vanish again (incGpsVis)
@@ -309,19 +368,19 @@ func _marks() -> void:
 				var p := Vector2(c.x + cos(ang) * R, c.y + sin(ang) * R)
 				if m.k == "pir":
 					var boat := PackedVector2Array([p + Vector2(-5, -2) * dpr, p + Vector2(5, -2) * dpr, p + Vector2(3, 3) * dpr, p + Vector2(-3, 3) * dpr])
-					draw_colored_polygon(boat, Color("#1a0808"))
+					_fx.draw_colored_polygon(boat, Color("#1a0808"))
 					boat.append(boat[0])
-					draw_polyline(boat, col, 1.4 * dpr, true)
+					_fx.draw_polyline(boat, col, 1.4 * dpr, true)
 				else:
-					_dot(p, 3 * dpr, Color("#1a0808"), col, 1.4 * dpr)
+					_dot_on(_fx, p, 3 * dpr, Color("#1a0808"), col, 1.4 * dpr)
 		var f := fmod(now / 1000.0, 1.4) / 1.4
-		draw_arc(c, (10 + f * 22) * dpr, 0, TAU, 40, Color(col, .9 * (1 - f)), 2 * dpr, true)
+		_fx.draw_arc(c, (10 + f * 22) * dpr, 0, TAU, 40, Color(col, .9 * (1 - f)), 2 * dpr, true)
 		var y: float = c.y - 20 * dpr
 		var txt := "ПІРАТИ" if m.k == "pir" else "НАПАД"
 		var fs := int(round(9 * dpr))
 		var tw := F_MONO_B.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 24 * dpr
 		var r := Rect2(c.x - tw / 2, y - 9 * dpr, tw, 18 * dpr)
-		draw_rect(r, Color(26 / 255.0, 6 / 255.0, 6 / 255.0, .92))
-		draw_rect(r, col, false, 1.2 * dpr)
-		Icons.draw(self, "skull", c.x - tw / 2 + 4 * dpr, y, 12 * dpr, col)
-		_text(txt, Vector2(c.x - tw / 2 + 19 * dpr, y + .5 * dpr), fs, col)
+		_fx.draw_rect(r, Color(26 / 255.0, 6 / 255.0, 6 / 255.0, .92))
+		_fx.draw_rect(r, col, false, 1.2 * dpr)
+		Icons.draw(_fx, "skull", c.x - tw / 2 + 4 * dpr, y, 12 * dpr, col)
+		_text_on(_fx, txt, Vector2(c.x - tw / 2 + 19 * dpr, y + .5 * dpr), fs, col)
