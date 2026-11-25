@@ -10,7 +10,10 @@ const RED := Color(240 / 255.0, 98 / 255.0, 95 / 255.0)
 
 var camera: MapCamera
 var session: GameSession
-var lines: Array = []          # TRWorldGen.lines() (borders between states: a, b = state id + 1)
+var lines: Array = []:         # TRWorldGen.lines() (borders between states: a, b = state id + 1)
+	set(v):
+		lines = v
+		_border_cache = {}   # closures of another world (or of the same one edited) had other borders
 var top := false
 var mode := "co"             # the map layer (MapView.mode): road closures only on "co" and "grid"
 var dpr := 1.0
@@ -46,6 +49,10 @@ func _process(_delta: float) -> void:
 
 func _process_t(_delta: float) -> void:
 	if session == null or session.sim == null or camera == null:
+		if _anim != null and _anim_on:   # the game is gone: its pulsing markers go with it
+			_anim.queue_redraw()
+			_anim_on = false
+		hits = []
 		return
 	var sim := session.sim
 	var CO := sim.CO

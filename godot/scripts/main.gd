@@ -113,6 +113,8 @@ var _focused := true
 func _input(e: InputEvent) -> void:
 	if e is InputEventMouse or e is InputEventKey:
 		_last_input = Time.get_ticks_msec() / 1000.0
+	if e is InputEventMouseButton and e.pressed:
+		_focused = true   # a click in the window: it has the focus whatever the system said
 
 
 func _notification(what: int) -> void:
@@ -126,7 +128,7 @@ func _notification(what: int) -> void:
 ## paused and the player has not touched anything for a few seconds, the chosen limit otherwise
 func _pace_frames() -> void:
 	var cap := _fps_cap
-	if not _focused:
+	if not _focused and Time.get_ticks_msec() / 1000.0 - _last_input > 1.0:   # in the background (the pointer over it counts as use)
 		cap = 15
 	elif menu != null and menu.visible:
 		pass   # the main menu's backgrounds float: every frame counts
@@ -684,6 +686,13 @@ func _on_world(w: Dictionary) -> void:
 			map_ui.show_country(int(_args.country))
 		if _args.has("win"):
 			_toggle_window(_args.win)
+		if _args.has("thenedit"):   # test: from a running game back to a new world in the editor
+			await get_tree().create_timer(1.0).timeout
+			_end_game()
+			_args.erase("company")
+			_ng.map = "edit"
+			_create_world()
+			return
 		if _args.has("save"):   # test: save into a slot
 			var sd := _save_data()
 			SaveSystem.write(_args.save, sd.data, sd.meta)
@@ -1027,6 +1036,10 @@ func _pick_done(pid: int) -> void:
 	_pick_tip = null
 	_play(pid, false)
 	var hp: Dictionary = session.sim.PL[pid]
+	# the company's first frames are heavy (its board, the layers): the camera sets off after them, so the
+	# glide to the headquarters starts smooth instead of with a jump
+	for i in 3:
+		await get_tree().process_frame
 	map.camera.look_at_point(Vector2(hp.x, hp.z + .3), 6.0)
 
 
@@ -1369,6 +1382,10 @@ func _slots(save: bool) -> void:
 # ---------- the map editor ----------
 func _open_editor(w: Dictionary) -> void:
 	backdrop.visible = false
+	hud.visible = false   # nothing of a game over the editor
+	map_ui.visible = false
+	if win.visible:
+		_toggle_window("")
 	editor = MapEditor.new()
 	editor.theme = Ui.theme()
 	editor.toast = func(tone, t, d): toasts.push(tone, t, d)

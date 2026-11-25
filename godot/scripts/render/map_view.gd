@@ -475,8 +475,11 @@ func detach_session() -> void:
 	towns._key = ""
 	for L in [inc_base, inc_top]:
 		L.session = null
+		L._border_cache = {}
 		L.queue_redraw()
 	vehicles.session = null
+	vehicles.selected = null
+	vehicles.hits = []
 	vehicles.queue_redraw()
 	_session = null
 

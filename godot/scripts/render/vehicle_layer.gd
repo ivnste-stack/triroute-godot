@@ -84,6 +84,7 @@ func _draw() -> void:
 
 func _draw_t() -> void:
 	_fx_items = []
+	_fx.queue_redraw()   # the effects follow this picture (a new world: the old game's markers go too)
 	if Perf.off("veh"):
 		return
 	hits = []

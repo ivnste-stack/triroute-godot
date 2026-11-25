@@ -73,7 +73,8 @@ func _process_t(delta: float) -> void:
 		ttx += sin(Time.get_ticks_msec() / 700.0) * .02
 	if keys_on:
 		_keys(minf(delta, .05))
-	var dt := clampf(delta * 1000.0, 1.0, 50.0)
+	# a long frame (a game starting, a world shown) moves the glide by at most two frames' worth: no jump
+	var dt := clampf(delta * 1000.0, 1.0, 34.0)
 	var k := 1.0 - pow(.85, dt / 16.7)
 	dist += (tdist - dist) * k
 	tx += (ttx - tx) * k
