@@ -61,7 +61,7 @@ func apply_window() -> void:
 			w.mode = Window.MODE_MAXIMIZED
 
 
-## VSync, the frame limit, anti-aliasing, anisotropic filtering and the render resolution of the map
+## VSync, the frame limit, anti-aliasing and the render resolution of the map
 func apply_video() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if Settings.get_value("vsync") else DisplayServer.VSYNC_DISABLED)
 	var f := int(Settings.get_value("fps"))
@@ -69,32 +69,30 @@ func apply_video() -> void:
 	Engine.max_fps = _fps_cap
 	var vp := get_viewport()
 	# the map is one flat plane whose coasts, borders and water triangles are drawn by its shader: MSAA, which
-	# smooths only the edges of geometry, cannot see them. FXAA smooths the finished picture; SSAA renders the
-	# map larger and shrinks it (supersampling), which smooths everything the shader draws.
-	var aa := _aa_mode()
+	# smooths only the edges of geometry, cannot see them, and FXAA showed nothing in this renderer. SSAA
+	# renders the map larger and shrinks it (supersampling): the edges of the water and land triangles and their
+	# shimmer while the camera moves. Coasts, borders, roads and labels are smoothed by their shaders anyway.
 	vp.msaa_3d = Viewport.MSAA_DISABLED
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "fxaa" or aa == "fxaa_ssaa" else Viewport.SCREEN_SPACE_AA_DISABLED
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	if map != null:
 		map.set_glint(bool(Settings.get_value("glint")))
-	vp.anisotropic_filtering_level = clampi(int(Settings.get_value("aniso")), 0, 4) as Viewport.AnisotropicFiltering
+	# the map reads its textures at a fixed level of detail: anisotropic filtering changes nothing on it
+	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_4X
 	VehicleLayer.trails = bool(Settings.get_value("trails"))
 	apply_render_scale()
 
 
-## the map's render resolution (RES_OPTS): the width it is drawn at against the window's real pixels
+## the map's render resolution: a share of the window's real pixels (high 100 %, medium 85 %, low 75 %)
 func apply_render_scale() -> void:
 	var vp := get_viewport()
 	var res := int(Settings.get_value("res"))
-	var phys_w := float(get_window().size.x) if get_window() != null else 1600.0
-	var k := clampf(res / maxf(320.0, phys_w), .5, 2.0) if res > 0 else (clampf(-res / 100.0, .5, 1.0) if res < 0 else 1.0)
-	# supersampling: the map's 3D render this many times larger on each side (at most 2, Godot's limit)
-	var ss: float = {"ssaa2": 1.5, "ssaa4": 2.0, "fxaa_ssaa": 1.5}.get(_aa_mode(), 1.0)
-	# the supersampled render never goes beyond 4K wide: more costs a lot and shows nothing (SSAA 4× on a
-	# 1440p window rendered 5120×2880)
-	ss = maxf(1.0, minf(ss, 3840.0 / maxf(320.0, phys_w * k)))
+	var k := clampf(-res / 100.0, .5, 1.0) if res < 0 else 1.0
+	# supersampling: 2× and 4× the pixels (1.41 and 2 times on each side, 2 is Godot's limit)
+	var ss: float = {"ssaa2": 1.41, "ssaa4": 2.0}.get(_aa_mode(), 1.0)
 	var k3 := minf(k * ss, 2.0)
 	vp.scaling_3d_scale = k3
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if String(Settings.get_value("upscale")) == "fsr" and k3 < 1 else Viewport.SCALING_3D_MODE_BILINEAR
+	# a smaller render is stretched by AMD FSR 1.0: sharper than plain bilinear
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if k3 < 1 else Viewport.SCALING_3D_MODE_BILINEAR
 	_map_k3 = k3
 	_map_k = k
 	if map != null:
@@ -109,7 +107,7 @@ var _map_k := 1.0
 ## the anti-aliasing mode; the MSAA modes of earlier versions became supersampling
 func _aa_mode() -> String:
 	var aa := String(Settings.get_value("aa"))
-	return {"msaa2": "ssaa2", "msaa4": "ssaa4", "msaa8": "ssaa4"}.get(aa, aa)
+	return aa if aa in ["off", "ssaa2", "ssaa4"] else "off"
 
 
 ## the map's resolution now (for the settings): the window's size × the render scale, without supersampling
@@ -143,10 +141,8 @@ func _notification(what: int) -> void:
 ## paused and the player has not touched anything for a few seconds, the chosen limit otherwise
 func _pace_frames() -> void:
 	var cap := _fps_cap
-	if not _focused and Settings.get_value("idle_fps"):
+	if not _focused:
 		cap = 15
-	elif not Settings.get_value("idle_fps"):
-		pass
 	elif menu != null and menu.visible:
 		pass   # the main menu's backgrounds float: every frame counts
 	elif (session == null or session.speed == 0) and Time.get_ticks_msec() / 1000.0 - _last_input > 3.0 and not modals.is_open():

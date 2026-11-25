@@ -118,7 +118,7 @@ func _header() -> void:
 		nb = g.call("build_id") if g.has_method("build_id") else "OLD (before 2026-11-25): godot/bin was not updated"
 	_w("native    triroute %s" % nb)
 	_w("screen    %s · window %dx%d · mode %d · ui scale %.2f · refresh %.0f Hz" % [DisplayServer.screen_get_size(win.current_screen), win.size.x, win.size.y, win.mode, win.content_scale_factor, DisplayServer.screen_get_refresh_rate(win.current_screen)])
-	var keys := ["preset", "vsync", "fps", "idle_fps", "res", "upscale", "aa", "aniso", "blur", "glint", "trails", "daynight", "ui_scale", "window"]
+	var keys := ["preset", "vsync", "fps", "res", "aa", "blur", "glint", "trails", "daynight", "ui_scale", "window"]
 	_w("settings  " + " · ".join(keys.map(func(k): return "%s=%s" % [k, Settings.get_value(k)])))
 	_w("limits    Engine.max_fps=%d · vsync mode=%d" % [Engine.max_fps, DisplayServer.window_get_vsync_mode()])
 	_w("")
