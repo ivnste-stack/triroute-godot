@@ -415,7 +415,7 @@ func _marks() -> void:
 		var f := fmod(now / 1000.0, 1.4) / 1.4
 		_fx.draw_arc(c, (10 + f * 22) * dpr, 0, TAU, 40, Color(col, .9 * (1 - f)), 2 * dpr, true)
 		var y: float = c.y - 20 * dpr
-		var txt := "ПІРАТИ" if m.k == "pir" else "НАПАД"
+		var txt := I18n.t("ПІРАТИ" if m.k == "pir" else "НАПАД")
 		var fs := int(round(9 * dpr))
 		var tw := F_MONO_B.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 24 * dpr
 		var r := Rect2(c.x - tw / 2, y - 9 * dpr, tw, 18 * dpr)

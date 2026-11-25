@@ -149,6 +149,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else ""
+	I18n.setup(String(_args.get("lang", Settings.get_value("lang"))))   # the interface's language (test: --lang=en)
 	if _args.has("preset"):   # test: a graphics preset for this run only
 		for k in Settings.PRESETS[_args.preset]:
 			Settings._values[k] = Settings.PRESETS[_args.preset][k]
@@ -394,6 +395,18 @@ func _settings() -> void:
 
 func in_game() -> bool:
 	return session != null and session.sim != null and hud.visible
+
+
+## the language changed: what is drawn by hand is drawn again (the Labels and Buttons translate themselves)
+func retranslate() -> void:
+	if map != null:
+		map.towns._content = ""
+		map.towns._wc = {}
+		map.overlay.dirty()
+	if win.visible:
+		_win_tick(true)
+	if hud != null:
+		hud.queue_redraw()
 
 
 ## the fast progress of the settings (Sim.act_fast)

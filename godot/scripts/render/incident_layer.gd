@@ -283,7 +283,7 @@ func _draw_top() -> void:
 			var q: Variant = _P(cap.x, cap.z + .35)
 			if q == null:
 				continue
-			var txt := "ЗАКРИТЕ НЕБО"
+			var txt := I18n.t("ЗАКРИТЕ НЕБО")
 			var fs := int(round(10 * dpr))
 			var tw := F_MONO_B.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 28 * dpr
 			var r := Rect2(q.x - tw / 2, q.y - 10 * dpr, tw, 20 * dpr)

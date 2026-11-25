@@ -180,7 +180,7 @@ func _process(_delta: float) -> void:
 func _process_t(_delta: float) -> void:
 	if camera == null or towns.is_empty() or _lay == null:
 		return
-	var ck := "%.2f|%d" % [dpr, MapVis.ver]
+	var ck := "%.2f|%d|%s" % [dpr, MapVis.ver, I18n.lang()]
 	if sim != null:
 		ck += "|%d|%d|%s" % [sim.CO.get("hq", -1), sim.me, sim.CO.get("hubs", []).map(func(h): return [h.pid, h.lvl, h.get("rent", false)])]
 	if ck != _content:
@@ -355,7 +355,7 @@ func _town_info(pid: int) -> Dictionary:
 	var font: Font = F_INTER_B if big else F_INTER_SB
 	var tag := ""
 	if hb != null:
-		tag = ("★ ШТАБ · " if hq else "") + ("ОРЕНДА · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl]).to_upper()
+		tag = I18n.t(("★ ШТАБ · " if hq else "") + ("ОРЕНДА · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl]).to_upper())
 	var tgw := _tw(F_MONO_B, tag, int(round(9 * d))) if tag else 0.0
 	var icl := []
 	if p.port and MapVis.vis("port"):
@@ -365,14 +365,14 @@ func _town_info(pid: int) -> Dictionary:
 	if rail_nodes.has(p.node) and MapVis.vis("rails"):
 		icl.append("train")
 	var isz := 11 * d
-	var name_w := _tw(font, p.name, int(round(fs)))
+	var nm: String = I18n.t(p.name)   # the English game: the name in Latin letters
+	var name_w := _tw(font, nm, int(round(fs)))
 	var nmw := name_w + (icl.size() * (isz + 2 * d) + 4 * d if icl.size() else 0.0)
 	var tw := maxf(nmw, tgw) + 12 * d
 	var th := fs + 8 * d + (12 * d if tag else 0.0)
 	I.w = tw
 	I.h = th
 	var rent2: bool = hb != null and hb.get("rent", false)
-	var nm: String = p.name
 	lb.fn = func(n: Node2D) -> void:
 		n.draw_rect(Rect2(0, 0, tw, th), Color(8 / 255.0, 18 / 255.0, 28 / 255.0, .86))
 		var bc := (Color(170 / 255.0, 182 / 255.0, 194 / 255.0, .85) if rent2 else Color(1, 179 / 255.0, 71 / 255.0, .8)) if tag else Color(160 / 255.0, 180 / 255.0, 198 / 255.0, .28)
@@ -419,11 +419,11 @@ func _chip_info(ch: Dictionary, far: bool) -> Dictionary:
 	var out := {}
 	var d := dpr
 	var st: Dictionary = states[ch.cid]
-	var title: String = String(st.name).to_upper()
-	var sub: String = ch.sub
+	var title: String = I18n.t(String(st.name)).to_upper()
+	var sub: String = I18n.t(ch.sub)
 	var tag := ""
 	if hb != null:
-		tag = (("★ Штаб · " if hq else "") + ("Оренда · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl])).to_upper()
+		tag = I18n.t((("★ Штаб · " if hq else "") + ("Оренда · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl])).to_upper())
 	var f1 := 11.0 * d
 	var tw := _spaced_w(_onest_600, title, int(round(f1)), .08 * f1)
 	var sw := 0.0 if far else 11 * d + 4 * d + _tw(_onest_500, sub, int(round(11 * d)))

@@ -33,6 +33,7 @@ const DEFAULTS := {
 	"keys": {},           # key bindings changed by the player (Keys): {action: keycode}
 	# game
 	"autosave": true,
+	"lang": "uk",         # the interface's language: "uk" Ukrainian, "en" English (I18n)
 }
 
 var _values := {}

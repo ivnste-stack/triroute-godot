@@ -256,6 +256,9 @@ func _snd() -> void:
 
 
 func _game() -> void:
+	_row("Мова · Language", "Мова інтерфейсу. Interface language.", _seg("lang", I18n.LANGS, func():
+		I18n.setup(String(Settings.get_value("lang")))
+		host.retranslate(), true))
 	_row("Автозбереження", "Кожні 15 хвилин гри в окремий слот — він перший у списку «Завантажити гру».", _toggle("autosave"))
 	_row("Перевірки", "Самоперевірка симуляції і рендеру (F9).", Ui.btn("Відкрити", "sm", "check", func(): host.open_checks()))
 	_head("Продуктивність")
