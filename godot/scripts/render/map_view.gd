@@ -392,8 +392,15 @@ func edit_update(data: PackedByteArray) -> void:
 	_ed_tex.update(_ed_img)
 
 
+## the sea of the editor's lattice drawn deep, whatever the old world's terrain says (an empty ocean until
+## its own textures are built)
+func set_edit_deep(on: bool) -> void:
+	_mat.set_shader_parameter("ed_deep", on)
+
+
 func edit_end() -> void:
 	_mat.set_shader_parameter("edit_on", false)
+	_mat.set_shader_parameter("ed_deep", false)
 	set_haze(1.0)
 	sea_labels.hold = false
 	_ed_img = null

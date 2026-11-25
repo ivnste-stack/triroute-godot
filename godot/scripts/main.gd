@@ -528,6 +528,8 @@ func _process(delta: float) -> void:
 	_live_n += 1
 	if map != null and map.camera != null:
 		var fo := get_viewport().gui_get_focus_owner()
+		if editor == null:
+			map.camera.left_locked = false   # the left button drags the map everywhere but in the editor's brushes
 		map.camera.keys_on = ((hud != null and hud.visible) or editor != null) and not modals.is_open() and not (fo is LineEdit or fo is TextEdit)
 	if _live_n % 6 == 0 and win.visible and session != null and session.sim != null:
 		Windows.tick_trips(session.sim, get_tree())
@@ -700,8 +702,15 @@ func _on_world(w: Dictionary) -> void:
 				await get_tree().process_frame
 			var c: PackedStringArray = String(_args.get("pickat", _args.get("pickclick"))).split(",")
 			var at := Vector2(float(c[0]), float(c[1]))
-			if _args.has("pickclick"):
-				_pick_click(at)
+			if _args.has("pickclick"):   # a real click: the press and the release go through the input, like a player's
+				for pr in [true, false]:
+					var ev := InputEventMouseButton.new()
+					ev.button_index = MOUSE_BUTTON_LEFT
+					ev.pressed = pr
+					ev.position = at
+					ev.global_position = at
+					Input.parse_input_event(ev)
+					await get_tree().process_frame
 			else:
 				Input.warp_mouse(at)
 			for i in 6:
@@ -1380,7 +1389,14 @@ func _open_editor(w: Dictionary) -> void:
 		editor.test_script()
 		if _args.edscript == "go":
 			editor._finish()
-	if _args.has("shot") and editor != null and _args.get("edscript", "") != "go":
+		elif _args.edscript == "cancel":   # test: out of the editor with a brush in hand, then a generated world
+			await get_tree().process_frame
+			_close_editor()
+			map.edit_end()
+			_ng.map = "gen"
+			_create_world()
+			return
+	if _args.has("shot") and editor != null and not _args.get("edscript", "") in ["go", "cancel"]:
 		for i in 30:
 			await get_tree().process_frame
 		await get_tree().create_timer(float(_args.get("wait", "1.5"))).timeout

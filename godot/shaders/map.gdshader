@@ -26,6 +26,7 @@ uniform float night = 0.0;   // the test day and night: 0 day … 1 night
 // the map editor: its lattice is drawn at once, before the textures are built again (MapEditor):
 // one texel a square, r / g the owner of the half h0 / h1 (0 sea, state id + 1, 121 neutral), b the diagonal
 uniform bool edit_on = false;
+uniform bool ed_deep = false;   // the editor's sea all deep (an empty ocean before its textures are built)
 uniform sampler2D tE : filter_nearest, repeat_disable;
 uniform vec2 SQWH = vec2(180.0, 120.0);
 
@@ -78,7 +79,7 @@ vec3 triCol(vec2 q, float bd, float hatch, out float land) {
 	if (edit_on) {   // the half: across the diagonal "\\" tup 1 is h0, across "/" it is h1
 		vec4 e = edAt(fl);
 		eid = uint(round((dg > .5 ? (tup > .5 ? e.r : e.g) : (tup > .5 ? e.g : e.r)) * 255.));
-		h = eid > 0u ? max(h, .01) : min(h, -.035);
+		h = eid > 0u ? max(h, .01) : (ed_deep ? -.9 : min(h, -.035));
 	}
 	land = step(0., h);
 	// ---- sea

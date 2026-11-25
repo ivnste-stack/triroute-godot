@@ -19,8 +19,8 @@ const NEU := 120
 const MAX_STATES := 118
 const TOOLS := [
 	["sel", "Вибір", "eye", "Клік по державі чи поселенню: назва, колір, столиця, порт."],
-	["paint", "Пензель", "plus", "Затисни ліву кнопку й веди: суша обраної держави. Мапу рухає права кнопка."],
-	["sea", "Море", "wave", "Затисни ліву кнопку й веди: суша стає морем. Мапу рухає права кнопка."],
+	["paint", "Пензель", "plus", "Затисни ліву кнопку й веди: суша обраної держави. Мапу рухає права кнопка або Пробіл + ліва."],
+	["sea", "Море", "wave", "Затисни ліву кнопку й веди: суша стає морем. Мапу рухає права кнопка або Пробіл + ліва."],
 	["line", "Кордон", "pin", "Клікай по вузлах сітки. Замкни лінію на першому вузлі — усередині з'явиться нова держава."],
 	["isl", "Острів → державі", "anchor", "Клік по острову чи материку: уся ця суша переходить до обраної держави."],
 	["islDel", "Стерти острів", "trash", "Клік по острову: уся його суша стає морем."],
@@ -93,6 +93,7 @@ var _tx_task := -1
 var _tx_result := {}
 var _tx_again := false
 var _busy := false
+var _stopped := false
 var _rng := RandomNumberGenerator.new()
 
 var _panel: PanelContainer
@@ -137,6 +138,7 @@ func start(map_: MapView, gen_: Object, w: Dictionary, blank: bool) -> void:
 	_tex.resize(SQW * SQH * 4)
 	_tex_all()
 	map.edit_begin(SQW, SQH, _tex)
+	map.set_edit_deep(blank)   # an empty ocean is deep at once, before its textures are built
 	map.set_sel(-1)
 	_gtx = gen.clone()
 	map.camera.clicked.connect(_click)
@@ -154,6 +156,7 @@ func start(map_: MapView, gen_: Object, w: Dictionary, blank: bool) -> void:
 
 
 func stop() -> void:
+	_stopped = true
 	if map.camera.clicked.is_connected(_click):
 		map.camera.clicked.disconnect(_click)
 	map.camera.left_locked = false
@@ -476,7 +479,14 @@ func _queue_tx() -> void:
 	_status_upd()
 
 
+func _exit_tree() -> void:
+	if map != null:
+		map.camera.left_locked = false
+
+
 func _process(_delta: float) -> void:
+	if _stopped:
+		return
 	if _tex_dirty:
 		_tex_dirty = false
 		map.edit_update(_tex)
@@ -485,12 +495,13 @@ func _process(_delta: float) -> void:
 		_tx_task = -1
 		if not _tx_result.is_empty():
 			map.set_textures(_tx_result)
+			map.set_edit_deep(false)   # the real depths of the edited world from now on
 		_tx_result = {}
 		if _tx_again:
 			_tx_again = false
 			_queue_tx()
 		_status_upd()
-	map.camera.left_locked = tool in ["paint", "sea"] and not _busy
+	map.camera.left_locked = tool in ["paint", "sea"] and not _busy and not Input.is_key_pressed(KEY_SPACE)
 	queue_redraw()
 
 
@@ -853,6 +864,19 @@ func paint_w(w: Vector2, v: int) -> void:
 			_stroke_any = true
 
 
+## a stroke ends wherever the button is let go (over the panel too, where the release never reaches
+## _unhandled_input)
+func _input(ev: InputEvent) -> void:
+	if _painting and ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and not ev.pressed:
+		_painting = false
+		if _stroke_any:
+			_land_changed = true
+			_commit()
+		else:
+			_undo.pop_back()
+			_dirty = Rect2()
+
+
 func _unhandled_input(ev: InputEvent) -> void:
 	if _busy or not visible:
 		return
@@ -863,7 +887,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 	elif ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and tool in ["paint", "sea"]:
-			if mb.pressed and not _over_panel(mb.position):
+			if mb.pressed and not _over_panel(mb.position) and not Input.is_key_pressed(KEY_SPACE):
 				if tool == "paint" and (sel < 0 or sel >= S.size()):
 					_say("warn", "Спершу обери державу", "Клікни по ній інструментом «Вибір» або створи нову")
 					return
@@ -871,14 +895,6 @@ func _unhandled_input(ev: InputEvent) -> void:
 				_painting = true
 				_stroke_any = false
 				_paint_at(mb.position)
-			elif not mb.pressed and _painting:
-				_painting = false
-				if _stroke_any:
-					_land_changed = true
-					_commit()
-				else:
-					_undo.pop_back()
-					_dirty = Rect2()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if mb.pressed:
 				_rdown = mb.position
@@ -1205,7 +1221,7 @@ func _panel_refresh() -> void:
 	go.custom_minimum_size.y = 40
 	_body.add_child(go)
 	_body.add_child(Ui.btn("Вийти в меню", "sm", "close", func(): cancelled.emit()))
-	_body.add_child(Ui.note("Права кнопка або WASD — рух мапи, коліщатко — масштаб, [ ] — розмір пензля.", Ui.MUTED))
+	_body.add_child(Ui.note("Ліва кнопка — рух мапи (з пензлем: Пробіл + ліва або права кнопка), WASD, коліщатко — масштаб, [ ] — розмір пензля.", Ui.MUTED))
 
 
 func _state_card(cid: int) -> Control:
