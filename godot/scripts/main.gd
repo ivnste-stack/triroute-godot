@@ -732,6 +732,8 @@ func _on_world(w: Dictionary) -> void:
 		map.camera.tyaw = map.camera.yaw
 	if _args.has("hour"):   # test: the day and night at this hour (--hour=22)
 		map.night_hour = float(_args.hour)
+	if _args.has("trailer"):   # a scene of the trailer (scripts/trailer.gd, tools/trailer.sh)
+		add_child(Trailer.new(self, String(_args.trailer)))
 	if _args.has("noui"):   # test: the map alone (the main menu's backgrounds)
 		_ui.visible = false
 	if _args.has("mode"):   # test: a map layer

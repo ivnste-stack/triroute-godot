@@ -73,7 +73,7 @@ func _P(x: float, y: float, z: float) -> Variant:
 
 
 func _ms() -> float:
-	return Time.get_ticks_msec() / 1000.0
+	return Clock.now()
 
 
 func _draw() -> void:
@@ -344,7 +344,7 @@ func _marks() -> void:
 	if not MapVis.vis("mark"):
 		return
 	var sim := session.sim
-	var now := Time.get_ticks_msec()
+	var now := Clock.ms()
 	for m in sim.CO.get("imk", []):
 		var x: float = m.x
 		var z: float = m.z

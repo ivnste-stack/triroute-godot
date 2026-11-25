@@ -257,7 +257,7 @@ func co_pause_to(j: Dictionary, p: Dictionary, d: float) -> void:
 
 func inc_mark(j: Dictionary, st: Dictionary, k: String, days: float) -> void:
 	var q := co_pos_at(j, st.s)
-	CO.imk.append({"x": q[0], "z": q[1], "k": k, "jid": j.id, "until": co_now() + days, "t": Time.get_ticks_msec()})
+	CO.imk.append({"x": q[0], "z": q[1], "k": k, "jid": j.id, "until": co_now() + days, "t": Clock.ms()})
 
 
 # ---------- reroute a road/rail trip from where it stands (incDetour) ----------

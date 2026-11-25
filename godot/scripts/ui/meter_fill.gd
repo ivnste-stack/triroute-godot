@@ -37,7 +37,7 @@ func _draw() -> void:
 	const P := 14.14   # the period across the bar (10 px along the stripes' normal)
 	const W := 7.07    # the width of a coloured stripe across the bar (5 px along the normal)
 	var h := size.y
-	var off := fmod(Time.get_ticks_msec() / 1000.0 * 25.0, P)
+	var off := fmod(Clock.now() * 25.0, P)
 	var x := off - P - h
 	while x < size.x + h:
 		# a stripe leaning like "/": its bottom edge to the left of its top edge

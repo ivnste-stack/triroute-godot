@@ -128,7 +128,7 @@ func _jams_on() -> bool:
 func _draw_base() -> void:
 	var sim := session.sim
 	var CO := sim.CO
-	var t := Time.get_ticks_msec() / 1000.0
+	var t := Clock.now()
 	var W := size.x
 	var H := size.y
 	# pirate and bandit zones
@@ -190,7 +190,7 @@ func _anim_base_t(n: Node2D) -> void:
 	if session == null or session.sim == null:
 		return
 	var sim := session.sim
-	var t := Time.get_ticks_msec() / 1000.0
+	var t := Clock.now()
 	var W := size.x
 	var H := size.y
 	# road closures
@@ -315,7 +315,7 @@ func _anim_top(n: Node2D) -> void:
 	if session == null or session.sim == null or session.sim.sky.is_empty() or not MapVis.vis("sky"):
 		return
 	var sim := session.sim
-	var off := fmod(Time.get_ticks_msec() / 1000.0 * 14 * dpr, 13 * dpr)
+	var off := fmod(Clock.now() * 14 * dpr, 13 * dpr)
 	for l in lines:
 		if not (sim.sky.has(l.a - 1) or sim.sky.has(l.b - 1)):
 			continue

@@ -588,7 +588,7 @@ func _mv_draw() -> void:
 	if mv_v == null:
 		return
 	var n := _mv_node
-	var f := fmod(Time.get_ticks_msec() / 1000.0 * .8, 1.0)
+	var f := fmod(Clock.now() * .8, 1.0)
 	var font := Ui.font("mono", 700)
 	for t in mv_ts:
 		var p: Dictionary = sim.PL[t.pid]
