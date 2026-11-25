@@ -460,10 +460,10 @@ func _process_t(delta: float) -> void:
 
 
 ## the ticker: the latest news, scrolling (every frame)
-## a running line, a conveyor: the news ride from right to left one after another; one that has left on the
-## left goes to the back of the line again (only the latest TICKER_N stay in it); a fresh news joins at the
-## back too, so the text on the screen never jumps. Whatever joins the back while the line is short of the
-## right edge starts beyond that edge (a gap before it), so nothing pops up in the middle.
+## a running line, a conveyor: the news ride from right to left one after another, always the same gap
+## between them; one that has left on the left goes to the back of the line again (only the latest TICKER_N
+## stay in it); a fresh news joins at the back too, so the text on the screen never jumps. The line is kept
+## longer than the screen (the news repeated when there are few), so nothing pops up in the middle.
 func _ticker_step(delta: float) -> void:
 	var sim := session.sim
 	if not is_same(sim, _ticker_sim):   # another game: an empty line
@@ -505,6 +505,7 @@ func _ticker_step(delta: float) -> void:
 			_ticker_back(first)
 		else:
 			first.queue_free()
+	_ticker_fill()
 	_ticker.position = Vector2(roundf(14 + _ticker_x), (_ticker_clip.size.y - _ticker.get_combined_minimum_size().y) / 2)
 
 
@@ -519,16 +520,31 @@ func _ticker_push(it: Array, gap := true) -> void:
 	_ticker_back(m, gap)
 
 
-## to the back of the line, beyond the right edge when the line does not reach it
-func _ticker_back(c: Control, gap := true) -> void:
-	var end := _ticker_x + _ticker.get_combined_minimum_size().x
-	var edge := _ticker_clip.size.x - 14
-	if gap and _ticker.get_child_count() and end < edge:
-		var spacer := Control.new()
-		spacer.custom_minimum_size.x = edge - end
-		spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_ticker.add_child(spacer)   # no news: it leaves on the left and is gone
+## to the back of the line
+func _ticker_back(c: Control, _gap := true) -> void:
 	_ticker.add_child(c)
+
+
+## the line's own width: the sum of its items (the container's size lags a frame behind)
+func _ticker_w() -> float:
+	var w := 0.0
+	for c in _ticker.get_children():
+		if not c.is_queued_for_deletion():
+			w += (c as Control).get_combined_minimum_size().x
+	return w
+
+
+## the line kept longer than the screen: with few news they come round again (copies at the back)
+func _ticker_fill() -> void:
+	var edge := _ticker_clip.size.x
+	var n := _ticker.get_child_count()
+	var i := 0
+	while n > 0 and _ticker_x + _ticker_w() < edge + 40 and i < 30:
+		var src: Node = _ticker.get_child(i % n)
+		var it: Variant = src.get_meta("news", null)
+		if it != null:
+			_ticker_push(it, false)
+		i += 1
 
 
 ## .rbtn / .rbtn.on: the open window's button on the accent with a dark icon, at once when it changes

@@ -808,7 +808,16 @@ func _mm_card(k: Dictionary) -> PanelContainer:
 	var bs := Ui.hbox(8, [Ui.spacer(), _show_btn(k), _btn("", "sm", "trash", func():
 		sim.act_decline(id)
 		_do({}), true, "Прибрати"), _btn("Взяти замовлення", "pri sm", "road", func(): plan_order.emit(k))])
-	return _blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, bs]))
+	return _blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, _card_rule(), bs]))
+
+
+## a thin line across a card that stops short of its sides: the tags above, the buttons below
+static func _card_rule() -> Control:
+	var r := ColorRect.new()
+	r.color = Ui.LINE
+	r.custom_minimum_size.y = 1
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return Ui.margin(r, 6, 2, 6, 2)
 
 
 func _board_card(k: Dictionary) -> PanelContainer:
@@ -893,6 +902,7 @@ func _board_card(k: Dictionary) -> PanelContainer:
 		var word: String = {"road": "Вантажівок", "rail": "Потягів", "sea": "Суден", "air": "Літаків"}.get(need[1], "Машин")
 		add_p.call("%s %d" % [word, need[0]] + (" · вільних %d" % need[2] if need[2] >= 0 else ""), "warn" if need[2] >= 0 else "acc", MODE_IC.get(need[1], "truck"),
 			_tip("Скільки техніки потрібно", "Вантаж не вміщується в одну машину: їде кілька однакових одиниць разом." + (" Зараз вільних лише %d — купіть ще в «Автопарку» або дочекайтеся тих, що в рейсі." % need[2] if need[2] >= 0 else "")))
+	v.add_child(_card_rule())   # the tags apart from the buttons
 	if P.ok:
 		var bs := Ui.hbox(8)
 		if sim.cons_ok(k):

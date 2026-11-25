@@ -96,7 +96,7 @@ func _circle(x: float, z: float, r: float, n: int) -> PackedVector2Array:
 	var c0: Variant = _P(x, z)
 	var c1: Variant = _P(x + r, z)
 	if c0 != null and c1 != null:
-		n = clampi(int((c0 as Vector2).distance_to(c1) / 5.0), 12, n)
+		n = clampi(int((c0 as Vector2).distance_to(c1) / 3.0), 32, maxi(n, 64))   # round at any zoom
 	var pts := PackedVector2Array()
 	for i in n + 1:
 		var a := i / float(n) * TAU

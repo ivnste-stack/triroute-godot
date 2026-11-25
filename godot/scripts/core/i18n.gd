@@ -61,6 +61,15 @@ func _load() -> void:
 	_map = d
 	for k in EXTRA:   # name pieces worth translating (the company names' endings)
 		_map[k] = EXTRA[k]
+	var parts := {}
+	for k in _map:
+		var ks := String(k).split("\n")
+		var es := String(_map[k]).split("\n")
+		if ks.size() > 1 and ks.size() == es.size():
+			for i in ks.size():
+				if ks[i].strip_edges() != "" and not _map.has(ks[i]):
+					parts[ks[i]] = es[i]
+	_map.merge(parts)
 	for k in _map:
 		var uk: String = k
 		var en: String = _map[k]
@@ -142,8 +151,20 @@ func _tr(s: String) -> String:
 	if _cache.size() > 40000:
 		_cache.clear()
 	_cache[s] = s   # a guard while the parts are being translated
-	var u := _units_en(s)   # the units after numbers first: «$12 тис.» → «$12k»
-	var out := u if _cy.search(u) == null else _units_en(_find(u, 0))
+	# as written first (a format string may hold its units: «запізнення %.1f дн.», «Сектор ≈ %d км»), then
+	# with the units turned English (a price joined to words: «$12 тис.»): the one that needed fewer names
+	# transliterated wins
+	_tl_n = 0
+	var out := _find(s, 0)
+	if _tl_n > 0:
+		var n1 := _tl_n
+		var u := _units_en(s)
+		if u != s:
+			_tl_n = 0
+			var out2 := u if _cy.search(u) == null else _find(u, 0)
+			if _tl_n < n1:
+				out = out2
+	out = _units_en(out)
 	_cache[s] = out
 	return out
 
@@ -261,7 +282,16 @@ const TL := {"а": "a", "б": "b", "в": "v", "г": "h", "ґ": "g", "д": "d", "
 const TL_FIRST := {"є": "ye", "ї": "yi", "й": "y", "ю": "yu", "я": "ya"}
 
 
-static func _translit(s: String) -> String:
+var _tl_n := 0
+
+
+func _translit(s: String) -> String:
+	if _cy.search(s) != null:
+		_tl_n += 1
+	return _translit_s(s)
+
+
+static func _translit_s(s: String) -> String:
 	var out := ""
 	var start := true
 	for ch in s:

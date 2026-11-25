@@ -1080,7 +1080,6 @@ func _pick_click(mp: Vector2) -> void:
 		return
 	var pid: int = p.id
 	modals.push({"icon": "building", "eyebrow": "Країна старту", "title": "%s, %s" % [p.name, session.sim.states[cid].name],
-		"content": _pick_info(cid, p),
 		"choices": [{"t": "Відкрити штаб тут", "d": "Компанія стартує в цій столиці", "hl": true, "f": func(): _pick_done(pid)},
 			{"t": "Обрати іншу країну", "d": "Повернутися до мапи", "f": func(): pass}]})
 
