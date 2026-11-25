@@ -61,17 +61,15 @@ func apply_window() -> void:
 			w.mode = Window.MODE_MAXIMIZED
 
 
-## VSync, the frame limit, anti-aliasing and the render resolution of the map
+## VSync, the frame limit and the render resolution of the map
 func apply_video() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if Settings.get_value("vsync") else DisplayServer.VSYNC_DISABLED)
 	var f := int(Settings.get_value("fps"))
 	_fps_cap = f if f > 0 else 0
 	Engine.max_fps = _fps_cap
 	var vp := get_viewport()
-	# the map is one flat plane whose coasts, borders and water triangles are drawn by its shader: MSAA, which
-	# smooths only the edges of geometry, cannot see them, and FXAA showed nothing in this renderer. SSAA
-	# renders the map larger and shrinks it (supersampling): the edges of the water and land triangles and their
-	# shimmer while the camera moves. Coasts, borders, roads and labels are smoothed by their shaders anyway.
+	# no anti-aliasing of the picture: the map's shader smooths the edges of its own triangles, coasts and
+	# borders (map.gdshader), the lines, towns and labels theirs
 	vp.msaa_3d = Viewport.MSAA_DISABLED
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	if map != null:
@@ -87,37 +85,21 @@ func apply_render_scale() -> void:
 	var vp := get_viewport()
 	var res := int(Settings.get_value("res"))
 	var k := clampf(-res / 100.0, .5, 1.0) if res < 0 else 1.0
-	# supersampling: 2× and 4× the pixels (1.41 and 2 times on each side, 2 is Godot's limit)
-	var ss: float = {"ssaa2": 1.41, "ssaa4": 2.0}.get(_aa_mode(), 1.0)
-	var k3 := minf(k * ss, 2.0)
-	vp.scaling_3d_scale = k3
+	vp.scaling_3d_scale = k
 	# a smaller render is stretched by AMD FSR 1.0: sharper than plain bilinear
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if k3 < 1 else Viewport.SCALING_3D_MODE_BILINEAR
-	_map_k3 = k3
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if k < 1 else Viewport.SCALING_3D_MODE_BILINEAR
 	_map_k = k
 	if map != null:
 		map.render_k = k
 
 
 
-var _map_k3 := 1.0
 var _map_k := 1.0
-
-
-## the anti-aliasing mode; the MSAA modes of earlier versions became supersampling
-func _aa_mode() -> String:
-	var aa := String(Settings.get_value("aa"))
-	return aa if aa in ["off", "ssaa2", "ssaa4"] else "off"
 
 
 ## the map's resolution now (for the settings): the window's size × the render scale, without supersampling
 func render_size() -> Vector2i:
 	return Vector2i((Vector2(get_window().size) * _map_k).round())
-
-
-## the size the anti-aliasing renders the map at inside before it shrinks it to the screen
-func ss_size() -> Vector2i:
-	return Vector2i((Vector2(get_window().size) * _map_k3).round())
 
 
 var _fps_cap := 0
@@ -173,7 +155,7 @@ func _ready() -> void:
 	if _args.has("preset"):   # test: a graphics preset for this run only
 		for k in Settings.PRESETS[_args.preset]:
 			Settings._values[k] = Settings.PRESETS[_args.preset][k]
-	if _args.has("set"):   # test: settings for this run only, --set=res:1280,aa:msaa4
+	if _args.has("set"):   # test: settings for this run only, --set=res:-85,glint:false
 		for kv in String(_args.set).split(","):
 			var p := kv.split(":")
 			var d: Variant = Settings.DEFAULTS.get(p[0])

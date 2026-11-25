@@ -10,7 +10,6 @@ const DEFAULTS := {
 	"window": "max",      # "max" a maximised window, "window" a window of win_size, "borderless" full screen, "exclusive" exclusive full screen
 	"win_size": "1600x900",
 	"res": 0,             # the map's render: 0 high (the window's), -85 medium (85 %), -75 low (75 %)
-	"aa": "ssaa2",        # anti-aliasing of the map (supersampling): "off", "ssaa2", "ssaa4"
 	"vsync": true,        # wait for the monitor's refresh
 	"fps": 0,             # the frame limit: 0 none, else 30…240
 	"glint": true,        # slow glints on the water
@@ -52,13 +51,11 @@ func load_settings() -> void:
 		_values[k] = cfg.get_value("settings", k, DEFAULTS[k])
 	if _values.blur is bool:   # older settings: the blur was on or off
 		_values.blur = 2 if _values.blur else 0
-	# older settings: a render share or width of their own → the nearest of the three; FXAA (no visible effect
-	# in this renderer) → off, FXAA + SSAA → SSAA 2×
+	# older settings: a render share or width of their own → the nearest of the three
 	var r := int(_values.res)
 	if not r in [0, -85, -75]:
 		var pct := -r if r < 0 else 100   # a width of its own: the window's
 		_values.res = 0 if pct >= 93 else (-85 if pct >= 80 else -75)
-	_values.aa = {"fxaa": "off", "fxaa_ssaa": "ssaa2", "msaa2": "ssaa2", "msaa4": "ssaa4", "msaa8": "ssaa4"}.get(_values.aa, _values.aa)
 
 
 func save_settings() -> void:
@@ -70,10 +67,10 @@ func save_settings() -> void:
 
 ## the graphics presets: what each one sets (everything else stays the player's)
 const PRESETS := {
-	"low": {"res": -75, "aa": "off", "glint": false, "blur": 0, "trails": false},
-	"medium": {"res": -85, "aa": "off", "glint": true, "blur": 1, "trails": true},
-	"high": {"res": 0, "aa": "ssaa2", "glint": true, "blur": 2, "trails": true},
-	"ultra": {"res": 0, "aa": "ssaa4", "glint": true, "blur": 2, "trails": true},
+	"low": {"res": -75, "glint": false, "blur": 0, "trails": false},
+	"medium": {"res": -85, "glint": true, "blur": 1, "trails": true},
+	"high": {"res": 0, "glint": true, "blur": 1, "trails": true},
+	"ultra": {"res": 0, "glint": true, "blur": 2, "trails": true},
 }
 
 
