@@ -1,10 +1,10 @@
 extends Node
-## Interface sounds (assets/sfx, made by tools/make_sfx.py): a button, a window, a trip sent, a delivery, good
-## news, a warning, an incident, a refusal, a new grade or licence. A few players on the "Sfx" bus (its
-## volume: the settings); the same sound again within a moment is skipped, so a burst of events is one sound.
+## Interface sounds (assets/sfx, made by tools/make_sfx.py): only what the player does — a button pressed, a
+## window opened. Events of the game (a trip sent, a delivery, a hub bought, warnings, a new grade) are silent.
+## A few players on the "Sfx" bus (its volume: the settings); the same sound again within a moment is skipped.
 
-const NAMES := ["click", "send", "coin", "good", "warn", "alert", "deny", "level"]
-const GAP := {"click": .04, "coin": .25, "good": .3, "warn": .4, "alert": .5}   # seconds before the same sound again
+const NAMES := ["click"]
+const GAP := {"click": .04}   # seconds before the same sound again
 
 var _streams := {}
 var _players: Array = []

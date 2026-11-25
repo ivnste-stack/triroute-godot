@@ -18,23 +18,7 @@ func _ready() -> void:
 
 
 func push(tone: String, title: String, text: String = "") -> void:
-	_sound(tone, title)
 	_push(tone, title, text)
-
-
-## the sound of a toast: a trip sent, good news, a warning, an incident (quiet ones say nothing)
-static func _sound(tone: String, title: String) -> void:
-	var t := title.to_lower()
-	if t.begins_with("автозбереження") or t.begins_with("скріншот") or t.begins_with("запис продуктивності") or t.begins_with("новий грейд"):
-		return
-	if t.contains("відправ") or t.contains("в дорозі"):
-		Sfx.play("send")
-	elif tone == "good":
-		Sfx.play("good")
-	elif tone == "bad":
-		Sfx.play("alert")
-	elif tone == "warn":
-		Sfx.play("deny" if t.begins_with("бракує") or t.begins_with("немає") or t.contains("не прокласти") or t.contains("неможливо") else "warn")
 
 
 func _push(tone: String, title: String, text: String = "") -> void:
