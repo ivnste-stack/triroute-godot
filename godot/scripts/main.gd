@@ -27,7 +27,7 @@ var planner: Planner
 var course: Course
 var menu: StartMenu
 var _args := {}
-var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "fine", "base": "gen"}
+var _ng := {"size": "m", "diff": 1, "seed": 0, "map": "gen", "roads": "fine", "base": "gen", "mode": "classic"}
 var editor: MapEditor = null   # the map editor, while it is open
 var _edit := {}                # the map editor's edit of the world in play (saved with the game)
 var _pending_edit := {}
@@ -370,6 +370,8 @@ func _new_game_dialog() -> void:
 	c.add_child(size_note)
 	map_vis.call()
 	c.add_child(field.call("Складність", Ui.seg(DIFF_N, _ng.diff, func(v): _ng.diff = v)))
+	c.add_child(field.call("Режим", Ui.seg([["classic", "Класичний"], ["mm", "Мультимодальний (тест)"]], _ng.mode, func(v): _ng.mode = v)))
+	c.add_child(Ui.note("Мультимодальний: на біржі немає поділу на авто, потяги, кораблі й літаки — кожне замовлення ви берете й самі будуєте маршрут з ділянок, обираючи для кожної вид транспорту й конкретну техніку.", Ui.MUTED))
 	var seed_l := Ui.num(str(_ng.seed), 14, Ui.MUTED)
 	c.add_child(field.call("Зерно світу", Ui.hbox(12, [seed_l, Ui.btn("Інше", "sm", "dice", func():
 		_ng.seed = randi() % 1000000000
@@ -593,6 +595,8 @@ func _on_world(w: Dictionary) -> void:
 	session = GameSession.new()
 	add_child(session)
 	session.begin(map.generator(), GameState.world_seed, w.states, w.board, w, _ng.diff)
+	if _ng.mode == "mm" or _args.get("gmode", "") == "mm":   # the multimodal mode (test): every order is built by hand
+		session.sim.CO.mm = true
 	hud.session = session
 	var loaded := _pending != null
 	if loaded:
@@ -627,6 +631,8 @@ func _on_world(w: Dictionary) -> void:
 				for p in ps.slice(0, maxi(0, int(_args.hubs) - CO.hubs.size())):
 					CO.cash = maxf(CO.cash, sm.hub_cost(p) * 2)
 					sm.act_hub(p.id, false)
+		if _args.get("plan", "") == "mm":   # test: the orders stay on the board for the player
+			session.sim.CO.auto = false
 		if _args.has("days"):
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
@@ -649,8 +655,28 @@ func _on_world(w: Dictionary) -> void:
 						return false
 					var ri := sm.road_info(sm.co_route("road", x.from, x.to))
 					return ri.toll > 0 or ri.ban > 0)
+			if _args.plan == "mm":   # test: the multimodal mode, a road leg straight to the end, its vehicle list open
+				ks = session.sim.CO.board.filter(func(x): return not x.get("multi"))
+				var sm0 := session.sim
+				var hc: int = sm0.board.comp[sm0.PL[sm0.CO.hq].node]
+				ks = ks.filter(func(x): return sm0.board.comp[sm0.PL[x.from].node] == hc and sm0.board.comp[sm0.PL[x.to].node] == hc)
+				ks.sort_custom(func(a, b): return a.tons < b.tons)   # the lightest on the home land: a single truck takes it
 			if ks.size():
 				_plan(ks[0])
+				if _args.plan == "mm":
+					planner.mode = "road"
+					planner.add(ks[0].to)
+					planner._pick_leg = 0
+					if _args.has("plango"):   # test: the first vehicle that holds the load carries the leg
+						var c0: Dictionary = planner.sim.lp_calc(planner.LP).legs[0]
+						for v in planner._leg_cands(c0):   # the first one that can really take it
+							planner.LP.vehs[0] = v.id
+							var C1: Dictionary = planner.sim.lp_calc(planner.LP)
+							if planner.sim.lp_block(planner.LP, C1) == null:
+								print("TEST mm: leg 0 by vehicle %d (%s at %s, %s), lead %.2f" % [v.id, v.t, session.sim.PL[v.loc].name, v.st, C1.legs[0].P.lead])
+								break
+							planner.LP.vehs.erase(0)
+					planner._panel_build()
 				if _args.plan == "auto":
 					planner.auto_use()
 				elif _args.plan == "multi":
@@ -659,7 +685,10 @@ func _on_world(w: Dictionary) -> void:
 					get_tree().create_timer(1.0).timeout.connect(func():
 						var t := Time.get_ticks_usec()
 						planner.go()
-						print("PERF plan go %.1f ms" % ((Time.get_ticks_usec() - t) / 1000.0)))
+						print("PERF plan go %.1f ms" % ((Time.get_ticks_usec() - t) / 1000.0))
+						for j in session.sim.CO.jobs:
+							if j.get("lp") and j.lp.plan.get("vehs") != null:
+								print("TEST mm: job %s → %s by %s, lead %.2f" % [session.sim.PL[j.k.from].name, session.sim.PL[j.k.to].name, j.vids, j.lead]))
 				elif _args.plan == "road":
 					planner.LP.pts = [ks[0].from, ks[0].to]
 					planner.LP.modes = ["road"]

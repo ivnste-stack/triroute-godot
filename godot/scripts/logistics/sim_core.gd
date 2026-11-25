@@ -1684,6 +1684,8 @@ func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
 		kk._veh = plan.veh
 		kk._one = true
 		kk._vol = L.vol
+	elif plan.get("vehs", {}).has(i):   # the multimodal mode: the vehicle the player chose for this leg
+		kk._veh = plan.vehs[i]
 	elif i == 0 and plan.get("veh0") != null:
 		kk._veh = plan.veh0
 	kk.from = L.a
@@ -1717,6 +1719,10 @@ func lp_run_leg(k: Dictionary, plan: Dictionary, i: int, dl: float) -> void:
 		CO.cash -= f
 		CO.m.other += f
 	co_dispatch(kk, P, true)
+	if plan.get("vehs", {}).has(i):   # it leaves now (or a partner took the leg): no longer kept for it
+		for v in CO.veh:
+			if v.id == plan.vehs[i] and v.get("resv") == k.id:
+				v.resv = null
 	for j in CO.jobs:
 		if is_same(j.k, kk):
 			j.lp = {"plan": plan, "i": i, "k0": k}
@@ -2072,6 +2078,12 @@ func _last(e: Dictionary) -> void:
 
 
 func co_complete(j: Dictionary) -> void:
+	# a chain of the multimodal mode that ends here (delivered, or turned back): its vehicles kept for the
+	# legs that will not run are free again
+	if j.get("lp") and j.lp.plan.get("vehs") and (j.lp.i >= j.lp.plan.legs.size() - 1 or j.get("back") or j.get("cx0") or j.lost):
+		for v in CO.veh:
+			if v.get("resv") == j.lp.k0.id and v.st == "idle":
+				v.resv = null
 	if j.get("cons"):
 		push_error("Sim: the old single-trip consolidated orders are not used any more")
 	# a consolidated trip (the wrapper of 08v-cons.js): the last leg pays its drops and frees the pinned vehicle;

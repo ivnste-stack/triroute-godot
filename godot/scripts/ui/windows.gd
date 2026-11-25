@@ -771,6 +771,46 @@ func _plan_line(k: Dictionary, P: Dictionary) -> RichTextLabel:
 	return Ui.rich(s, 13)
 
 
+## an order of the multimodal mode: what, from where, where to, the pay and the deadline — how it goes is
+## for the player to build («Взяти замовлення» opens the route planner)
+func _mm_card(k: Dictionary) -> PanelContainer:
+	var CO := sim.CO
+	var A: Dictionary = sim.PL[k.from]
+	var B: Dictionary = sim.PL[k.to]
+	var cg: Dictionary = sim.cargo_i[k.cg]
+	var info := Ui.vbox(2)
+	info.add_child(Ui.hbox(6, [_place(k.from), Ui.label("→", 14), _place(k.to)]))
+	var vol: float = k.tons * cg.get("v", 3)
+	var far := JS.hypot(B.x - A.x, B.z - A.z) * sim.CO_DU
+	info.add_child(_icl(cg.ic, "%s · %s т · %s м³ · %s по прямій%s" % [cg.n, Ui.loc(k.tons), Ui.loc(vol, 1), Ui.km(far), " · кордон" if A.cid != B.cid else ""]))
+	if k.get("fs"):
+		info.add_child(_icl("building", "%s → %s" % [k.fs, k.ft]))
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var pay := Ui.num(Ui.usd(k.pay), 16)
+	pay.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var dl := Ui.label("термін " + Ui.days(k.dlDays), 13, Ui.FG2)
+	dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var mi := Ui.icon("box", 18, Ui.ACCENT)
+	mi.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pills := HFlowContainer.new()
+	pills.add_theme_constant_override("h_separation", 6)
+	pills.add_theme_constant_override("v_separation", 6)
+	if k.get("prem"):
+		pills.add_child(Ui.pill("Терміново", "warn", "bolt"))
+	if k.get("vip"):
+		pills.add_child(Ui.pill("Ключовий клієнт", "acc", "crown"))
+	var rw := _risk_w(k.risk)
+	pills.add_child(Ui.pill("Ризик: " + rw[0].to_lower(), rw[1], "shield"))
+	if k.get("minR", 0):
+		pills.add_child(Ui.pill("Вимога %.1f★" % k.minR, "acc" if CO.rating >= k.minR else "bad", "star"))
+	pills.add_child(Ui.pill("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info"))
+	var id: int = k.id
+	var bs := Ui.hbox(8, [Ui.spacer(), _show_btn(k), _btn("", "sm", "trash", func():
+		sim.act_decline(id)
+		_do({}), true, "Прибрати"), _btn("Взяти замовлення", "pri sm", "road", func(): plan_order.emit(k))])
+	return _blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, bs]))
+
+
 func _board_card(k: Dictionary) -> PanelContainer:
 	var CO := sim.CO
 	var A: Dictionary = sim.PL[k.from]
@@ -907,7 +947,8 @@ func _jobs(body: VBoxContainer) -> void:
 		p.add_child(c)
 		body.add_child(p)
 		return
-	var jf: String = st.jfl
+	var mm: bool = CO.get("mm", false)   # the multimodal mode: one board, no kinds of transport
+	var jf: String = "all" if mm else st.jfl
 	var m_ok := func(m): return jf == "all" or m == jf
 	var bd: Array = CO.board.filter(func(k): return m_ok.call(k.mode))
 	var tds: Array = CO.tenders.filter(func(t): return m_ok.call(D.VT[t.t].mode))
@@ -919,8 +960,11 @@ func _jobs(body: VBoxContainer) -> void:
 		_stat("Досвід", Ui.grp(floor(CO.get("xp", 0))), "за маршрути, прокладені вручну", _tip("Досвід", "Ручне прокладання дає повний досвід, диспетчер-логіст — лише 8%.")),
 		_stat("На біржі", str(CO.board.size()), "до %d одночасно" % sim.co_board_max(), _tip("Біржа", "Замовлення з'являються в містах, де у вас є хаби. Більше хабів і складів, комерційний директор — більше замовлень. Поки компанія працює лише у своїй країні, біржа залежить від її розміру: у малій державі на кілька міст замовлень менше, у великій — більше. З міжнародною ліцензією обмеження зникає.")),
 		_stat("Тендери", str(CO.tenders.size()), "%d од. техніки зайнято" % nveh, _tip("Тендери", "Довгострокові контракти: стабільний дохід щомісяця."))]))
-	body.add_child(_mode_seg("jfl", func(m): return CO.jobs.size() + CO.board.size() if m == "all" else CO.jobs.filter(func(j): return j.mode == m).size() + CO.board.filter(func(k): return k.mode == m).size()))
+	if not mm:
+		body.add_child(_mode_seg("jfl", func(m): return CO.jobs.size() + CO.board.size() if m == "all" else CO.jobs.filter(func(j): return j.mode == m).size() + CO.board.filter(func(k): return k.mode == m).size()))
 	body.add_child(_sect("Біржа вантажів"))
+	if mm:
+		body.add_child(Ui.hint("[b]Мультимодальний режим (тест).[/b] Замовлення не діляться на авто, потяги, кораблі й літаки: «Взяти замовлення» — і маршрут будуєте самі, ділянка за ділянкою, на кожній обираєте вид транспорту й конкретну техніку. Техніка, що стоїть деінде, спершу порожньою їде, пливе чи летить до початку своєї ділянки.", "layers"))
 	body.add_child(_tg_row("Автодиспетчеризація", "Диспетчер-логіст сам бере замовлення й прокладає маршрути. Досвіду компанії за такі рейси майже немає." if CO.mgr.has("cto") else "Потрібен диспетчер-логіст (вікно «Персонал»).", CO.auto, func(): _do(sim.act_auto())))
 	var cp := _cons_panel()
 	if cp != null:
@@ -931,7 +975,7 @@ func _jobs(body: VBoxContainer) -> void:
 		var v := Ui.vbox(8)
 		for k in bd.slice(0, n):
 			await _pause()
-			v.add_child(_multi_card(k) if k.get("multi") else _board_card(k))
+			v.add_child(_multi_card(k) if k.get("multi") else (_mm_card(k) if mm else _board_card(k)))
 		body.add_child(v)
 		if bd.size() > n:
 			body.add_child(_more(bd.size() - n, "bmore"))

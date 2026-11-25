@@ -155,7 +155,10 @@ func lp_leg(LP: Dictionary, a: int, b: int, m: String, i: int, rr: Variant, via:
 	kk.mode = m
 	kk.minR = 0
 	kk.tons = LP.tn if LP.get("tn") != null else k.tons
-	if i == 0:
+	var vs: Dictionary = LP.get("vehs", {})
+	if vs.has(i):   # the multimodal mode: the player's own choice of a vehicle for this leg, wherever it is
+		kk._veh = vs[i]
+	elif i == 0:
 		kk._veh = LP.get("veh0")
 		kk._ctry = PL[LP.pts[0]].cid if not lp_is_w(LP.pts[0]) else null
 	var P: Variant = null
@@ -229,6 +232,7 @@ func _lp_calc(LP: Dictionary) -> Dictionary:
 			LP.tn = maxf(.1, JS.fixed1(rest))
 		var L: Variant = lp_leg(LP, g.a, g.b, g.m, i, g.r, g.via)
 		if L != null:
+			L.gi = i
 			legs.append(L)
 		if M != null and M.any(func(d): return d.to == g.b):
 			got[g.b] = true
@@ -320,6 +324,14 @@ func lp_block(LP: Dictionary, C: Dictionary) -> Variant:
 			if v.id == LP.veh0:
 				nm = D.VT[v.t].n
 		return "%s не підходить%s" % [nm, ": " + C.legs[0].why.to_lower() if C.legs[0].get("why") else ""]
+	var vs: Dictionary = LP.get("vehs", {})
+	for L in C.legs:
+		if vs.has(L.gi) and not L.own:
+			var nm := "Обрана техніка"
+			for v in CO.veh:
+				if v.id == vs[L.gi]:
+					nm = D.VT[v.t].n
+			return "%s не може везти ділянку %s → %s%s" % [nm, PL[L.a].name, PL[L.b].name, ": " + String(L.why).to_lower() if L.get("why") else ""]
 	if k.get("minR", 0) and CO.rating < k.minR:
 		return "Замовник хоче рейтинг %.1f+ (у вас %.2f)" % [k.minR, CO.rating]
 	var cg: Dictionary = cargo_i[k.cg]
@@ -371,6 +383,11 @@ func lp_go(LP: Dictionary, by_mgr: bool = false) -> String:
 	var plan := {"legs": legs, "ctry": PL[LP.pts[0]].cid}
 	var P0: Variant = C.legs[0].get("P") if C.legs.size() else null
 	plan.veh0 = LP.veh0 if LP.get("veh0") != null else (P0.vids[0] if P0 != null and P0.ok and P0.n == 1 else null)
+	if not LP.get("vehs", {}).is_empty():   # the multimodal mode: the chosen vehicles wait for their legs
+		plan.vehs = LP.vehs.duplicate()
+		for v in CO.veh:
+			if plan.vehs.values().has(v.id):
+				v.resv = k.id
 	if k.get("multi"):   # every leg carries what is still on board; a leg ending at a drop pays it there
 		var got := {}
 		var rem := 0.0

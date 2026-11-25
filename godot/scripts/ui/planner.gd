@@ -66,12 +66,13 @@ func attach(s: GameSession, m: MapView) -> void:
 # ====================================================================== open / close
 ## ACT.lpPlan: "" when opened, or why not
 func open(k: Dictionary) -> String:
-	if not k.get("multi"):
+	var mm: bool = sim.CO.get("mm", false)   # the multimodal mode: the player builds every leg
+	if not k.get("multi") and not mm:
 		var P := sim.co_plan(k)
 		if not P.ok:
 			return P.why
-	LP = {"k": k, "pts": [k.from], "modes": [], "veh0": null, "byMgr": false}
-	mode = k.mode
+	LP = {"k": k, "pts": [k.from], "modes": [], "veh0": null, "byMgr": false, "vehs": {}}
+	mode = "road" if mm else k.mode
 	on = true
 	_prev_speed = session.speed
 	session.set_speed(0)
@@ -107,6 +108,10 @@ func undo() -> void:
 	if LP.pts.size() > 1:
 		LP.pts.pop_back()
 		LP.modes.pop_back()
+		var n: int = sim.lp_groups(LP.pts, LP.modes).G.size()
+		for gi in LP.get("vehs", {}).keys():
+			if gi >= n:
+				LP.vehs.erase(gi)
 		_panel_build()
 
 
@@ -115,6 +120,7 @@ func clear_route() -> void:
 	if LP.pts.size() > 1:
 		LP.pts = [LP.k.from]
 		LP.modes = []
+		LP.vehs = {}
 		LP.byMgr = false
 		_panel_build()
 
@@ -314,6 +320,93 @@ func _veh_list() -> Array:
 		and ((v.st == "idle" and (sim.hub_at(v.loc) != null or (v.get("idle0") != null and T - v.idle0 < 1))) or sim.is_ret_v(v)) and sim.v_cid(v) == cid)
 
 
+## the multimodal mode: who carries a leg — the nearest free one, or a vehicle the player picks wherever it
+## stands (it drives, sails or flies there empty first); the list opens under the leg
+var _pick_leg := -1
+
+
+func _leg_cands(Lg: Dictionary) -> Array:
+	var A: Dictionary = sim.PL[Lg.a]
+	var T := sim.co_now()
+	var taken := {}
+	for gi in LP.vehs:
+		if gi != Lg.gi:
+			taken[LP.vehs[gi]] = true
+	var vs: Array = sim.CO.veh.filter(func(v): return D.VT[v.t].mode == Lg.m and not taken.has(v.id) and not v.get("resv") \
+		and ((v.st == "idle" and (sim.hub_at(v.loc) != null or (v.get("idle0") != null and T - v.idle0 < 1))) or sim.is_ret_v(v)))
+	var lk := {"from": Lg.a, "to": Lg.b, "mode": Lg.m, "cg": LP.k.cg}
+	vs = vs.filter(func(v): return sim.spec_why(lk, v.t) == null)   # only kinds these ports and airports take
+	if Lg.m == "road" or Lg.m == "rail":   # on the ground only from the same land: no truck crosses the sea
+		var comp: PackedInt32Array = sim.board.comp
+		var c0: int = comp[A.node]
+		vs = vs.filter(func(v): return comp[sim.PL[v.loc].node] == c0)
+	vs.sort_custom(func(a, b): return JS.hypot(sim.PL[a.loc].x - A.x, sim.PL[a.loc].z - A.z) < JS.hypot(sim.PL[b.loc].x - A.x, sim.PL[b.loc].z - A.z))
+	return vs
+
+
+func _leg_veh(Lg: Dictionary) -> Control:
+	var gi: int = Lg.gi
+	var v := Ui.vbox(4)
+	var chosen: Variant = LP.vehs.get(gi)
+	var P: Variant = Lg.get("P")
+	var who := "партнер-перевізник (своєї вільної техніки немає)"
+	if Lg.own and P != null:
+		var from := ""
+		if P.vids.size():
+			for x in sim.CO.veh:
+				if x.id == P.vids[0]:
+					from = sim.PL[x.loc].name
+		who = "%s%s%s" % [D.VT[P.t].n + (" ×%d" % P.n if P.n > 1 else ""), (" з " + from) if from != "" else "",
+			(" · [color=#f1c453]порожній перегін %s, %s[/color]" % [Ui.km(P.lead), Ui.days(P.tl)]) if P.lead > .05 else " · уже на місці"]
+	var head := Ui.rich(("[b]Обрано:[/b] " if chosen != null else "[b]Найближча:[/b] ") + who, 12)
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var open := _pick_leg == gi
+	v.add_child(Ui.hbox(6, [head, W._btn("Сховати" if open else "Техніка", "sm", LP_T[Lg.m], func():
+		_pick_leg = -1 if open else gi
+		_panel_build())]))
+	if open:
+		var ab := W._btn("Найближча вільна (автоматично)", "pri sm" if chosen == null else "sm", "cpu", func():
+			LP.vehs.erase(gi)
+			_pick_leg = -1
+			_panel_build())
+		ab.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		v.add_child(ab)
+		var A: Dictionary = sim.PL[Lg.a]
+		var cs := _leg_cands(Lg)
+		if cs.is_empty():
+			v.add_child(W._note("Немає вільної техніки цього виду: купіть її в «Автопарку» або залиште ділянку партнеру.", Ui.MUTED))
+		# the same kind standing in the same place is one row (×N): the nearest first
+		var rows := []
+		var seen := {}
+		for x in cs:
+			var stt: String = "повертається" if x.st == "trip" else ("у хабі" if sim.hub_at(x.loc) != null else "чекає")
+			var key := "%s|%d|%s" % [x.t, x.loc, stt]
+			if seen.has(key):
+				if chosen != x.id:
+					seen[key].n += 1
+					continue
+			var r := {"v": x, "stt": stt, "n": 1}
+			seen[key] = r
+			rows.append(r)
+			if rows.size() >= 10:
+				break
+		for r in rows:
+			var x: Dictionary = r.v
+			var T: Dictionary = D.VT[x.t]
+			var dw := JS.hypot(sim.PL[x.loc].x - A.x, sim.PL[x.loc].z - A.z)
+			var vid: int = x.id
+			var fits: bool = T.cap >= float(LP.get("tn") if LP.get("tn") != null else LP.k.tons)
+			var b := W._btn("%s%s · %s (%s) · %s · %s т%s" % [T.n, (" ×%d" % r.n) if r.n > 1 else "", sim.PL[x.loc].name, r.stt, "на місці" if dw < .05 else "≈ " + Ui.km(dw * sim.CO_DU) + " до старту", Ui.loc(T.cap), "" if fits else " · не вмістить"], "pri sm" if chosen == vid else "sm", T.ic, func():
+				LP.vehs[gi] = vid
+				_pick_leg = -1
+				_panel_build(), fits)
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.clip_text = true
+			b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			v.add_child(b)
+	return Ui.margin(v, 26, 0, 0, 6)
+
+
 func _bar(v: float, mx: float, col: Color) -> Control:
 	var m := W._meter(clampf(v / mx, .02, 1), col)
 	return Ui.margin(m, 0, 4, 0, 0)
@@ -362,36 +455,38 @@ func _panel_build() -> void:
 	else:
 		sub = "%s, %s т · %s → %s · оплата %s" % [sim.cargo_i[k.cg].n, Ui.loc(k.tons), sim.PL[k.from].name, ("%d країни (збірний авіарейс)" % k.multi.size()) if k.get("multi") else dest.name, Ui.usd(k.pay)]
 	B.add_child(Ui.margin(W._note(sub), 0, 4, 0, 0))
-	# who starts
-	var L := _veh_list()
-	var m0: String = k.mode if k.get("cons") else (LP.modes[0] if LP.modes.size() else mode)
-	if L.is_empty():
-		B.add_child(Ui.margin(W._icl("alert", "У країні %s немає вільної техніки: %s" % [sim.states[sim.PL[LP.pts[0]].cid].name if not Sim.lp_is_w(LP.pts[0]) else "", String(D.MODE_N[m0]).to_lower()], Ui.WARN), 0, 10, 0, 0))
-	else:
-		B.add_child(Ui.margin(Ui.lbl("Хто їде · " + sim.states[sim.PL[LP.pts[0]].cid].name), 0, 10, 0, 6))
-		var vl := Ui.vbox(4)
-		var vb := W._btn("Найближча, що вміщує вантаж", "pri sm" if LP.veh0 == null else "sm", "cpu", func():
-			LP.veh0 = null
-			_panel_build())
-		vb.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		vl.add_child(vb)
-		for v in L.slice(0, 12):
-			var T: Dictionary = D.VT[v.t]
-			var stt: String = "повертається в хаб" if v.st == "trip" else ("у хабі" if sim.hub_at(v.loc) != null else "чекає після доставки")
-			var vid: int = v.id
-			var b := W._btn("%s · %s · %s · %s т / %s м³%s" % [T.n, sim.PL[v.loc].name, stt, Ui.loc(T.cap), Ui.loc(T.get("vol", 0)), (" · стан %.0f%%" % v.cond) if v.cond < 60 else ""], "pri sm" if LP.veh0 == vid else "sm", T.ic, func():
-				LP.veh0 = vid
+	var mm: bool = CO.get("mm", false)
+	if not mm:   # the multimodal mode chooses a vehicle for every leg, under the leg
+		# who starts
+		var L := _veh_list()
+		var m0: String = k.mode if k.get("cons") else (LP.modes[0] if LP.modes.size() else mode)
+		if L.is_empty():
+			B.add_child(Ui.margin(W._icl("alert", "У країні %s немає вільної техніки: %s" % [sim.states[sim.PL[LP.pts[0]].cid].name if not Sim.lp_is_w(LP.pts[0]) else "", String(D.MODE_N[m0]).to_lower()], Ui.WARN), 0, 10, 0, 0))
+		else:
+			B.add_child(Ui.margin(Ui.lbl("Хто їде · " + sim.states[sim.PL[LP.pts[0]].cid].name), 0, 10, 0, 6))
+			var vl := Ui.vbox(4)
+			var vb := W._btn("Найближча, що вміщує вантаж", "pri sm" if LP.veh0 == null else "sm", "cpu", func():
+				LP.veh0 = null
 				_panel_build())
-			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b.clip_text = true
-			b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-			vl.add_child(b)
-		var sc := SmoothScroll.new()
-		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		sc.custom_minimum_size.y = minf(150, (L.slice(0, 12).size() + 1) * 32)
-		vl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sc.add_child(vl)
-		B.add_child(sc)
+			vb.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			vl.add_child(vb)
+			for v in L.slice(0, 12):
+				var T: Dictionary = D.VT[v.t]
+				var stt: String = "повертається в хаб" if v.st == "trip" else ("у хабі" if sim.hub_at(v.loc) != null else "чекає після доставки")
+				var vid: int = v.id
+				var b := W._btn("%s · %s · %s · %s т / %s м³%s" % [T.n, sim.PL[v.loc].name, stt, Ui.loc(T.cap), Ui.loc(T.get("vol", 0)), (" · стан %.0f%%" % v.cond) if v.cond < 60 else ""], "pri sm" if LP.veh0 == vid else "sm", T.ic, func():
+					LP.veh0 = vid
+					_panel_build())
+				b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				b.clip_text = true
+				b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+				vl.add_child(b)
+			var sc := SmoothScroll.new()
+			sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+			sc.custom_minimum_size.y = minf(150, (L.slice(0, 12).size() + 1) * 32)
+			vl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			sc.add_child(vl)
+			B.add_child(sc)
 	# the mode of the next leg
 	B.add_child(Ui.margin(Ui.lbl("Транспорт наступної ділянки"), 0, 10, 0, 6))
 	var segp := PanelContainer.new()
@@ -470,6 +565,8 @@ func _panel_build() -> void:
 		if Lg.risk.cl:
 			bits.append("[color=#f0625f]закритий кордон[/color]")
 		lg.add_child(_leg_row(Lg.m, "%s → %s" % [sim.PL[Lg.a].name, sim.PL[Lg.b].name], " · ".join(bits)))
+		if mm:
+			lg.add_child(_leg_veh(Lg))
 	if C.legs.is_empty() and C.tail == null:
 		lg.add_child(W._note("Ще немає ділянок."))
 	if sim.road_rules and C.legs.any(func(x): return x.m == "road"):   # the road choice for the whole plan
