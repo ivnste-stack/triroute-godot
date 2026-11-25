@@ -122,7 +122,7 @@ func test_consolidated_trip_from_the_board() -> String:
 	if not found:
 		return "no consolidated trip panel"
 	var kC: Dictionary = planned[0] if planned.size() else sim.cons_make(w.cons_orders())
-	var LP := {"k": kC, "pts": sim.cons_auto_seq(kC), "modes": [], "veh0": null}
+	var LP := {"k": kC, "pts": sim.cons_auto_seq(kC), "modes": [], "veh0": null, "vehs": {}}   # as the planner opens it
 	LP.modes = LP.pts.slice(1).map(func(_x): return "road")
 	var C := sim.lp_calc(LP)
 	if not C.done:

@@ -443,6 +443,9 @@ func _game_menu() -> void:
 
 ## the stages the loading screen names while the world is made (the generation is one native call: the bar
 ## eases towards its end and the stages follow it)
+## the stages named while a saved game's world is made again
+const LOAD_STEPS_SAVE := ["Читання збереження", "Відтворення рельєфу й узбережжя", "Відновлення кордонів держав", "Відновлення міст і портів",
+	"Відновлення доріг і залізниць", "Відновлення компанії й автопарку", "Запікання текстур мапи", "Компіляція шейдерів"]
 const LOAD_STEPS := ["Ініціалізація генератора", "Генерація рельєфу й узбережжя", "Розподіл суші та моря", "Тріангуляція сітки клітинок",
 	"Векторизація кордонів держав", "Розрахунок висот і гірських хребтів", "Прокладання автомагістралей", "Трасування залізничної мережі",
 	"Розміщення портів і аеропортів", "Заснування міст і сіл", "Економіка держав і ресурси", "Побудова біржі вантажів",
@@ -476,6 +479,7 @@ func _build_loading() -> Control:
 	bar.add_theme_stylebox_override("fill", Ui.box(Ui.ACCENT))
 	bar.name = "bar"
 	var title := Ui.label("ГЕНЕРАЦІЯ СВІТУ", 11, Ui.FG, Ui.font("mono", 600, 2.5))
+	title.name = "title"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var step := Ui.label("", 12, Ui.FG, Ui.font("mono", 500))
 	step.name = "step"
@@ -490,10 +494,11 @@ func _loading_step(delta: float) -> void:
 	var p := 0.96 * (1.0 - exp(-_load_t / 3.2))
 	var bar: ProgressBar = _loading.find_child("bar", true, false)
 	bar.value = p
-	var i := mini(int(p / 0.96 * LOAD_STEPS.size()), LOAD_STEPS.size() - 1)
+	var steps: Array = LOAD_STEPS_SAVE if _pending != null else LOAD_STEPS
+	var i := mini(int(p / 0.96 * steps.size()), steps.size() - 1)
 	var nd := 1 + int(_load_t * 3) % 3
 	var dots := ".".repeat(nd) + " ".repeat(3 - nd)   # a steady width: the centred line does not wobble
-	(_loading.find_child("step", true, false) as Label).text = LOAD_STEPS[i] + dots
+	(_loading.find_child("step", true, false) as Label).text = steps[i] + dots
 
 
 func _create_world() -> void:
@@ -502,6 +507,8 @@ func _create_world() -> void:
 		menu.visible = false
 	_loading.visible = true
 	_load_t = 0.0
+	# a new world is generated; a saved game's world is loaded (made again from its seed and edit)
+	(_loading.find_child("title", true, false) as Label).text = "ЗАВАНТАЖЕННЯ СВІТУ" if _pending != null else "ГЕНЕРАЦІЯ СВІТУ"
 	MapVis.clear()   # a new world: everything shown
 	GameState.reset(_ng.seed)
 	_size_key = _args.get("size", "earth" if _ng.map == "earth" else _ng.size)

@@ -565,7 +565,7 @@ func _panel_build() -> void:
 		if Lg.risk.cl:
 			bits.append("[color=#f0625f]закритий кордон[/color]")
 		lg.add_child(_leg_row(Lg.m, "%s → %s" % [sim.PL[Lg.a].name, sim.PL[Lg.b].name], " · ".join(bits)))
-		if mm:
+		if mm and Lg.has("gi"):   # a consolidated trip keeps its one pinned vehicle
 			lg.add_child(_leg_veh(Lg))
 	if C.legs.is_empty() and C.tail == null:
 		lg.add_child(W._note("Ще немає ділянок."))

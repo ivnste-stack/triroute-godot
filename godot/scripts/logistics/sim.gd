@@ -326,10 +326,11 @@ func lp_block(LP: Dictionary, C: Dictionary) -> Variant:
 		return "%s не підходить%s" % [nm, ": " + C.legs[0].why.to_lower() if C.legs[0].get("why") else ""]
 	var vs: Dictionary = LP.get("vehs", {})
 	for L in C.legs:
-		if vs.has(L.gi) and not L.own:
+		var gi: int = L.get("gi", -1)   # a consolidated trip's legs have no vehicle chosen per leg
+		if gi >= 0 and vs.has(gi) and not L.get("own", true):
 			var nm := "Обрана техніка"
 			for v in CO.veh:
-				if v.id == vs[L.gi]:
+				if v.id == vs[gi]:
 					nm = D.VT[v.t].n
 			return "%s не може везти ділянку %s → %s%s" % [nm, PL[L.a].name, PL[L.b].name, ": " + String(L.why).to_lower() if L.get("why") else ""]
 	if k.get("minR", 0) and CO.rating < k.minR:
