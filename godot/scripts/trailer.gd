@@ -253,7 +253,7 @@ func _money() -> void:   # the whole company from above at full speed: money in,
 		_callout(Vector2(q[0], q[1]), text, RED)
 	events = [[4.9, func(): hit.call("theft", "CARGO STOLEN")], [6.2, func(): hit.call("acc", "ACCIDENT")],
 		[7.3, func():
-			_drop_ok = _t + 3.0
+			_drop_ok = _t + 1.0
 			sim.CO.cash -= 1_250_000.0   # the month's wages
 			_callout(Vector2(c.x - 2, c.y + 1.2), "PAYDAY: WAGES", AMBER)]]
 
@@ -309,7 +309,8 @@ func _busy_border() -> Array:
 	for j in sim.CO.jobs:
 		var a: int = sim.PL[j.k.from].cid
 		var b: int = sim.PL[j.k.to].cid
-		if a != b:
+		# only states that border each other: their border is drawn closed
+		if a != b and a < sim.neighbors.size() and Array(sim.neighbors[a]).has(b):
 			var k := "%d:%d" % [mini(a, b), maxi(a, b)]
 			cnt[k] = cnt.get(k, 0) + 1
 	var best := ""
@@ -502,7 +503,7 @@ func _float(x: float) -> void:
 
 
 func _callout(at: Vector2, text: String, col: Color) -> void:
-	_drop_ok = _t + 3.0
+	_drop_ok = _t + 1.0
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", Ui.box(Color(col.r * .25, col.g * .12, col.b * .12, .92), col, 3, Vector4(26, 12, 26, 12)))
 	var l := Label.new()
