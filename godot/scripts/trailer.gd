@@ -387,7 +387,8 @@ func _overlay() -> void:
 	root.add_child(_cap)
 	# the title card
 	_title = VBoxContainer.new()
-	_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_title.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # the whole screen, its lines centred
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_title.alignment = BoxContainer.ALIGNMENT_CENTER
 	_title.visible = false
 	for spec in [["TRIROUTE", "display", 150, 34, Color.WHITE], ["LOGISTICS STRATEGY", "body", 34, 18, ICE], ["COMING SOON", "body", 26, 14, Color(1, 1, 1, .7)]]:
