@@ -41,8 +41,8 @@ var _pending: Variant = null     # a saved game waiting for its world
 ## the frame limit: the monitor's rate by default (VSync), or a number, or none; quieter when nothing happens
 ## the window: maximised, a window of the chosen size (centred), borderless or exclusive full screen
 func apply_window() -> void:
-	if _args.has("shot") or DisplayServer.get_name() == "headless":
-		return
+	if _args.has("shot") or DisplayServer.get_name() == "headless" or Clock.movie():
+		return   # a screenshot, a test, or a recording (Movie Maker keeps the size it was given)
 	var w := get_window()
 	match String(Settings.get_value("window")):
 		"window":

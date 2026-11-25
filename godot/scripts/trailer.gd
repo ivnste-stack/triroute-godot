@@ -248,8 +248,24 @@ func _money() -> void:   # the whole company from above at full speed: money in,
 		var js: Array = sim.CO.jobs.filter(func(j): return j.mode == "road" and not j.get("ret") and j.get("hold", 0) <= 0)
 		if js.is_empty():
 			return
-		var j: Dictionary = js[int(floor(randf() * js.size()))]
+		# a trip on screen and away from the callouts already up: their badges must not cover each other
+		var used: Array = _calls.map(func(c): return c[1])
+		used.append(Vector2(c.x - 2, c.y + 1.2))   # where payday's badge goes
+		var j: Dictionary = js[0]
 		var q := sim.co_pos_at(j, sim.co_job_state(j, sim.co_now() - j.t0).s)
+		var best := -1.0
+		for cand in js:
+			var p := sim.co_pos_at(cand, sim.co_job_state(cand, sim.co_now() - cand.t0).s)
+			var pv := Vector2(p[0], p[1])
+			if pv.distance_to(c) > 5.0:
+				continue
+			var far := 1e9
+			for u in used:
+				far = minf(far, pv.distance_to(u))
+			if far > best:
+				best = far
+				j = cand
+				q = p
 		sim.co_incident(j, type)
 		_callout(Vector2(q[0], q[1]), text, RED)
 	events = [[4.9, func(): hit.call("theft", "CARGO STOLEN")], [6.2, func(): hit.call("acc", "ACCIDENT")],
