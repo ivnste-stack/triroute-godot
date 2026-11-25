@@ -17,14 +17,14 @@ SCENES=("$@")
 
 for s in "${SCENES[@]}"; do
 	echo "== $s"
-	$GODOT --path . --rendering-driver vulkan --write-movie "$OUT/$s.avi" --fixed-fps 60 --resolution 1920x1080 -- \
+	[ -n "${CUT_ONLY:-}" ] || $GODOT --path . --rendering-driver vulkan --write-movie "$OUT/$s.avi" --fixed-fps 60 --resolution 1920x1080 -- \
 		--seed=777 --company --stress --hubs=30 --days=3 ${WORLD[$s]:-} --set=res:0,glint:true,trails:true,blur:0 --trailer=$s \
-		> "$OUT/$s.log" 2>&1 || true
+		> "$OUT/$s.log" 2>&1 || [ -n "${CUT_ONLY:-}" ] || true
 	start=$(grep -o "TRAILER START [0-9]*" "$OUT/$s.log" | awk '{print $3}')
 	d=${DUR[$s]}
 	# the scene alone, a quick dip from and to black at the cuts
-	ffmpeg -loglevel error -y -ss "$(echo "$start / 60" | bc -l)" -i "$OUT/$s.avi" -t "$d" \
-		-vf "fade=t=in:st=0:d=0.1,fade=t=out:st=$(echo "$d - 0.1" | bc -l):d=0.1" -an \
+	ffmpeg -loglevel error -y -ss "$(awk "BEGIN{printf \"%.4f\", $start / 60}")" -i "$OUT/$s.avi" -t "$d" \
+		-vf "fade=t=in:st=0:d=0.1,fade=t=out:st=$(awk "BEGIN{printf \"%.2f\", $d - 0.1}"):d=0.1" -an \
 		-c:v libx264 -preset slow -crf 15 -pix_fmt yuv420p -r 60 "$OUT/$s.mp4"
 done
 

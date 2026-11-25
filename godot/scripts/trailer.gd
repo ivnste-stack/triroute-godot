@@ -59,7 +59,6 @@ func _ready() -> void:
 	main._ui.visible = false
 	sim.auto_choice = 0   # the game's decisions answer themselves
 	sim.CO.sandbox = false
-	sim.CO.cash = 24_850_000.0
 	Settings._values.daynight = false
 	# trips at every stage: filled, a day played, filled again…
 	for i in 3:
@@ -67,6 +66,9 @@ func _ready() -> void:
 		main.session.run_days(1)
 	_fill(TRIPS)
 	print("TRAILER trips %d" % sim.CO.jobs.size())
+	# the money of the scene from here; the month does not turn while it plays (its wages only where staged)
+	sim.CO.cash = 24_850_000.0
+	sim.date.d = mini(int(sim.date.d), 10)
 	main.session.day_passed.connect(func(_d): _fill(TRIPS))
 	main.session.set_speed(3)
 	_overlay()
@@ -416,13 +418,13 @@ func _tick_overlay(dt: float) -> void:
 	_cash_last = cash
 	_cash_acc += d
 	_cash_acc_t += dt
-	if _cash_acc_t > .35 and absf(_cash_acc) >= 1500:
+	if _cash_acc_t > .5 and absf(_cash_acc) >= 4000:
 		_float(_cash_acc)
 		_flash = 1.0
 		_flash_col = GREEN if _cash_acc > 0 else RED
 		_cash_acc = 0
 		_cash_acc_t = 0
-	elif _cash_acc_t > .35:
+	elif _cash_acc_t > .5:
 		_cash_acc_t = 0
 	_cash_shown += (cash - _cash_shown) * minf(1, dt * 7)
 	_cash.text = _money_s(_cash_shown)
@@ -486,7 +488,8 @@ func _float(x: float) -> void:
 	l.add_theme_color_override("font_color", GREEN if x > 0 else RED)
 	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, .6))
 	l.add_theme_constant_override("outline_size", 8)
-	l.position = _cash_box.position + Vector2(_cash.size.x + 26 + randf() * 30, 30)
+	# a column beside the cash: a new sum below the ones still rising
+	l.position = _cash_box.position + Vector2(_cash.size.x + 30, 30 + 46 * _floats.size())
 	_ov.get_child(0).add_child(l)
 	_floats.append([l, 0.0])
 
