@@ -1028,7 +1028,7 @@
 "Найближча вільна (автоматично)": "Nearest free (automatic)",
 "Найближча, що вміщує вантаж": "The nearest that holds the load",
 "Найближчі, що вміщують вантаж": "The nearest that hold the load",
-"Найбільша частота кадрів. Для 2D-мапи 60–144 більш ніж досить. Гра тримає її завжди, і на паузі теж.": "The highest frame rate. For a 2D map 60–144 is more than enough. The game always keeps it, on pause too.",
+"Найбільша частота кадрів. З вертикальною синхронізацією межа підганяється під частоту монітора (на 144 Гц: 120 → 144, 60 → 72), інакше кадри показуються нерівно й рух мапи смикається.": "The highest frame rate. With VSync the limit fits the monitor's refresh rate (on 144 Hz: 120 → 144, 60 → 72); otherwise the frames are shown unevenly and the map judders when it moves.",
 "Найбільші логістичні компанії світу": "The world's largest logistics companies",
 "Найбільші тендери світу, балкери, важкі потяги, важкі й надважкі літаки. Мета — стати №1.": "The world's biggest tenders, bulk carriers, heavy trains, heavy and super-heavy aircraft. The goal: become No. 1.",
 "Найдешевший шлях, що встигає в дедлайн, з вашими хабами й терміналами партнерів: оцінка для одного цього вантажу. Разом з іншими в одному рейсі він обійдеться дешевше. Ви не зобов'язані їхати саме так.": "The cheapest way that makes the deadline, through your hubs and partner terminals: an estimate for this one consignment. Together with others in one run it costs less. You do not have to go exactly this way.",

@@ -70,7 +70,7 @@ func apply_window() -> void:
 func apply_video() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if Settings.get_value("vsync") else DisplayServer.VSYNC_DISABLED)
 	var f := int(Settings.get_value("fps"))
-	_fps_cap = f if f > 0 else 0
+	_fps_cap = _paced_cap(f, bool(Settings.get_value("vsync")))
 	Engine.max_fps = _fps_cap
 	var vp := get_viewport()
 	# no anti-aliasing of the picture: the map's shader smooths the edges of its own triangles, coasts and
@@ -100,6 +100,21 @@ func apply_render_scale() -> void:
 
 
 var _map_k := 1.0
+
+
+## the frame limit that is actually set. With VSync a limit that does not divide the monitor's refresh rate
+## shows every picture for one or two refreshes in turn (120 on a 144 Hz monitor: 7 and 14 ms by turns) —
+## the motion of the map judders as if it were at 60. So with VSync the limit snaps to a whole part of the
+## refresh rate (144, 72, 48…), the nearest to the chosen one; at the refresh rate itself VSync alone paces
+## the frames (no limiter on top, it only adds unevenness)
+func _paced_cap(f: int, vsync: bool) -> int:
+	if f <= 0:
+		return 0
+	var hz := int(round(DisplayServer.screen_get_refresh_rate()))
+	if not vsync or hz <= 0:
+		return f
+	var d := maxi(1, int(round(float(hz) / f)))
+	return 0 if d == 1 else int(round(float(hz) / d))
 
 
 ## the map's resolution now (for the settings): the window's size × the render scale, without supersampling
