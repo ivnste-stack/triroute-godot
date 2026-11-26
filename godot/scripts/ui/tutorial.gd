@@ -9,30 +9,16 @@ extends Control
 
 const NAME := "Аліна Корса"
 const ROLE := "операційний менеджер"
-const AVATAR := """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-<defs>
-<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#18293a"/><stop offset="1" stop-color="#08121b"/></linearGradient>
-<linearGradient id="jk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5cc8f2"/><stop offset="1" stop-color="#2b6d9b"/></linearGradient>
-<clipPath id="c"><circle cx="48" cy="48" r="45"/></clipPath>
-</defs>
-<circle cx="48" cy="48" r="46" fill="url(#bg)"/>
-<g clip-path="url(#c)">
-<path d="M14 98 C16 72 32 63 48 63 C64 63 80 72 82 98 Z" fill="url(#jk)"/>
-<path d="M39 64 L48 76 L57 64" fill="none" stroke="#e7eef4" stroke-width="3" stroke-linejoin="round"/>
-<rect x="43" y="52" width="10" height="13" rx="4" fill="#e2b998"/>
-<circle cx="48" cy="40" r="15.5" fill="#f1cfb2"/>
-<path d="M32 42 C30 25 41 19 49 19 C59 19 67 26 64 42 C62 34 56 29.5 48 29.5 C41 29.5 35 34 32 42 Z" fill="#2a2f3b"/>
-<path d="M33 42 C32 50 33 56 36 60 C34 52 34 47 35 43 Z" fill="#2a2f3b"/>
-<path d="M30.5 42 C30.5 28 38.5 21 48 21 C57.5 21 65.5 28 65.5 42" fill="none" stroke="#5cc8f2" stroke-width="3" stroke-linecap="round"/>
-<rect x="27.5" y="38" width="6.5" height="11" rx="3.2" fill="#5cc8f2"/>
-<rect x="62" y="38" width="6.5" height="11" rx="3.2" fill="#5cc8f2"/>
-<path d="M30.5 48 C31.5 55 37 57.5 43.5 56.5" fill="none" stroke="#5cc8f2" stroke-width="2.2" stroke-linecap="round"/>
-<circle cx="44.5" cy="56.3" r="2.4" fill="#5cc8f2"/>
-<circle cx="42.6" cy="41" r="1.7" fill="#18293a"/><circle cx="53.4" cy="41" r="1.7" fill="#18293a"/>
-<path d="M43.8 47.2 Q48 50.6 52.2 47.2" fill="none" stroke="#18293a" stroke-width="1.7" stroke-linecap="round"/>
-</g>
-<circle cx="48" cy="48" r="46" fill="none" stroke="#5cc8f2" stroke-width="2"/>
-<circle cx="80" cy="80" r="8" fill="#5bd492" stroke="#08121b" stroke-width="3"/>
+const AVATAR := """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="#5cc8f2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="48" cy="48" r="45" stroke-opacity=".45"/>
+<circle cx="48" cy="38" r="13"/>
+<path d="M22 80 C24 66 35 58 48 58 C61 58 72 66 74 80"/>
+<path d="M41 59 L48 67 L55 59"/>
+<path d="M32 39 C32 27 39 20 48 20 C57 20 64 27 64 39"/>
+<rect x="29" y="36" width="6" height="10" rx="3"/>
+<rect x="61" y="36" width="6" height="10" rx="3"/>
+<path d="M32 46 C33 52 37 54 43 54"/>
+<circle cx="45" cy="54" r="1.6"/>
 </svg>"""
 
 var main: Node                 # the game (main.gd): the HUD, the windows, the planner, the map, the session
