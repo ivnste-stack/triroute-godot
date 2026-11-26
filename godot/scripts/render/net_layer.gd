@@ -75,13 +75,14 @@ func _draw() -> void:
 	var sim: Sim = session.sim
 	var CO: Dictionary = sim.CO
 	var rect := Rect2(Vector2(-60, -60), size + Vector2(120, 120))
-	# flows
+	# flows; a road is 1.15 × the zoom factor wide (MapOverlay)
+	var rw := 1.15 * clampf(pow(12.0 / camera.dist, .6), .8, 3.6) * dpr
 	for key in CO.net.flow:
 		var p: PackedStringArray = String(key).split(":")
 		var A: Dictionary = sim.PL[int(p[0])]
 		var B: Dictionary = sim.PL[int(p[1])]
 		var t: float = CO.net.flow[key]
-		var wd := (1.5 + log(1 + t) * .7) * dpr
+		var wd := rw * (.75 + minf(.15, log(1 + t) * .03))   # a little thinner than a road, a little wider with more tons
 		var col: Color = MODE_COL.get(p[2], Color.WHITE)
 		# along the road, the railway or the sea lane the runs take (a plane flies straight)
 		var pts := _route_pts(sim, p[2], int(p[0]), int(p[1]), A, B)
