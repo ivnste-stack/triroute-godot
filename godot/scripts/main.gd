@@ -25,6 +25,7 @@ var perf_panel: PerfPanel
 var _bb: BackBufferCopy
 var planner: Planner
 var netp: NetPlanner
+var tutorial: Tutorial
 var course: Course
 var menu: StartMenu
 var _args := {}
@@ -243,6 +244,9 @@ func _ready() -> void:
 	_ui.add_child(perf_panel)
 	tips = TipLayer.new()
 	_ui.add_child(tips)
+	tutorial = Tutorial.new()   # the «Навчальна» difficulty: the manager's guide over everything
+	tutorial.main = self
+	_ui.add_child(tutorial)
 	# F4: the performance record (user://perf/), read back to find what loads the game
 	perf_rec = PerfRecorder.new()
 	perf_rec.context = _perf_context
@@ -635,6 +639,8 @@ func _on_world(w: Dictionary) -> void:
 		session.queue_free()
 	session = GameSession.new()
 	add_child(session)
+	if _args.has("diff"):   # test: the difficulty (0 — «Навчальна», with the tutorial)
+		_ng.diff = int(_args.diff)
 	session.begin(map.generator(), GameState.world_seed, w.states, w.board, w, _ng.diff)
 	if _ng.mode == "mm" or _args.get("gmode", "") == "mm":   # the multimodal mode (test): every order is built by hand
 		session.sim.CO.mm = true
@@ -741,6 +747,8 @@ func _on_world(w: Dictionary) -> void:
 					planner._panel_build()
 				if _args.plan == "auto":
 					planner.auto_use()
+				elif _args.plan == "dest":   # test: a click on the destination, as a player would
+					planner.add(planner.LP.k.to)
 				elif _args.plan == "multi":
 					planner.order("urg")
 				if _args.has("plango"):   # test: press «Відправити» a moment later
@@ -1200,6 +1208,14 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 		map_ui.move_start(v))
 	session.day_passed.connect(func(_d): _grade_check())
 	_grade_check()
+	# the tutorial: a new game on «Навчальна», or a saved one in the middle of it
+	var CO: Dictionary = session.sim.CO
+	if not loaded and session.sim.diff == 0 and not _args.has("notut"):
+		CO.tut = int(_args.get("tut", "0"))
+	if int(CO.get("tut", -1)) >= 0:
+		tutorial.start(int(CO.tut))
+	else:
+		tutorial.visible = false
 	if not session.speed_refused.is_connected(_speed_refused):
 		session.speed_refused.connect(_speed_refused)
 	map_ui.visible = true
@@ -1595,6 +1611,8 @@ func _editor_done(e: Dictionary) -> void:
 
 
 func _end_game() -> void:
+	tutorial.visible = false
+	tutorial.i = -1
 	if planner.on:
 		planner.close()
 	if netp.on:
