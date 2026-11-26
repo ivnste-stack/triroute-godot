@@ -487,7 +487,7 @@ func detach_session() -> void:
 ## orange, states within the licence are muted, the rest darkened, closed countries reddened
 ## the map layer (UI.mode): "co" the company's network, "grid" logistic routes, "risk" transport risks,
 ## "pol" political, "dem" world demand
-var mode := "co"
+var mode := "pol"   # the political map by default
 const RISK_COL := [Color(.27, .62, .42), Color(.83, .71, .3), Color(.88, .47, .2), Color(.78, .2, .18)]
 const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78), Color(.1, .29, .55)]
 

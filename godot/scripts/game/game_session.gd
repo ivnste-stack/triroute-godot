@@ -13,6 +13,7 @@ var speed := 0
 var acc := 0.0          # ms into the current day
 var anim_t := 0.0       # animation time (ANIM_T): runs while the game runs
 var paused_fr := 0.0    # the part of the day shown while paused (G.pfr)
+const START_FR := .5    # the hour a new game starts at: 12:00
 var hold := false       # a dialog is open: time stands still (modalOpen)
 
 
@@ -45,7 +46,8 @@ func choose_hq(pid: int, auto_decisions: bool = true) -> void:
 		sim.net_init()
 	sim.auto_choice = 0 if auto_decisions else -1
 	acc = 0.0
-	sim.co_frame(0.0)
+	paused_fr = START_FR   # a new game starts at noon, not at midnight
+	sim.co_frame(START_FR)
 
 
 ## a fleet of tier 4 at the headquarters with an automatic dispatcher (the "abroad" scenario of the tests):
@@ -108,6 +110,7 @@ func run_days(n: int) -> void:
 		sim.co_day()
 		day_passed.emit(int(sim.day))
 	sim.co_frame(0.0)
+	paused_fr = 0.0
 
 
 func _process(delta: float) -> void:

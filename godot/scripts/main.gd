@@ -1163,6 +1163,8 @@ func _pick_done(pid: int) -> void:
 func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 	if not loaded:
 		session.choose_hq(hq, auto_decisions)
+	else:   # the hour the game was saved at
+		session.paused_fr = clampf(float(session.sim.CO.get("lastFr", 0.0)), 0, .999)
 	session.set_speed(0)
 	map.attach_session(session)
 	map.overlay.set_marks(session.sim.road_mark_segs() if session.sim.road_rules else [])   # toll motorways, bans

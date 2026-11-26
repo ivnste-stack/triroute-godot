@@ -11,7 +11,7 @@ const RISK_COL := [Color(.27, .62, .42), Color(.83, .71, .3), Color(.88, .47, .2
 signal toggled   # a line was clicked: what it names is hidden or shown again (MapVis)
 
 var sim: Sim
-var mode := "co"
+var mode := "pol"
 var _box: VBoxContainer
 var _key := ""
 var _scroll: ScrollContainer
