@@ -234,3 +234,24 @@ func test_haul_along_several_stops() -> String:
 		return "%d of %d delivered" % [sim.CO.net.stat.done - d0, n]
 	print("       a haul of %d stops: %d consignments, each at its own town" % [way.size(), n])
 	return _consistent(sim)
+
+
+## a run that waits in its hub for a load: it leaves once (when full enough, or after a few days), then it is gone
+func test_run_waits_for_its_load() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game(777)
+	var hq: int = sim.CO.hq
+	var v: Dictionary = sim.CO.veh[0]
+	var way := [sim.PL.filter(func(p): return p.cid == sim.PL[hq].cid and p.id != hq)[0].id]
+	sim.net_line_add({"kind": "trunk", "a": hq, "b": way[0], "way": way, "m": "road", "vid": v.id, "back": false, "every": 0, "fill": .99, "next": sim.day})
+	var ran := false
+	for i in 8:
+		_days(sim, 1, false)
+		if v.get("resv") != null or v.st == "trip":
+			ran = true
+	if sim.CO.net.lines.size():
+		return "the waiting run is still listed after 8 days: %s" % sim.CO.net.lines[0].get("why", "")
+	if not ran and sim.net_calc(sim.net_auto_multi(hq, way, "road", v.id)).ok:
+		return "the run never left"
+	return _consistent(sim)

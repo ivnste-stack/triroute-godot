@@ -364,6 +364,8 @@ func _line_row(L: Dictionary, after: Callable = Callable()) -> PanelContainer:
 		var v: Variant = sim._veh(L.vid)
 		who = D.VT[v.t].n if v != null else "техніки немає"
 	var sub := "%s · кожні %d дн. · %s" % [who, L.every, ("рушить за %s" % Ui.days(maxf(0, L.next - sim.day))) if L.on else "на паузі"]
+	if L.get("every", 1) == 0:
+		sub = "%s · один рейс, коли заповнення досягне %d%%" % [who, int(L.fill * 100)]
 	if L.get("why", "") != "":
 		sub += " · " + L.why
 	if L.get("last", {}).size():

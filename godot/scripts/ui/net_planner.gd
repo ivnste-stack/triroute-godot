@@ -16,7 +16,7 @@ var _C := {}
 
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
-	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": 0, "fill": .5, "back": false}
+	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": 0, "fill": 0.0, "back": false}
 	LP = {"k": {}, "pts": [a], "modes": []}   # what the planner's own parts read
 	on = true
 	_prev_speed = session.speed
@@ -186,15 +186,34 @@ func _panel_build() -> void:
 	B.add_child(Ui.seg([[0, "раз"], [1, "щодня"], [2, "2 дн."], [3, "3 дн."], [5, "5 дн."], [7, "тиждень"]], st.every, func(x):
 		st.every = x
 		_panel_build()))
+	# how full the vehicle must be to leave
+	var own_fill: float = C.fill if own else C.tons / 40.0
+	B.add_child(_sect("Рушати, коли заповнено від"))
+	B.add_child(Ui.seg([[0.0, "одразу"], [.3, "30%"], [.5, "50%"], [.7, "70%"], [.9, "90%"]], st.fill, func(x):
+		st.fill = x
+		_panel_build()))
+	var wait: bool = st.fill > 0 and own_fill + 1e-6 < st.fill
+	var now_s := ("%d%%" % int(own_fill * 100)) if own else ("%s т" % Ui.loc(C.tons))
+	var ft: String
+	if wait:
+		ft = "Зараз %s — рейс чекатиме в %s, поки назбирається вантаж (не довше %d дн.; термінові вантажі не чекають)." % [now_s, sim.PL[st.a].name, maxi(st.every, 5)]
+	elif st.fill > 0:
+		ft = "Зараз %s — достатньо, рейс може рушати." % now_s
+	else:
+		ft = "Зараз %s." % now_s
+	if not own:
+		ft += " Для партнера 100% — це 40 т."
+	B.add_child(Ui.margin(W._note(ft, Ui.WARN if wait else Ui.MUTED, 12), 0, 6, 0, 0))
 	if st.every > 0:
-		B.add_child(Ui.margin(Ui.hbox(8, [Ui.lbl("рушати, коли заповнено від"), Ui.seg([[0.0, "будь-яке"], [.3, "30%"], [.6, "60%"], [.9, "90%"]], st.fill, func(x): st.fill = x)]), 0, 8, 0, 0))
-		B.add_child(Ui.margin(W._note("Рейс повторюватиметься сам — щоразу з тим, що на той момент чекає на цих зупинках. Термінові вантажі не чекають заповнення.", Ui.MUTED, 12), 0, 6, 0, 0))
+		B.add_child(Ui.margin(W._note("Рейс повторюватиметься сам — щоразу з тим, що на той момент чекає на цих зупинках.", Ui.MUTED, 12), 0, 4, 0, 0))
 	# the buttons
 	var bs := Ui.hbox(8)
 	bs.add_child(W._btn("", "sm", "trash", clear_route, true, "Очистити маршрут"))
 	bs.add_child(Ui.spacer())
 	if st.every > 0:
-		bs.add_child(W._btn("Створити лінію", "pri", "refresh", _make_line, C.ok or C.rows.is_empty(), W._tip("Лінія за розкладом", "Перший рейс — зараз, якщо вантаж уже є, далі кожні %d дн." % st.every)))
+		bs.add_child(W._btn("Створити лінію", "pri", "refresh", _make_line, C.ok or C.rows.is_empty(), W._tip("Лінія за розкладом", "Перший рейс — зараз, якщо вантаж уже є й заповнення досягнуто, далі кожні %d дн." % st.every)))
+	elif wait:
+		bs.add_child(W._btn("Чекати заповнення", "pri", "clock" if Icons.has("clock") else "refresh", _make_line, C.ok or C.rows.is_empty(), W._tip("Чекати заповнення", "Машина стоїть у хабі й рушить цим маршрутом, щойно заповнення досягне %d%%." % int(st.fill * 100))))
 	else:
 		bs.add_child(W._btn("Відправити", "pri", "send", _go, C.ok))
 	B.add_child(Ui.margin(bs, 0, 14, 0, 0))
@@ -220,9 +239,14 @@ func _go() -> void:
 func _make_line() -> void:
 	var L := {"kind": "trunk", "a": st.a, "b": st.way.back(), "way": st.way.duplicate(), "m": st.m, "vid": st.vid, "back": false, "every": st.every, "fill": st.fill, "next": sim.day}
 	var res := sim.net_line_add(L)
-	if _C.get("ok", false):   # the first run now
+	var full: bool = (_C.fill if st.vid >= 0 else _C.tons / 40.0) + 1e-6 >= st.fill
+	if _C.get("ok", false) and full:   # the first run now
 		sim.net_go(_spec, true)
 		L.next = sim.day + st.every
+		if st.every == 0:   # once: done
+			sim.net_line_del(L.id)
+	elif st.every == 0:
+		res = {"tone": "good", "t": "Рейс чекає заповнення", "d": "%s: рушить, коли заповнення досягне %d%%" % [sim.PL[st.a].name, int(st.fill * 100)]}
 	close("")
 	acted.emit(res)
 

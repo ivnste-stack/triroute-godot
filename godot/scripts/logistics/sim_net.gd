@@ -1308,6 +1308,8 @@ func net_line_add(L: Dictionary) -> Dictionary:
 func net_line_name(L: Dictionary) -> String:
 	if L.kind == "round":
 		return "Кільце %s" % PL[L.a].name
+	if L.get("every", 1) == 0:
+		return "Чекає заповнення: %s → %s" % [PL[L.a].name, " → ".join(L.get("way", [L.b]).map(func(p): return PL[p].name))]
 	var way: Array = L.get("way", [L.b])
 	return "%s → %s%s" % [PL[L.a].name, " → ".join(way.map(func(p): return PL[p].name)), " → " + PL[L.a].name if L.get("back") else ""]
 
@@ -1317,6 +1319,7 @@ func net_line_del(id: int) -> void:
 
 
 func _lines_day() -> void:
+	CO.net.lines = CO.net.lines.filter(func(L): return not L.get("done", false))
 	for L in CO.net.lines:
 		if not L.on or day < L.next:
 			continue
@@ -1343,7 +1346,11 @@ func _lines_day() -> void:
 			if row.c.dl - co_now() < C.t + 1.5:
 				urgent = true
 		var fill: float = C.fill if vid >= 0 else C.tons / 40.0
-		if not C.ok or (fill < L.fill and not urgent and L.get("waited", 0) < L.every):
+		if L.every == 0 and not C.ok and L.get("waited", 0) >= 5:   # a run waiting for a load that never came
+			L.done = true
+			co_news("warn", "", "Рейс %s скасовано: вантажу так і не назбиралося" % net_line_name(L).trim_prefix("Чекає заповнення: "))
+			continue
+		if not C.ok or (fill < L.fill and not urgent and L.get("waited", 0) < maxi(L.every, 5)):
 			L.why = C.why if not C.ok else "чекає вантажу: заповнення %d%%" % int(fill * 100)
 			L.waited = L.get("waited", 0) + 1
 			L.next = day + 1
@@ -1352,6 +1359,9 @@ func _lines_day() -> void:
 		L.why = ""
 		net_go(spec, true)
 		L.next = day + L.every
+		if L.every == 0:   # a run waiting for its load: once, then gone
+			L.on = false
+			L.done = true
 
 
 # ====================================================================== the day, the frame, the month
