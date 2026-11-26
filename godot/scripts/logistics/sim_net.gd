@@ -596,13 +596,15 @@ func net_calc(spec: Dictionary) -> Dictionary:
 				continue
 			if c.at != stops[i] or not (c.st == "ready" or c.st == "wait" or (c.st == "proc" and c.get("rdy", 0) - co_now() < 2)) or (c.run >= 0 and c.run != spec.get("rid", -9)):
 				continue
-			var off := _drop_at(stops, i, c.k.to)
+			var off: int = int(spec.get("offs", {}).get(id, _drop_at(stops, i, c.k.to)))
+			if off <= i or off >= stops.size():
+				off = _drop_at(stops, i, c.k.to)
 			board[id] = [i, off]
 			ids.append(c)
-	var last: int = stops.back()
-	for c in ids:
-		if board[c.id][1] == stops.size() - 1 and c.k.to != last and n_kind(last) == "":
-			res.why = "%s — не термінал: вантажі туди можна лише доставляти" % PL[last].name
+	for c in ids:   # cargo is left only at a terminal, or at its own town
+		var q: int = stops[board[c.id][1]]
+		if q != c.k.to and n_kind(q) == "":
+			res.why = "%s — не термінал: вантажі туди можна лише доставляти" % PL[q].name
 			return res
 	# the load on every leg
 	var mx := 0.0
@@ -1108,34 +1110,159 @@ func net_auto_round(hub: int, vid: int, skip: Dictionary = {}) -> Dictionary:
 	return spec
 
 
-## «Магістраль»: from a terminal to another by one kind of transport, with what should go that way, the
+## «Магістральний рейс»: from a terminal to another by one kind of transport, with what should go that way, the
 ## nearest deadline first; back: the return leg brings what waits there for this terminal
 func net_auto_trunk(a: int, b: int, m: String, vid: int, back: bool = false, skip: Dictionary = {}) -> Dictionary:
+	return net_auto_multi(a, [b], m, vid, back, skip)
+
+
+## a haul along several stops (way: the places after the start, in order; back: the run ends where it began).
+## At every stop it takes what waits there for a later stop — its own town, its next step, or (at the last
+## stop) a terminal that brings it nearer — the nearest deadline first, as long as every leg stays within the
+## vehicle; each consignment gets off at the stop it is for
+func net_auto_multi(a: int, way: Array, m: String, vid: int, back: bool = false, skip: Dictionary = {}) -> Dictionary:
+	var stops: Array = [a] + way + ([a] if back and way.size() else [])
+	var spec := {"vid": vid, "m": m, "stops": stops, "picks": {}, "offs": {}}
 	var cap := 1e9
 	var cv := 1e9
 	if vid >= 0:
 		var v: Variant = _veh(vid)
 		if v == null:
-			return {"vid": vid, "stops": [a, b], "picks": {}}
+			return spec
 		cap = D.VT[v.t].cap
 		cv = D.VT[v.t].get("vol", 1e9)
-	var spec := {"vid": vid, "m": m, "stops": [a, b] + ([a] if back else []), "picks": {}}
-	for side in ([0, 1] if back else [0]):
-		var here: int = a if side == 0 else b
-		var there: int = b if side == 0 else a
-		var L: Array = CO.net.cs.filter(func(c): return c.at == here and c.run < 0 and (c.st == "ready" or c.st == "wait" or (c.st == "proc" and c.rdy - co_now() < 1)) and not skip.has(c.id) and _goes(c, there, m))
+	var n := stops.size()
+	if n < 2:
+		return spec
+	var lt := []
+	var lv := []
+	for i in n - 1:
+		lt.append(0.0)
+		lv.append(0.0)
+	var taken := {}
+	for i in n - 1:
+		var here: int = stops[i]
+		var L: Array = CO.net.cs.filter(func(c): return c.at == here and c.run < 0 and not taken.has(c.id) and not skip.has(c.id) and (c.st == "ready" or c.st == "wait" or (c.st == "proc" and c.rdy - co_now() < 1)))
 		_stable_sort(L, func(x, y): return x.dl - y.dl)
-		var t := 0.0
-		var vo := 0.0
-		var ids := []
 		for c in L:
-			if t + c.k.tons <= cap and vo + _kv(c.k) <= cv:
-				t += c.k.tons
-				vo += _kv(c.k)
-				ids.append(c.id)
-		if ids.size():
-			spec.picks[side] = ids
+			var off := -1
+			for j in range(i + 1, n):
+				if stops[j] == c.k.to:
+					off = j
+					break
+			if off < 0:
+				var nx: Variant = net_next(c)
+				if nx != null:
+					for j in range(i + 1, n):
+						if stops[j] == nx.b and n_kind(stops[j]) != "":
+							off = j
+							break
+			if off < 0 and stops[n - 1] != here and n_kind(stops[n - 1]) != "" and _goes(c, stops[n - 1], m):
+				off = n - 1
+			if off < 0:
+				continue
+			var fits := true
+			for q in range(i, off):
+				if lt[q] + c.k.tons > cap + 1e-6 or lv[q] + _kv(c.k) > cv + 1e-6:
+					fits = false
+					break
+			if not fits:
+				continue
+			for q in range(i, off):
+				lt[q] += c.k.tons
+				lv[q] += _kv(c.k)
+			taken[c.id] = true
+			if not spec.picks.has(i):
+				spec.picks[i] = []
+			spec.picks[i].append(c.id)
+			spec.offs[c.id] = off
 	return spec
+
+
+## where a haul from `a` could also stop on the way: the towns and next steps of the cargo waiting at the start
+## and at the stops already chosen, the towns near the way where cargo waits for a pick-up, the hubs. Each with
+## what it is for, the tons and how much longer the way gets with it (inserted where it costs the least)
+func net_way_cands(a: int, way: Array, m: String, back: bool) -> Array:
+	var A: Dictionary = PL[a]
+	var at := {a: true}
+	for p in way:
+		at[p] = true
+	var c2 := {}   # place → {to: tons for that town, nx: tons that go on from there, pick: tons waiting there}
+	var add := func(pid: int, key: String, t: float) -> void:
+		if pid == a or not node_ok(m, PL[pid]) or ((m == "road" or m == "rail") and PL[pid].land != A.land):
+			return
+		if not c2.has(pid):
+			c2[pid] = {"to": 0.0, "nx": 0.0, "pick": 0.0, "n": 0}
+		c2[pid][key] += t
+		c2[pid].n += 1
+	for c in CO.net.cs:
+		if c.run >= 0 or c.st == "move":
+			continue
+		if at.has(c.at):
+			add.call(c.k.to, "to", c.k.tons)
+			var nx: Variant = net_next(c)
+			if nx != null and nx.m == m and nx.b != c.k.to and n_kind(nx.b) != "":
+				add.call(nx.b, "nx", c.k.tons)
+		elif c.st == "wait" and m == "road":
+			var P: Dictionary = PL[c.at]
+			for q in at:
+				if JS.hypot(PL[q].x - P.x, PL[q].z - P.z) < 1.6:
+					add.call(c.at, "pick", c.k.tons)
+					break
+	for h in CO.hubs:
+		if not c2.has(h.pid) and h.pid != a and node_ok(m, PL[h.pid]) and ((m != "road" and m != "rail") or PL[h.pid].land == A.land):
+			c2[h.pid] = {"to": 0.0, "nx": 0.0, "pick": 0.0, "n": 0}
+	var out := []
+	for pid in c2:
+		if at.has(pid):
+			continue
+		var ins := net_way_insert(a, way, pid, back)
+		out.append({"pid": pid, "to": c2[pid].to, "nx": c2[pid].nx, "pick": c2[pid].pick, "n": c2[pid].n, "det": ins.det, "way": ins.way})
+	out.sort_custom(func(x, y): return (x.to + x.nx + x.pick) / (1 + x.det * 4) > (y.to + y.nx + y.pick) / (1 + y.det * 4))
+	return out
+
+
+## the way with a place put where it lengthens it the least; det: the extra length against the way (0.1 = 10%)
+func net_way_insert(a: int, way: Array, pid: int, back: bool) -> Dictionary:
+	var pts: Array = [a] + way + ([a] if back else [])
+	var d := func(x: int, y: int) -> float: return JS.hypot(PL[x].x - PL[y].x, PL[x].z - PL[y].z)
+	var tot := 0.0
+	for i in range(1, pts.size()):
+		tot += d.call(pts[i - 1], pts[i])
+	var best := -1
+	var bd := 1e18
+	for i in range(1, pts.size()):
+		var e: float = d.call(pts[i - 1], pid) + d.call(pid, pts[i]) - d.call(pts[i - 1], pts[i])
+		if e < bd:
+			bd = e
+			best = i
+	if not back:   # or at the end
+		var e: float = d.call(pts.back(), pid)
+		if e < bd:
+			bd = e
+			best = pts.size()
+	var w2: Array = way.duplicate()
+	w2.insert(clampi(best - 1, 0, w2.size()), pid)
+	return {"way": w2, "det": bd / maxf(.5, tot)}
+
+
+## «Попутні зупинки»: the stops the cargo is for, added one by one while they are worth the detour (up to six)
+func net_way_auto(a: int, way: Array, m: String, back: bool) -> Array:
+	var w: Array = way.duplicate()
+	while w.size() < 6:
+		var cs := net_way_cands(a, w, m, back)
+		var best: Variant = null
+		for x in cs:
+			var t: float = x.to + x.nx + x.pick
+			if t <= 0:
+				continue
+			if w.is_empty() or x.det < .35:
+				best = x
+				break
+		if best == null:
+			break
+		w = best.way
+	return w
 
 
 ## does a consignment want to go from where it is to `b` (by `m`)? Its next step there, or its own town, or
@@ -1181,7 +1308,8 @@ func net_line_add(L: Dictionary) -> Dictionary:
 func net_line_name(L: Dictionary) -> String:
 	if L.kind == "round":
 		return "Кільце %s" % PL[L.a].name
-	return "%s %s %s" % [PL[L.a].name, "⇄" if L.get("back") else "→", PL[L.b].name]
+	var way: Array = L.get("way", [L.b])
+	return "%s → %s%s" % [PL[L.a].name, " → ".join(way.map(func(p): return PL[p].name)), " → " + PL[L.a].name if L.get("back") else ""]
 
 
 func net_line_del(id: int) -> void:
@@ -1207,7 +1335,7 @@ func _lines_day() -> void:
 						_ret_trip(v, L.a, r)
 				L.next = day + 1
 				continue
-		var spec: Dictionary = net_auto_round(L.a, vid) if L.kind == "round" else net_auto_trunk(L.a, L.b, L.m, vid, L.get("back", false))
+		var spec: Dictionary = net_auto_round(L.a, vid) if L.kind == "round" else net_auto_multi(L.a, L.get("way", [L.b]), L.m, vid, L.get("back", false))
 		spec.line = L.id
 		var C := net_calc(spec)
 		var urgent := false

@@ -318,6 +318,8 @@ func _line_row(L: Dictionary) -> PanelContainer:
 func dialog(kind: String, args: Dictionary, done: Callable) -> Control:
 	var st := {"kind": kind, "a": args.get("a", -1), "b": args.get("b", -1), "m": args.get("m", "road"), "vid": -2, "back": false, "skip": {}, "every": 3, "fill": .5,
 		"cs": args.get("cs", -1), "to": -1, "from": -1}
+	if args.has("way"):
+		st.way = args.way.duplicate()
 	var box := Ui.vbox(12)
 	box.custom_minimum_size.x = 700
 	var redraw := func(): pass
@@ -327,6 +329,83 @@ func dialog(kind: String, args: Dictionary, done: Callable) -> Control:
 		_dialog_fill(box, st, done, redraw)
 	redraw.call()
 	return box
+
+
+## the stops of a haul: the start, then every stop with what it is for and ↑ ↓ ✕; «Додати зупинку» lists the
+## places on the way (the cargo's towns and next steps, pick-ups nearby, hubs) with the detour each costs, and
+## puts the chosen one where it lengthens the way the least; «Попутні» adds the ones worth it
+func _way_editor(st: Dictionary, redraw: Callable) -> Control:
+	var v := Ui.vbox(6)
+	var row0 := Ui.hbox(8, [Ui.icon("building" if sim.hub_at(st.a) != null else "pin", 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("старт", 12, Ui.MUTED)])
+	v.add_child(row0)
+	var way: Array = st.way
+	for i in way.size():
+		var pid: int = way[i]
+		var k := i
+		var info := ""
+		var to_n := 0
+		var pk_n := 0
+		for c in sim.CO.net.cs:
+			if c.run < 0 and c.st != "move":
+				if c.k.to == pid and (c.at == st.a or way.slice(0, i).has(c.at)):
+					to_n += 1
+				if c.at == pid:
+					pk_n += 1
+		var parts := []
+		if to_n:
+			parts.append("доставка %d" % to_n)
+		if pk_n:
+			parts.append("тут чекає %d" % pk_n)
+		if sim.hub_at(pid) != null:
+			parts.append("хаб")
+		info = " · ".join(parts)
+		var ic := Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT)
+		var nm := Windows._b(_pl(pid), 13)
+		var nt := Ui.label(info, 12, Ui.MUTED)
+		nt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var up := Windows._btn("", "sm", "up", func():
+			way.remove_at(k)
+			way.insert(k - 1, pid)
+			redraw.call(), k > 0, "Раніше")
+		var dn := Windows._btn("", "sm", "down", func():
+			way.remove_at(k)
+			way.insert(k + 1, pid)
+			redraw.call(), k < way.size() - 1, "Пізніше")
+		var rm := Windows._btn("", "sm", "close", func():
+			way.remove_at(k)
+			st.way_auto = true
+			redraw.call(), true, "Прибрати зупинку")
+		v.add_child(Ui.hbox(8, [ic, nm, nt, up, dn, rm]))
+	if st.back and way.size():
+		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
+	# adding stops
+	var cands := sim.net_way_cands(st.a, way, st.m, st.back)
+	var opts := []
+	for x in cands.slice(0, 14):
+		var why := []
+		if x.to > 0:
+			why.append("%s т туди" % Ui.loc(x.to))
+		if x.nx > 0:
+			why.append("%s т далі звідти" % Ui.loc(x.nx))
+		if x.pick > 0:
+			why.append("забрати %s т" % Ui.loc(x.pick))
+		if why.is_empty():
+			why.append("хаб")
+		opts.append([x.pid, "%s · %s · +%d%% шляху" % [_pl(x.pid), ", ".join(why), int(round(x.det * 100))] if way.size() else "%s · %s" % [_pl(x.pid), ", ".join(why)],
+			"building" if sim.hub_at(x.pid) != null else "pin"])
+	var bar := Ui.hbox(8)
+	if opts.size():
+		var dd := Dropdown.make(opts, null, func(pid):
+			st.way = sim.net_way_insert(st.a, way, pid, st.back).way
+			redraw.call())
+		dd.placeholder = "Додати зупинку"
+		dd.custom_minimum_size.x = 240
+		bar.add_child(dd)
+	bar.add_child(Windows._btn("Попутні", "sm", "layers", func():
+		st.way = sim.net_way_auto(st.a, way, st.m, st.back)
+		redraw.call(), true, Windows._tip("Попутні зупинки", "Додає міста, куди їдуть вантажі зі старту й із зупинок, та міста поблизу, де чекає вантаж, — поки об'їзд не довший за третину шляху.")))
+	v.add_child(bar)
+	return v
 
 
 ## the vehicles that can do the run, and a partner
@@ -366,37 +445,8 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 				st.m = "road"
 			box.add_child(field.call("Вид транспорту", Ui.seg(ms.map(func(m): return [m, MODE_N[m]]), st.m, func(x):
 				st.m = x
-				st.b = -1
+				st.way = []
 				st.vid = -2
-				redraw.call())))
-			# where to: own hubs, the next steps of what waits here, the nearest partner terminals, the cargo's towns
-			var dests := {}
-			for h in CO.hubs:
-				if h.pid != st.a and sim.node_ok(st.m, sim.PL[h.pid]):
-					dests[h.pid] = "хаб"
-			for c in CO.net.cs:
-				if c.at == st.a and c.run < 0 and c.st != "move":
-					var nx: Variant = sim.net_next(c)
-					if nx != null and nx.m == st.m and not dests.has(nx.b):
-						dests[nx.b] = "далі для вантажів"
-					if st.m == "road" and c.k.to != st.a and not dests.has(c.k.to) and sim.PL[c.k.to].land == A.land:
-						dests[c.k.to] = "місто призначення"
-			if st.m != "road":
-				var L := sim.PL.filter(func(p): return p.id != st.a and sim.node_ok(st.m, p) and sim.co_scope(p))
-				L.sort_custom(func(x, y): return JS.hypot(x.x - A.x, x.z - A.z) < JS.hypot(y.x - A.x, y.z - A.z))
-				for p in L.slice(0, 8):
-					if not dests.has(p.id):
-						dests[p.id] = "термінал партнера"
-			if dests.is_empty():
-				box.add_child(Windows._note("Нікуди: немає терміналів для цього виду транспорту."))
-				return
-			if not dests.has(st.b):
-				st.b = dests.keys()[0]
-			var dl := []
-			for pid in dests:
-				dl.append([pid, "%s · %s" % [_pl(pid), dests[pid]], "building" if sim.hub_at(pid) != null else "pin"])
-			box.add_child(field.call("Куди", Dropdown.make(dl, st.b, func(x):
-				st.b = x
 				redraw.call())))
 			var cars := _carriers(st.a, st.m, true)
 			if st.vid == -2 or not cars.any(func(x): return x[0] == st.vid):
@@ -405,8 +455,20 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 				st.vid = x
 				redraw.call()), Windows._icl("refresh", "і назад з вантажем", Ui.FG2), Windows._toggle(st.back, func():
 					st.back = not st.back
-					redraw.call(), "Зворотний рейс забере вантажі, що чекають там на цей термінал")])))
-			spec = sim.net_auto_trunk(st.a, st.b, st.m, st.vid, st.back, st.skip)
+					redraw.call(), "Рейс повернеться сюди й забере на зворотному шляху вантажі, що чекають для цього терміналу")])))
+			# the way: the stops after the start, in order; the first time — the destination asked for, or the stops
+			# the cargo here is for
+			if not st.has("way"):
+				st.way = [st.b] if st.b >= 0 and st.b != st.a and sim.node_ok(st.m, sim.PL[st.b]) else []
+			st.way = st.way.filter(func(p): return sim.node_ok(st.m, sim.PL[p]))
+			if st.way.is_empty() and not st.get("way_auto", false):
+				st.way_auto = true
+				st.way = sim.net_way_auto(st.a, [], st.m, st.back)
+			box.add_child(field.call("Зупинки", _way_editor(st, redraw)))
+			if st.way.is_empty():
+				box.add_child(Windows._note("Додайте зупинку: місто, куди везете, або термінал, де вантаж поїде далі.", Ui.MUTED))
+				return
+			spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, st.back, st.skip)
 		"pick":
 			var c: Variant = sim._cs(st.cs)
 			if c == null or c.st != "wait":
@@ -462,7 +524,8 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 			chain.add_child(Ui.icon(MODE_IC[D.VT[sim._veh(spec.vid).t].mode] if spec.vid >= 0 else MODE_IC[spec.get("m", "road")], 14, Ui.ACCENT))
 		chain.add_child(Windows._b(_pl(spec.stops[i]), 13))
 	chain.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_child(field.call("Маршрут", chain))
+	if st.kind != "trunk":
+		box.add_child(field.call("Маршрут", chain))
 	var rows := Ui.vbox(4)
 	var all := {}
 	for row in C.rows:
@@ -485,6 +548,8 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 		var tail := ""
 		if on:
 			tail = ("доставка %s" if row.dest else "до складу %s") % ("вчасно" if row.late <= 0 else "[color=#f0625f]із запізненням %s[/color]" % Ui.days(row.late)) if row.dest else "вивантаження в %s" % _pl(spec.stops[row.off])
+			if row.on > 0:   # picked up on the way
+				tail = "забрати в %s · %s" % [_pl(spec.stops[row.on]), tail]
 		var r := Ui.rich("%s%s" % [txt, (" · " + tail) if tail != "" else " · [color=#8a96a3]не їде[/color]"], 13)
 		r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rows.add_child(Ui.hbox(10, [Windows._toggle(on, func():
@@ -520,7 +585,8 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 		var ev := Ui.seg([[1, "щодня"], [2, "2 дн."], [3, "3 дн."], [5, "5 дн."], [7, "тиждень"]], st.every, func(x): st.every = x)
 		var fl := Ui.seg([[0.0, "будь-яке"], [.3, "30%"], [.6, "60%"], [.9, "90%"]], st.fill, func(x): st.fill = x)
 		var mk := Windows._btn("Створити лінію", "sm", "refresh", func():
-			var L := {"kind": st.kind, "a": st.a, "b": st.b, "m": st.m, "vid": spec.vid, "back": st.back, "every": st.every, "fill": st.fill, "next": sim.day}
+			var L := {"kind": st.kind, "a": st.a, "b": st.way.back() if st.kind == "trunk" else -1, "way": st.get("way", []).duplicate(), "m": st.m, "vid": spec.vid, "back": st.back,
+				"every": st.every, "fill": st.fill, "next": sim.day}
 			var res := sim.net_line_add(L)
 			done.call()
 			w._do(res), true, Windows._tip("Лінія за розкладом", "Такий рейс повторюватиметься сам: щоразу з тим, що на той момент чекає. Рушає, коли заповнення не менше обраного (або коли вантаж інакше запізниться). Досвіду за рейси ліній менше, ніж за сплановані вручну."))

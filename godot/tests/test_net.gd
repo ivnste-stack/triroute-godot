@@ -182,3 +182,55 @@ func test_saved_network_goes_on() -> String:
 	if var_to_bytes(a.save_state()) != var_to_bytes(b.save_state()):
 		return "after 30 more days: cash %d vs %d, delivered %d vs %d" % [int(a.CO.cash), int(b.CO.cash), a.CO.net.stat.done, b.CO.net.stat.done]
 	return ""
+
+
+## a haul along several towns: each consignment gets off at its own stop, the load never over the vehicle
+func test_haul_along_several_stops() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game(777)
+	var hq: int = sim.CO.hq
+	sim.CO.veh.append({"id": sim.CO.uid, "t": "truck", "loc": hq, "st": "idle", "cond": 100.0, "km": 0.0})
+	var vid: int = sim.CO.uid
+	sim.CO.uid += 1
+	sim.CO.staff.driver += 1
+	for i in 3:
+		sim.co_board_day()
+	for k in sim.CO.board.duplicate():
+		sim.net_accept(k)
+	for c in sim.CO.net.cs:   # all of it in the headquarters' warehouse
+		c.at = hq
+		c.st = "ready"
+	var way := sim.net_way_auto(hq, [], "road", false)
+	if way.is_empty():
+		return "no stops on the way"
+	while way.size() < 3:   # the player adds the other towns, each where it lengthens the way the least
+		var cands := sim.net_way_cands(hq, way, "road", false).filter(func(x): return x.to > 0)
+		if cands.is_empty():
+			break
+		if cands[0].det < -1e-6:
+			return "a negative detour"
+		way = cands[0].way
+	if way.size() < 2:
+		return "the stops on the way: %s" % str(way)
+	var sp := sim.net_auto_multi(hq, way, "road", vid)
+	var C := sim.net_calc(sp)
+	if not C.ok:
+		return "the haul: %s" % C.why
+	if C.fill > 1.0 + 1e-6:
+		return "the haul overloads the truck: %.2f" % C.fill
+	var offs := {}
+	for row in C.rows:
+		if not row.dest:
+			return "a consignment rides past its town"
+		offs[row.off] = true
+	if offs.size() < 2:
+		return "everything gets off at one stop: %s" % str(offs.keys())
+	var n: int = C.rows.size()
+	var d0: int = sim.CO.net.stat.done
+	sim.net_go(sp)
+	_days(sim, 15, false)
+	if sim.CO.net.stat.done - d0 < n:
+		return "%d of %d delivered" % [sim.CO.net.stat.done - d0, n]
+	print("       a haul of %d stops: %d consignments, each at its own town" % [way.size(), n])
+	return _consistent(sim)

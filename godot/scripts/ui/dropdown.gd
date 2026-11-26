@@ -12,6 +12,7 @@ static var layer: Control
 
 var options: Array = []       # [[value, label, icon]]
 var value: Variant
+var placeholder := ""         # shown (with a plus) while no option is the value: a list of actions, not a choice
 var _lbl: Label
 var _ic: TextureRect
 var _list: Control = null
@@ -64,6 +65,11 @@ func _ready() -> void:
 
 
 func _show_value() -> void:
+	if placeholder != "" and not options.any(func(x): return x[0] == value):
+		_lbl.text = placeholder
+		_ic.visible = true
+		_ic.texture = Icons.tex("plus", Ui.FG, 16)
+		return
 	var o: Array = options[0] if options.size() else [null, "", ""]
 	for x in options:
 		if x[0] == value:

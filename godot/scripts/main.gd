@@ -770,7 +770,7 @@ func _on_world(w: Dictionary) -> void:
 			if _args.has("netacc"):   # --netacc=N: N orders taken into the network first, some brought to the hub
 				for k in sm.CO.board.slice(0, int(_args.netacc)):
 					sm.net_accept(k)
-				for c in sm.CO.net.cs.slice(0, 3):
+				for c in sm.CO.net.cs.slice(0, 3 if _args.netdlg != "trunk" else 99):
 					c.at = sm.CO.hq
 					c.st = "ready"
 			match String(_args.netdlg):
@@ -779,7 +779,19 @@ func _on_world(w: Dictionary) -> void:
 					if wt.size():
 						_net_dialog("pick", {"cs": wt[0].id})
 				"trunk":
-					_net_dialog("trunk", {"a": sm.CO.hq})
+					var ta := {"a": sm.CO.hq}
+					if _args.has("netway"):   # --netway=N: a truck and N stops the player put in
+						sm.CO.veh.push_front({"id": sm.CO.uid, "t": "truck", "loc": sm.CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})
+						sm.CO.uid += 1
+						sm.CO.staff.driver += 1
+						var way := sm.net_way_auto(sm.CO.hq, [], "road", false)
+						while way.size() < int(_args.netway):
+							var cs: Array = sm.net_way_cands(sm.CO.hq, way, "road", false).filter(func(x): return x.to > 0)
+							if cs.is_empty():
+								break
+							way = cs[0].way
+						ta.way = way
+					_net_dialog("trunk", ta)
 				_:
 					_net_dialog("round", {"a": sm.CO.hq})
 		if _args.has("thenedit"):   # test: from a running game back to a new world in the editor
