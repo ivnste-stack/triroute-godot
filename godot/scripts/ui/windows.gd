@@ -817,13 +817,13 @@ func _mm_card(k: Dictionary) -> PanelContainer:
 	return _blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, _card_rule(), bs]))
 
 
-## a thin line across a card that stops short of its sides: the tags above, the buttons below
+## a thin line across a card, as wide as its tags and buttons: the tags above, the buttons below
 static func _card_rule() -> Control:
 	var r := ColorRect.new()
 	r.color = Ui.LINE
 	r.custom_minimum_size.y = 1
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return Ui.margin(r, 6, 2, 6, 2)
+	return Ui.margin(r, 0, 2, 0, 2)   # from the left edge of the tags and buttons to the same edge on the right
 
 
 func _board_card(k: Dictionary) -> PanelContainer:
