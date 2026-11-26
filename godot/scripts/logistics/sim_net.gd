@@ -29,7 +29,7 @@ const NET_UPS := [
 	{"id": "bond", "n": "Митний склад", "ic": "gavel", "cost": [80000], "d": "Митне оформлення в терміналі: рейси звідси стоять на кордонах утричі менше. Митниця іноді перевіряє вантажі на складі."},
 	{"id": "shift", "n": "Цілодобова зміна", "ic": "sun", "cost": [15000], "mo": 3000, "d": "Пропускна здатність ×1,5. Зарплати нічної зміни — $3 тис./міс."}]
 const NET_PERIOD := {"road": .25, "rail": 2.0, "sea": 4.0, "air": 1.0}   # partner departures, days
-const NET_PFEE := {"road": 8, "rail": 12, "sea": 25, "air": 40}           # partner handling, $/t
+const NET_PFEE := {"road": 8, "rail": 10, "sea": 8, "air": 40}            # partner handling, $ for t^.85 (bulk is cheaper a ton)
 const NET_PART := ["Закрито", "Частково", "Повністю"]                      # partner freight through a terminal
 const NET_VT := {"road": "truck", "rail": "train", "sea": "ship", "air": "plane"}
 const NET_EV := {"strike": ["Страйк вантажників", "users"], "crane": ["Зламався кран", "gear"], "congest": ["Затор біля причалу", "anchor"],
@@ -130,7 +130,7 @@ func n_thr(pid: int) -> float:
 func n_stored(pid: int) -> float:
 	var s := 0.0
 	for c in CO.net.cs:
-		if c.at == pid and (c.st == "ready" or c.st == "proc"):
+		if c.at == pid and (c.st == "ready" or c.st == "proc") and not c.k.get("sea"):   # shiploads wait at the quay
 			s += c.k.tons
 	return s
 
@@ -156,6 +156,19 @@ static func _small(cg: String) -> bool:
 
 ## handling a batch at a place from `t`: when it is done. A hub works through its queue at its throughput; a
 ## partner terminal takes a fixed time; a town loads and unloads a vehicle by hand
+const NET_QUAY := {"sea": 2500.0, "rail": 1200.0}   # ships and trains load at the quay or the ramp, t a day
+
+
+## tons a day a place loads this kind of transport: ships and trains at the quay or the ramp (own with the
+## module, cranes on top; else the partner's next door, slower), everything else through the warehouse
+func n_rate(pid: int, m: String) -> float:
+	if NET_QUAY.has(m):
+		if n_kind(pid) == "hub" and n_mod(pid, m):
+			return NET_QUAY[m] * [1.0, 1.5, 2.2][mini(2, n_up(pid, "crane"))]
+		return NET_QUAY[m] * .6
+	return n_thr(pid)
+
+
 func n_handle(pid: int, cs: Array, m: String, t: float) -> float:
 	var tons := 0.0
 	for c in cs:
@@ -164,7 +177,7 @@ func n_handle(pid: int, cs: Array, m: String, t: float) -> float:
 	match n_kind(pid):
 		"hub":
 			var T: Dictionary = _T(pid)
-			var thr := n_thr(pid)
+			var thr := n_rate(pid, m) if n_thr(pid) > 0 else 0.0
 			var start := maxf(t, T.q)
 			if thr <= 0:   # a strike: the work waits for its end
 				var e: Variant = n_ev(pid, "strike")
@@ -177,7 +190,7 @@ func n_handle(pid: int, cs: Array, m: String, t: float) -> float:
 			T.q = end
 			return end
 		"part":
-			return t + .4 + base
+			return t + .4 + base + (tons / n_rate(pid, m) if NET_QUAY.has(m) else 0.0)
 	return t + base + minf(.3, tons / 60.0)
 
 
@@ -188,7 +201,7 @@ func n_hfee(pid: int, cs: Array, m: String) -> float:
 		tons += c.k.tons
 	var k := n_kind(pid)
 	if k == "part" or (k == "hub" and not n_mod(pid, m)):
-		return JS.round_js((150 + NET_PFEE[m] * tons) * price_k(PL[pid].cid))
+		return JS.round_js((150 + NET_PFEE[m] * JS.pow(maxf(tons, .1), .85)) * price_k(PL[pid].cid))
 	return 0.0
 
 
@@ -291,6 +304,17 @@ func _hub_d(p: Dictionary) -> float:
 ## an order of the alternative balance: from a town of the licence to another, no kind of transport fixed;
 ## shippers near the company's hubs order more; small parcels, middle loads and some bulk for rail and sea
 func net_gen() -> Variant:
+	# special freight of the industries: a refinery's fuel by tanker trucks to the port (from the tankers'
+	# licence), shiploads between continents that only a ship can take (from the sea licence)
+	var sp := R.next()
+	if CO.tier >= 2 and sp < .12:
+		var kr: Variant = _gen_refinery()
+		if kr != null:
+			return kr
+	elif CO.tier >= 5 and sp < .3:
+		var ks: Variant = _gen_sea()
+		if ks != null:
+			return ks
 	var pool := PL.filter(func(p): return co_scope(p) and not in_conf(p.cid))
 	if pool.size() < 2:
 		return null
@@ -383,7 +407,7 @@ func net_accept(k: Dictionary) -> Dictionary:
 		return {}
 	if k.get("minR", 0) and CO.rating < k.minR:
 		return _toast("warn", "Замовник хоче рейтинг %.1f+" % k.minR, "Ваш рейтинг %.2f" % CO.rating)
-	var nd := perm_need(cargo_i.get(k.cg), "road").filter(func(x): return not perm_ok(x))
+	var nd := perm_need(cargo_i.get(k.cg), "sea" if k.get("sea") else "road").filter(func(x): return not perm_ok(x))
 	if nd.size():
 		return _toast("warn", "Потрібен дозвіл", perm_i[nd[0]].n)
 	_drop(CO.board, k)
@@ -399,7 +423,7 @@ func _take(k: Dictionary) -> Dictionary:
 	CO.net.cs.append(c)
 	if n_kind(k.from) == "hub":   # the shipper brings it to the terminal in town
 		c.st = "proc"
-		c.rdy = n_handle(k.from, [c], "road", co_now())
+		c.rdy = n_handle(k.from, [c], "sea" if k.get("sea") else "road", co_now())   # a shipload comes straight to the quay
 	return c
 
 
@@ -509,6 +533,9 @@ func _own_types() -> Dictionary:
 
 
 func _edge(m: String, U: Dictionary, V: Dictionary, tons: float, owns: Dictionary) -> Dictionary:
+	var big: String = owns.get(m, "")
+	if tons > PART_CAP[m] and (big == "" or D.VT[big].cap < tons):   # too much for partners and own vehicles of this kind
+		return {}
 	var d := JS.hypot(U.x - V.x, U.z - V.z) * CO_DU
 	var ln: float = d * {"road": 1.3, "rail": 1.2, "sea": 1.35, "air": 1.0}[m]
 	if m == "air" and d < .3:
@@ -529,7 +556,7 @@ func _edge(m: String, U: Dictionary, V: Dictionary, tons: float, owns: Dictionar
 	t += D.HAND[m] * hand_k()
 	var hu := hub_at(V.id) != null
 	if not hu or not n_mod(V.id, m):
-		c += (150 + NET_PFEE[m] * tons) * price_k(V.cid) * (0.0 if n_kind(V.id) == "" else 1.0)
+		c += (150 + NET_PFEE[m] * JS.pow(maxf(tons, .1), .85)) * price_k(V.cid) * (0.0 if n_kind(V.id) == "" else 1.0)
 	return {"c": c, "t": t}
 
 
@@ -624,6 +651,7 @@ func net_calc(spec: Dictionary) -> Dictionary:
 		return res
 	var picks: Dictionary = spec.get("picks", {})
 	var board := {}   # consignment id → [on, off]
+	var sea_only := ""
 	var ids := []
 	for i in stops.size() - 1:
 		for id in picks.get(i, []):
@@ -632,11 +660,17 @@ func net_calc(spec: Dictionary) -> Dictionary:
 				continue
 			if c.at != stops[i] or not (c.st == "ready" or c.st == "wait" or (c.st == "proc" and c.get("rdy", 0) - co_now() < 2)) or (c.run >= 0 and c.run != spec.get("rid", -9)):
 				continue
+			if c.k.get("sea") and m != "sea":   # a shipload: only a ship takes it
+				sea_only = cargo_i[c.k.cg].n
+				continue
 			var off: int = int(spec.get("offs", {}).get(id, _drop_at(stops, i, c.k.to)))
 			if off <= i or off >= stops.size():
 				off = _drop_at(stops, i, c.k.to)
 			board[id] = [i, off]
 			ids.append(c)
+	if ids.is_empty() and sea_only != "":
+		res.why = "%s: такого обсягу везуть лише морем" % sea_only
+		return res
 	for c in ids:   # cargo is left only at a terminal, or at its own town
 		var q: int = stops[board[c.id][1]]
 		if q != c.k.to and n_kind(q) == "":
@@ -657,6 +691,9 @@ func net_calc(spec: Dictionary) -> Dictionary:
 		mx = maxf(mx, t)
 		mv = maxf(mv, vo)
 	res.tons = mx
+	if not own and mx > PART_CAP[m]:
+		res.why = "Партнер (%s) бере до %s т за рейс" % [{"road": "авто", "rail": "залізниця", "air": "авіа", "sea": "море"}[m], Ui.grp(PART_CAP[m])]
+		res.over = true
 	if own:
 		res.fill = mx / T.cap
 		if mx > T.cap + 1e-6 or (T.get("vol", 0) and mv > T.vol + 1e-6):
@@ -708,7 +745,8 @@ func net_calc(spec: Dictionary) -> Dictionary:
 			var tons := 0.0
 			for c in hcs:
 				tons += c.k.tons
-			var dur: float = D.HAND[m] * hand_k() * .5 + (tons / maxf(1.0, n_thr(stops[i])) if n_kind(stops[i]) == "hub" else (.4 if n_kind(stops[i]) == "part" else minf(.3, tons / 60.0)))
+			var dur: float = D.HAND[m] * hand_k() * .5 + (tons / maxf(1.0, n_rate(stops[i], m)) if n_kind(stops[i]) == "hub" else \
+				((.4 + (tons / n_rate(stops[i], m) if NET_QUAY.has(m) else 0.0)) if n_kind(stops[i]) == "part" else minf(.3, tons / 60.0)))
 			if i == 0 and n_kind(stops[i]) == "hub":
 				t += wait
 			t += dur
@@ -732,7 +770,8 @@ func net_calc(spec: Dictionary) -> Dictionary:
 	return res
 
 
-const PART_SHARE := .85   # a partner's cut of what a consignment pays, for the part of its way it carries
+const PART_SHARE := .85
+const PART_CAP := {"road": 400.0, "rail": 6000.0, "air": 250.0, "sea": 2000.0}   # what one booking (or run) can take, t   # a partner's cut of what a consignment pays, for the part of its way it carries
 
 
 ## a partner carrier's price for one booking: partners know the market — for every consignment they take most of
@@ -997,6 +1036,10 @@ func _deliver(c: Dictionary, r: Variant) -> void:
 	var cg: Dictionary = cargo_i[k.cg]
 	var late := maxf(0, co_now() - c.dl)
 	var pay: float = k.pay * (maxf(.35, 1 - late * .12) if late > 0 else 1.0)
+	if r != null and r.vid >= 0:   # brought by a vehicle made for it (a tanker for fuel, a reefer for food…): +20%
+		var v: Variant = _veh(r.vid)
+		if v != null and D.VT[v.t].get("fit", []).has(k.cg):
+			pay *= 1.2
 	var value: float = k.tons * cg.val
 	var claim := 0.0
 	if c.dmg > 0:
@@ -1491,7 +1534,7 @@ func net_day() -> void:
 	for h in CO.hubs:
 		ovr[h.pid] = n_stored(h.pid) > n_cap(h.pid)
 	for c in CO.net.cs.duplicate():
-		if c.st == "ready" or c.st == "proc":
+		if (c.st == "ready" or c.st == "proc") and not c.k.get("sea"):   # a shipload waits at the quay, free
 			var k := n_kind(c.at)
 			if k == "hub":
 				store += c.k.tons * 2 * price_k(PL[c.at].cid) * (3.0 if ovr.get(c.at, false) else 1.0)
@@ -1872,3 +1915,124 @@ func _offer(T: Dictionary) -> void:
 	_nets().coff.append(O)
 	co_news("good", "handshake", "%s пропонує контракт: %s → %s, кожні %d дн." % [O.firm, PL[O.from].name, PL[O.to].name, O.every])
 	_nt({"tone": "good", "t": "Пропозиція контракту", "d": "%s: %s → %s · кожні %d дн. · %s за поставку. Біржа вантажів → Контракти" % [O.firm, PL[O.from].name, PL[O.to].name, O.every, usd_s(O.pay)]})
+
+
+
+# ====================================================================== industries: refineries, shiploads
+## crude oil: no truck takes a tanker's worth of it — a cargo of its own, shipped between ports
+const NET_CARGO := [{"id": "crude", "n": "Сира нафта", "ic": "barrel", "t": [2000, 40000], "k": .7, "fr": .01, "val": 450, "v": 1.2, "dg": 1}]
+const SEA_LOTS := ["crude", "fuel", "grain", "cars", "cont", "metal", "gas", "rcont"]
+const SEA_RATE := 45.0   # what a shipload pays, $ for a ton over a unit of the way: enough for an own ship to pay off
+
+
+func setup(gen_: Object, seed_: int, states_: Array, board_: Dictionary, world: Dictionary = {}) -> void:
+	super.setup(gen_, seed_, states_, board_, world)
+	for c in NET_CARGO:
+		cargo_i[c.id] = c
+
+
+## the towns with a refinery: a few large inland towns on lands that have a port (fixed for the world)
+func net_refineries() -> Array:
+	var ports := {}
+	for p in PL:
+		if p.port != null:
+			ports[p.land] = true
+	var out := []
+	for p in PL:
+		if p.port == null and ports.has(p.land) and (p.type == "cap" or p.type == "big" or p.type == "city") \
+			and ((p.id * 2654435761 + seed_value * 97) & 0xFFFF) % 5 == 0:
+			out.append(p.id)
+	return out
+
+
+func refinery_name(pid: int) -> String:
+	var r := Mulberry.new((seed_value * 131 + pid * 977 + 12345) & 0xFFFFFFFF)
+	var nm := _firm_name("energy", r)
+	var q := nm.find("«")
+	if q >= 0:   # the name without its legal form and quotes
+		nm = nm.substr(q + 1)
+	return "НПЗ «%s»" % nm.trim_suffix("»")
+
+
+## a refinery's fuel: a tanker load to the nearest port on its land (the consignee: the port's terminal)
+func _gen_refinery() -> Variant:
+	var refs := net_refineries().filter(func(pid): return co_scope(PL[pid]) and not in_conf(PL[pid].cid))
+	if refs.is_empty():
+		return null
+	var A: Dictionary = PL[refs[int(R.next() * refs.size())]]
+	var B: Variant = _near_t(A, "sea")
+	if B == null or B.id == A.id or not co_scope(B):
+		return null
+	var tons: float = JS.round_js(rnd(8, 25))
+	var ref: Variant = net_ref(A, B, tons)
+	if ref == null:
+		return null
+	var k: Dictionary = _net_order(A, B, cargo_i["fuel"], tons, ref, rnd(1.1, 1.25))
+	k.fs = refinery_name(A.id)
+	k.ft = "Нафтотермінал порту %s" % B.name
+	k.refy = 1
+	return k
+
+
+## a shipload between continents (from the sea licence): grain, oil and fuel, metal, cars, containers —
+## thousands of tons from a port to a port that only a ship can take
+func _gen_sea() -> Variant:
+	var ports := PL.filter(func(p): return p.port != null and co_scope(p) and not in_conf(p.cid))
+	if ports.size() < 2:
+		return null
+	var A: Dictionary = ports[int(R.next() * ports.size())]
+	var far := ports.filter(func(p): return p.land != A.land)
+	if far.is_empty():
+		return null
+	var B: Dictionary = far[int(R.next() * far.size())]
+	var r: Variant = co_route("sea", A.id, B.id)
+	if r == null:
+		return null
+	var ids: Array = SEA_LOTS
+	# a refinery's port ships fuel and oil more often
+	var near_ref := net_refineries().any(func(pid): return PL[pid].land == A.land)
+	var cid: String = ("crude" if R.next() < .5 else "fuel") if near_ref and R.next() < .45 else ids[int(R.next() * ids.size())]
+	# more than partners' ships take: a container ship's load, a bulk carrier's with the global licence
+	var hi: float = 28000.0 if CO.tier >= 7 else 6000.0
+	var tons: float = JS.round_js(2500.0 * JS.pow(hi / 2500.0, JS.pow(R.next(), 1.4)) / 10) * 10
+	var t: float = r.len / (D.CH_SPD.sea * spd_k()) + D.HAND.sea * hand_k() * 2 + NET_PERIOD.sea * .5
+	var ref := {"c": ch_cost("sea", r.len, tons) + D.CH_BASE.sea * .25, "t": t, "m": "sea", "legs": [{"a": A.id, "b": B.id, "m": "sea", "len": r.len}]}
+	var k: Dictionary = _net_order(A, B, cargo_i[cid], tons, ref, rnd(1.0, 1.15))
+	var cg: Dictionary = cargo_i[cid]
+	k.pay = JS.round_js(tons * r.len * SEA_RATE * maxf(.6, cg.k) * (price_k(A.cid) + price_k(B.cid)) / 2 * rnd(.9, 1.25)) * fast_k()
+	k.sea = 1
+	var r2 := Mulberry.new((seed_value * 7 + A.id * 131 + k.id) & 0xFFFFFFFF)
+	var refs := net_refineries().filter(func(pid): return PL[pid].land == A.land)
+	refs.sort_custom(func(x, y): return JS.hypot(PL[x].x - A.x, PL[x].z - A.z) < JS.hypot(PL[y].x - A.x, PL[y].z - A.z))
+	k.fs = refinery_name(refs[0]) if (cid == "crude" or cid == "fuel") and refs.size() else _firm_name("port", r2)
+	k.ft = _firm_name("port", r2)
+	return k
+
+
+## an order of the network from a reference way (the pay and the deadline as for the board)
+func _net_order(A: Dictionary, B: Dictionary, cg: Dictionary, tons: float, ref: Dictionary, extra: float) -> Dictionary:
+	var urg := R.next()
+	var risk := JS.clamp_js((co_risk(A.cid) + co_risk(B.cid)) / 2 * cg.get("theft", .7), 0, 2)
+	var pk := (price_k(A.cid) + price_k(B.cid)) / 2
+	var pay := JS.round_js(ref.c * 1.12 * cg.k * pk * (1 + urg * .45) * (1 + risk * .15) * (.8 + CO.rating * .07) * (1 + msk("cco") * .12) * extra * (1 + co_grade() * .03)) * fast_k()
+	var k := {"id": CO.uid, "from": A.id, "to": B.id, "cg": cg.id, "tons": tons, "pay": pay, "dlDays": JS.fixed1(maxf(1.5, ref.t * (2.6 - urg * .9) + 1.5)), "mode": ref.m,
+		"risk": risk, "minR": 0.0, "len": 0.0, "exp": day + rint(5, 12), "net": 1, "ref": ref.legs.map(func(L): return L.m)}
+	for L in ref.legs:
+		k.len += L.len
+	CO.uid += 1
+	return k
+
+
+## the businesses of an order: a refinery's or a port's already named are kept
+func biz_firms_k(k: Dictionary) -> void:
+	if k.get("fs") and (k.get("refy") or k.get("sea")):
+		return
+	super.biz_firms_k(k)
+
+
+## a refinery among the businesses of its town (the tooltips, the regular clients)
+func firms_of(pid: int) -> Array:
+	var L: Array = super.firms_of(pid)
+	if alt() and net_refineries().has(pid) and not L.any(func(f): return f.get("refy")):
+		L.append({"n": refinery_name(pid), "ind": "energy", "refy": 1})
+	return L

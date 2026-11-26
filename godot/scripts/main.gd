@@ -793,6 +793,17 @@ func _on_world(w: Dictionary) -> void:
 			_toggle_window(_args.win)
 			if _args.has("countryhubs"):   # test: the cities of a country, from «Відкрити хаб у країні»
 				wins.country_hubs.emit(session.sim.PL[session.sim.CO.hq].cid)
+		if _args.has("netind"):   # test: the sea licence and permits, a board with refineries and shiploads
+			var sm := session.sim
+			sm.CO.tier = 6
+			sm.CO.perm = {"adr": {"until": 1e9}, "imdg": {"until": 1e9}}
+			sm.CO.board = []
+			for i in 60:
+				var k: Variant = sm.co_gen()
+				if k != null and (k.get("sea") or k.get("refy")) and sm.CO.board.size() < 8:
+					sm.CO.board.append(k)
+			if win.visible:
+				_win_tick(true)
 		if _args.has("ctrdemo"):   # test: two good clients — one offers a contract, one has signed
 			var sm := session.sim
 			var ks: Array = sm.CO.board.filter(func(x): return x.get("fs"))

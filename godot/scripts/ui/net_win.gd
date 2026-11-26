@@ -90,7 +90,13 @@ func card(k: Dictionary) -> PanelContainer:
 	if k.get("fs"):
 		info.add_child(Windows._icl("building", "%s → %s" % [k.fs, k.ft]))
 	var P: Variant = sim.net_path(k.from, k.to, k.tons, k.dlDays, k.pay)
-	if P != null and P.legs.size():
+	if k.get("sea"):   # a shipload: port to port by an own ship (bought or to buy)
+		P = {"legs": [{"a": k.from, "b": k.to, "m": "sea"}], "t": 0.0, "c": 0.0}
+		var wy := _way(P.legs)
+		var has_ship: bool = sim.CO.veh.any(func(v): return D.VT[v.t].mode == "sea" and D.VT[v.t].cap >= k.tons)
+		wy.add_child(Ui.label("· власним судном" if has_ship else "· потрібне власне судно на %s т" % Ui.grp(k.tons), 13, Ui.GOOD if has_ship else Ui.WARN))
+		info.add_child(wy)
+	elif P != null and P.legs.size():
 		var wy := _way(P.legs)
 		var ok: bool = P.t <= k.dlDays
 		wy.add_child(Ui.label("· ≈ %s · витрати ≈ %s" % [Ui.days(P.t), Ui.usd(P.c)], 13, Ui.GOOD if ok and P.c < k.pay * .7 else (Ui.WARN if ok else Ui.BAD)))
@@ -112,9 +118,17 @@ func card(k: Dictionary) -> PanelContainer:
 		pills.add_child(Ui.pill("Вимога %.1f★" % k.minR, "acc" if CO.rating >= k.minR else "bad", "star"))
 	if cg.get("reefer"):
 		pills.add_child(Ui.pill("Холодний ланцюг", "", "snow"))
-	if k.tons >= 25:
+	if k.get("sea"):
+		var sp := Ui.pill("Лише власним судном", "acc", "ship")
+		sp.tooltip_text = Windows._tip("Морська партія", "Тисячі тонн — більше, ніж беруть партнери (до 2 000 т): тільки ваш контейнеровоз (до 6 000 т) або балкер (до 28 000 т). Платять щедро: судно окупається такими рейсами.")
+		pills.add_child(sp)
+	elif k.get("refy"):
+		var tp := Ui.pill("Автоцистерна +20%", "acc", "truck")
+		tp.tooltip_text = Windows._tip("Пальне з НПЗ", "Нафтопереробний завод відправляє пальне в порт. Привезене вашою автоцистерною оплачується на 20% більше. Потрібен дозвіл ADR.")
+		pills.add_child(tp)
+	elif k.tons >= 25:
 		pills.add_child(Ui.pill("Масовий вантаж", "acc", "layers"))
-	for id in sim.perm_need(cg, "road"):
+	for id in sim.perm_need(cg, "sea" if k.get("sea") else "road"):
 		pills.add_child(Ui.pill(sim.perm_i[id].n.split(":")[0], "good" if sim.perm_ok(id) else "bad", sim.perm_i[id].ic))
 	if P == null:
 		pills.add_child(Ui.pill("Шляху немає", "bad", "alert"))
