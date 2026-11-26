@@ -308,8 +308,12 @@ func net_gen() -> Variant:
 		if r0 <= 0:
 			A = pool[i]
 			break
+	# where to: the licence opens longer hauls — another state on the land (trains pay there), another continent
+	# (ships and planes); the classic shares at the start
 	var far := R.next()
-	var cand := pool.filter(func(p): return p.id != A.id and (p.cid == A.cid if far < .55 else (p.land == A.land if far < .85 else true)))
+	var p_cty: float = .55 if CO.tier < 3 else .4
+	var p_land: float = .85 if CO.tier < 5 else .68
+	var cand := pool.filter(func(p): return p.id != A.id and (p.cid == A.cid if far < p_cty else (p.land == A.land and p.cid != A.cid if far < p_land else p.land != A.land)))
 	if cand.is_empty():
 		cand = pool.filter(func(p): return p.id != A.id)
 	var t2 := 0.0
@@ -335,9 +339,19 @@ func net_gen() -> Variant:
 	if sz > .6:
 		lo = 4.0
 		hi = mid
-	if sz > .88 and big > 0:
+	if sz > (.75 if CO.tier >= 4 else .88) and big > 0:   # bulk: for trains, more of it with the rail licence
 		lo = 25.0
 		hi = big if (_near_t(A, "rail") != null or A.land != B.land) else 40.0
+	if A.land != B.land:   # across the sea: parcels for planes, middle loads, bulk for ships
+		if sz < .4:
+			lo = .2
+			hi = 5.0
+		elif sz < .7:
+			lo = 5.0
+			hi = 40.0
+		else:
+			lo = 40.0
+			hi = 2000.0
 	var tons := lo * JS.pow(hi / lo, JS.pow(R.next(), 1.5))
 	tons = JS.fixed1(tons) if tons < 5 else JS.round_js(tons)
 	var cgs := D.CARGO.filter(func(cg): return not cg.get("aid", false) and cg.t[1] >= tons * .5 and cg.t[0] <= tons * 1.5)
