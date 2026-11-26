@@ -6,7 +6,7 @@ extends Control
 ## network changes.
 
 const F_MONO_B := preload("res://assets/fonts/JetBrainsMono-Bold.ttf")
-const MODE_COL := {"road": Color("#f5a742"), "rail": Color("#e0884f"), "sea": Color("#5aa9ff"), "air": Color("#b58cff")}
+const MODE_COL := {"road": Color("#b5620c"), "rail": Color("#9c4a1c"), "sea": Color("#1f62b0"), "air": Color("#6a3fb0")}   # solid, darker than the roads
 
 var camera: MapCamera
 var session: GameSession
@@ -81,7 +81,7 @@ func _draw() -> void:
 		var A: Dictionary = sim.PL[int(p[0])]
 		var B: Dictionary = sim.PL[int(p[1])]
 		var t: float = CO.net.flow[key]
-		var wd := (1.2 + log(1 + t) * .9) * dpr
+		var wd := (1.5 + log(1 + t) * .7) * dpr
 		var col: Color = MODE_COL.get(p[2], Color.WHITE)
 		# along the road, the railway or the sea lane the runs take (a plane flies straight)
 		var pts := _route_pts(sim, p[2], int(p[0]), int(p[1]), A, B)
@@ -92,8 +92,7 @@ func _draw() -> void:
 			bb = bb.expand(q)
 		if not bb.intersects(rect):
 			continue
-		draw_polyline(pts, Color(col, .22), wd + 3 * dpr, true)
-		draw_polyline(pts, Color(col, .75), wd, true)
+		draw_polyline(pts, col, wd)   # one solid line: no halo, no blur
 	# cargo waiting in towns
 	var wait := {}
 	for c in CO.net.cs:
