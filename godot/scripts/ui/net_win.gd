@@ -243,6 +243,23 @@ func cargo(body: VBoxContainer) -> void:
 			body.add_child(Windows._note("…і ще %d" % (L.size() - 60), Ui.MUTED))
 
 
+## the hub a pick-up starts from: the nearest with a free road vehicle, else the nearest on the land
+func _pick_hub(c: Dictionary) -> int:
+	var hs := sim.net_pick_from(c)
+	if hs.size():
+		return hs[0]
+	var P: Dictionary = sim.PL[c.at]
+	var best := -1
+	var bd := 1e9
+	for h in sim.CO.hubs:
+		var q: Dictionary = sim.PL[h.pid]
+		var d := JS.hypot(q.x - P.x, q.z - P.z)
+		if q.land == P.land and d < bd:
+			bd = d
+			best = h.pid
+	return best
+
+
 func _run_of(c: Dictionary) -> Variant:
 	for r in sim.CO.net.runs:
 		if r.id == c.run:
@@ -291,7 +308,19 @@ func cs_row(c: Dictionary) -> PanelContainer:
 			w.st.prev = -1 if shown else pk.id
 			w.show_order.emit(null if shown else pk)))
 		if c.st == "wait":
-			acts.add_child(Windows._btn("Забрати", "pri sm", "truck", func(): w.net_dialog.emit("pick", {"cs": cid})))
+			# the same route panel as «Відправити»: from a hub with a free truck (or the nearest one) to the shipper,
+			# on to the consignee, back to the hub; more towns can be added on the way
+			var hb := _pick_hub(c)
+			if hb >= 0:
+				var way: Array = [c.at]
+				if sim.PL[k.to].land == sim.PL[c.at].land and k.to != hb:
+					way.append(k.to)
+				if hb != c.at:
+					way.append(hb)
+				acts.add_child(Windows._btn("Забрати", "pri sm", "truck", func(): w.net_dialog.emit("route", {"a": hb, "way": way}), true,
+					Windows._tip("Забрати", "Маршрут на мапі з хабу %s: забрати в %s, доставити в %s і повернутися. Можна додати інші міста, де чекають вантажі." % [_pl(hb), _pl(c.at), _pl(k.to)])))
+			else:
+				acts.add_child(Windows._btn("Забрати", "sm", "truck", func(): pass, false, "Немає хабу на цьому материку"))
 		else:
 			var b: int = nx.b if nx != null else k.to
 			var m: String = nx.m if nx != null else "road"

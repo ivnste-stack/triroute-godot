@@ -817,8 +817,9 @@ func _on_world(w: Dictionary) -> void:
 			match String(_args.netdlg):
 				"pick":
 					var wt: Array = sm.CO.net.cs.filter(func(c): return c.st == "wait" and c.run < 0)
-					if wt.size():
-						_net_dialog("pick", {"cs": wt[0].id})
+					if wt.size():   # as «Забрати» does: the route panel from the headquarters
+						var c0: Dictionary = wt[0]
+						_net_dialog("route", {"a": sm.CO.hq, "way": [c0.at, c0.k.to, sm.CO.hq].filter(func(p): return p != sm.CO.hq) + [sm.CO.hq]})
 				"manage":
 					_net_dialog("manage", {"a": sm.CO.hq})
 				"trunk", "route":
