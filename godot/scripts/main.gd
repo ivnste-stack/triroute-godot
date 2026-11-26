@@ -793,6 +793,19 @@ func _on_world(w: Dictionary) -> void:
 			_toggle_window(_args.win)
 			if _args.has("countryhubs"):   # test: the cities of a country, from «Відкрити хаб у країні»
 				wins.country_hubs.emit(session.sim.PL[session.sim.CO.hq].cid)
+		if _args.has("ctrdemo"):   # test: two good clients — one offers a contract, one has signed
+			var sm := session.sim
+			var ks: Array = sm.CO.board.filter(func(x): return x.get("fs"))
+			for i in mini(2, ks.size()):
+				var k: Dictionary = ks[i]
+				var key := SimNet.firm_key(k.from, k.fs)
+				sm._nets().firms[key] = {"n": k.fs, "at": k.from, "ok": 7, "late": 0, "off": -999.0, "lanes": {str(k.to): {"n": 7, "pay": k.pay * 7, "tons": k.tons * 7, "cg": {k.cg: 7}}}}
+				if i == 0:
+					sm._offer(sm.ctr_terms(key))
+				else:
+					sm.act_ctr_ask(key)
+			if win.visible:
+				_win_tick(true)
 		if _args.has("netdlg"):   # test: a run dialog of the network (round / trunk / pick)
 			var sm := session.sim
 			if _args.has("netacc"):   # --netacc=N: N orders taken into the network first, some brought to the hub

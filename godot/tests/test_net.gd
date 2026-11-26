@@ -255,3 +255,38 @@ func test_run_waits_for_its_load() -> String:
 	if not ran and sim.net_calc(sim.net_auto_multi(hq, way, "road", v.id)).ok:
 		return "the run never left"
 	return _consistent(sim)
+
+
+## businesses served on time offer contracts (or accept one proposed); a contract ships on its schedule,
+## its consignments wait at the shipper's like any other and are carried by the network
+func test_contracts_with_shippers() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game(777)
+	_days(sim, 20)
+	var N: Dictionary = sim._nets()
+	if N.firms.is_empty():
+		return "no business remembered after 20 days of deliveries"
+	# a business served on time four times (as a punctual player would have)
+	var k: Dictionary = sim.CO.board.filter(func(x): return x.get("fs"))[0]
+	var key := SimNet.firm_key(k.from, k.fs)
+	N.firms[key] = {"n": k.fs, "at": k.from, "ok": 4, "late": 0, "off": -999.0,
+		"lanes": {str(k.to): {"n": 4, "pay": k.pay * 4, "tons": k.tons * 4, "cg": {k.cg: 4}}}}
+	if sim.act_ctr_ask("0|nobody").get("tone", "") == "good":
+		return "a stranger signed a contract"
+	var r := sim.act_ctr_ask(key)
+	if r.get("tone", "") != "good" and not sim.ctr_has(key):
+		return "the proposal was refused: %s" % r.get("d", "")
+	if N.ctr.is_empty():
+		return "no contract under way"
+	var C: Dictionary = N.ctr[0]
+	var sent0: int = C.sent
+	_days(sim, C.every * 3 + 2)
+	if not N.ctr.has(C) and C.miss < 3:
+		return "the contract vanished"
+	if C.sent - sent0 < 2:
+		return "only %d shipments in %d days of a contract every %d days" % [C.sent - sent0, C.every * 3 + 2, C.every]
+	if C.ok + C.miss == 0 and not sim.CO.net.cs.any(func(c): return c.k.get("ctr") == C.id):
+		return "the shipments went nowhere"
+	print("       contract with «%s» %s → %s every %d d: %d shipments, %d delivered, %d missed; %d businesses known" % [C.firm, sim.PL[C.from].name, sim.PL[C.to].name, C.every, C.sent, C.ok, C.miss, N.firms.size()])
+	return _consistent(sim)

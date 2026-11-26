@@ -62,6 +62,7 @@ func board(body: VBoxContainer) -> void:
 		Windows._stat("Вантажів у мережі", str(CO.net.cs.size()), "чекають %d · на складах %d · у дорозі %d" % [st.get("wait", 0), st.get("ready", 0) + st.get("proc", 0), st.get("move", 0)]),
 		Windows._stat("Рейсів", str(CO.net.runs.size()), "ліній за розкладом: %d" % CO.net.lines.size())]))
 	body.add_child(Ui.hint("[b]Альтернативний баланс: мережа терміналів.[/b] «Взяти в роботу» — і вантаж чекає у відправника. Забирайте його кільцевими рейсами з хабів, збирайте на складах, везіть магістралями (своєю технікою або партнерами) і розвозьте по містах. Чим більше вантажів в одному рейсі, тим дешевше кожен: це і є прибуток. Вікна «Прийняті вантажі» й «Термінали» — ваші склади, рейси й лінії.", "layers"))
+	contracts(body)
 	body.add_child(Windows._sect("Біржа вантажів"))
 	if CO.board.is_empty():
 		body.add_child(Windows._note("Нових замовлень поки немає — вони з'являються щодня."))
@@ -121,6 +122,76 @@ func card(k: Dictionary) -> PanelContainer:
 	var bs := Ui.hbox(8, [w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
 		Windows._tip("Взяти в роботу", "Замовник чекає, що ви заберете вантаж у місті %s і доставите в %s за %s. Далі — у вікні «Прийняті вантажі»." % [A.name, B.name, Ui.days(k.dlDays)]))])
 	return Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), bs]))
+
+
+# ====================================================================== contracts
+## «Контракти» on the board: the offers of businesses, the contracts under way (with a route made for one), the
+## regular clients and how far each is from a contract
+func contracts(body: VBoxContainer) -> void:
+	var N: Dictionary = sim._nets()
+	body.add_child(Windows._sect("Контракти"))
+	if N.coff.is_empty() and N.ctr.is_empty() and N.firms.is_empty():
+		body.add_child(Windows._note("Доставляйте вчасно вантажі одних і тих самих підприємств — і вони запропонують контракт: поставки за графіком, без біржі, за сталу ціну. З %d вчасних доставок контракт можна запропонувати й самому." % SimNet.CTR_ASK, Ui.MUTED))
+		return
+	for O in N.coff:
+		body.add_child(_ctr_card(O, true))
+	for C in N.ctr:
+		body.add_child(_ctr_card(C, false))
+	# the regular clients
+	var fs: Array = N.firms.keys().filter(func(key): return not sim.ctr_has(key))
+	fs.sort_custom(func(a, b): return N.firms[a].ok > N.firms[b].ok)
+	if fs.size():
+		var rows := Ui.vbox(4, [Ui.lbl("Постійні клієнти")])
+		for key in fs.slice(0, 5):
+			var F: Dictionary = N.firms[key]
+			var k_: String = key
+			var can: bool = F.ok >= SimNet.CTR_ASK
+			var sub := "%s · вчасно %d · із запізненням %d" % [_pl(F.at), F.ok, F.late]
+			if F.ok < SimNet.CTR_MIN:
+				sub = "%s · вчасно %d · із запізненням %d · до пропозиції ще %d вчасних" % [_pl(F.at), F.ok, F.late, SimNet.CTR_MIN - F.ok]
+			var nm := Ui.vbox(1, [Windows._b(F.n, 13), Windows._note(sub, Ui.FG2, 12)])
+			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			rows.add_child(Ui.hbox(10, [Ui.icon("building", 16, Ui.FG2), nm, Windows._btn("Запропонувати контракт", "sm", "handshake", func(): w._do(sim.act_ctr_ask(k_)), can,
+				Windows._tip("Запропонувати контракт", "Підприємство погодиться, якщо з ним було щонайменше %d вчасних доставок і мало запізнень. Ціна трохи нижча, ніж коли контракт пропонує воно саме." % SimNet.CTR_ASK))]))
+		body.add_child(Windows._blk(rows))
+
+
+func _ctr_card(C: Dictionary, offer: bool) -> PanelContainer:
+	var cg: Dictionary = sim.cargo_i[C.cg]
+	var head := Ui.hbox(8, [Ui.icon("handshake", 18, Ui.ACCENT), Windows._b(C.firm, 14), Ui.spacer(), Ui.num("%s за поставку" % Ui.usd(C.pay), 14)])
+	var lane := Ui.hbox(6, [w._place(C.from, 13), Ui.label("→", 13), w._place(C.to, 13)])
+	var facts := "%s · %s т · кожні %d дн. · дедлайн %s" % [cg.n, Ui.loc(C.tons), C.every, Ui.days(C.dl)]
+	var v := Ui.vbox(6, [head, lane, Windows._note(facts, Ui.FG2, 12)])
+	var bs := Ui.hbox(8)
+	if offer:
+		v.add_child(Windows._note("Пропозиція на %d міс. · діє ще %s · разом ≈ %s" % [C.months, Ui.days(maxf(0, C.exp - sim.day)), Ui.usd(C.pay * C.months * 30 / C.every)], Ui.MUTED, 12))
+		var oid: int = C.id
+		bs.add_child(Windows._btn("Укласти контракт", "pri sm", "handshake", func(): w._do(sim.act_ctr_take(oid))))
+		bs.add_child(Windows._btn("Відхилити", "sm", "close", func():
+			sim.act_ctr_decline(oid)
+			w._do({})))
+	else:
+		v.add_child(Windows._note("Наступна поставка за %s · до кінця %s · доставлено %d · зривів %d з 3" % [Ui.days(maxf(0, C.next - sim.day)), Ui.days(maxf(0, C.until - sim.day)), C.ok, C.miss],
+			Ui.BAD if C.miss >= 2 else Ui.MUTED, 12))
+		var cid: int = C.id
+		# a route for it: from the nearest hub on its land to the shipper, the consignee and back
+		var A: Dictionary = sim.PL[C.from]
+		var hb := -1
+		var bd := 1e9
+		for h in sim.CO.hubs:
+			var q: Dictionary = sim.PL[h.pid]
+			if q.land == A.land and JS.hypot(q.x - A.x, q.z - A.z) < bd:
+				bd = JS.hypot(q.x - A.x, q.z - A.z)
+				hb = h.pid
+		if hb >= 0:
+			var way: Array = ([C.from] if C.from != hb else []) + [C.to] + ([hb] if C.to != hb else [])
+			var ev: int = C.every
+			bs.add_child(Windows._btn("Маршрут під контракт", "pri sm", "road", func(): w.net_dialog.emit("route", {"a": hb, "way": way, "every": ev}), true,
+				Windows._tip("Маршрут під контракт", "Відкриє створення маршруту з хабу %s: забрати в %s, доставити в %s і повернутися, з повтором кожні %d дн. Лінія сама братиме кожну поставку контракту." % [_pl(hb), _pl(C.from), _pl(C.to), ev])))
+		bs.add_child(Windows._btn("Розірвати", "sm", "close", func(): w._do(sim.act_ctr_end(cid)), true, "Розірвати контракт: рейтинг −0.1"))
+	v.add_child(Windows._card_rule())
+	v.add_child(bs)
+	return Windows._blk(v, Ui.ACCENT if offer else Ui.LINE)
 
 
 # ====================================================================== «Вантажі»
@@ -198,7 +269,7 @@ func cs_row(c: Dictionary) -> PanelContainer:
 	if c.st != "move" and c.run >= 0:
 		var r: Variant = _run_of(c)
 		where += " · заброньовано на рейс" + ((" з %s" % _pl(r.stops[0])) if r != null else "")
-	var line := Ui.rich("%s · %s т · %s · [color=#%s]%s[/color]%s" % [cg.n, Ui.loc(k.tons), where, _left_col(left).to_html(false), _left_s(left),
+	var line := Ui.rich(("[color=#5cc8f2]Контракт[/color] · " if k.get("ctr") != null else "") + "%s · %s т · %s · [color=#%s]%s[/color]%s" % [cg.n, Ui.loc(k.tons), where, _left_col(left).to_html(false), _left_s(left),
 		(" · [color=#f1c453]пошкоджено %d%%[/color]" % int(c.dmg * 100)) if c.dmg > .02 else ""], 13)
 	var mid := Ui.vbox(4, [head, line])
 	if c.st != "move" and c.run < 0:

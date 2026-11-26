@@ -16,7 +16,7 @@ var _C := {}
 
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
-	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": 0, "fill": 0.0, "back": false}
+	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false}
 	LP = {"k": {}, "pts": [a], "modes": []}   # what the planner's own parts read
 	on = true
 	_prev_speed = session.speed
