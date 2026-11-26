@@ -435,7 +435,7 @@ func _process_t(delta: float) -> void:
 	var h := int(fr * 24)
 	var mm := int((fr * 24 - h) * 6) * 10
 	_put(_cells.date, [[Ui.date_str(sim.date), Ui.FG, 16], ["%02d:%02d" % [h, mm], Ui.MUTED, 12]])
-	_put(_cells.trips, [[str(CO.jobs.size()), Ui.FG, 16], [("%d на біржі" % CO.board.size()) if CO.tier >= 1 else "з ліцензією 2", Ui.MUTED, 11]])
+	_put(_cells.trips, [[str(CO.jobs.size() + sim.net_loading().size()), Ui.FG, 16], [("%d на біржі" % CO.board.size()) if CO.tier >= 1 else "з ліцензією 2", Ui.MUTED, 11]])
 	_put(_cells.fuel, [[Ui.usd(CO.fuel * 80), Ui.BAD if CO.fuel > 1.15 else (Ui.GOOD if CO.fuel < .9 else Ui.FG), 16]])
 	var pk: float = CO.get("parts", 1.0)
 	var rk := sim.rep_k()
@@ -458,7 +458,7 @@ func _process_t(delta: float) -> void:
 	for j in CO.jobs:
 		if not j.get("ret"):
 			trips += 1
-	_badge("coTrips", trips)
+	_badge("coTrips", trips + sim.net_loading().size())
 	if CO.get("alt"):   # the cargo waiting for a pick-up
 		_badge("coCargo", CO.net.cs.filter(func(c): return c.st == "wait" and c.run < 0).size())
 

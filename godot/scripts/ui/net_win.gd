@@ -44,7 +44,9 @@ func _way(legs: Array, size: int = 13) -> HFlowContainer:
 		var ic := Ui.icon(MODE_IC[L.m], size + 1, Ui.ACCENT)
 		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		ic.tooltip_text = MODE_N[L.m]
+		h.add_child(Ui.label("→", size, Ui.MUTED))
 		h.add_child(ic)
+		h.add_child(Ui.label("→", size, Ui.MUTED))
 		h.add_child(Ui.label(_pl(L.b), size, Ui.FG2))
 	return h
 
@@ -617,7 +619,9 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 	chain.add_theme_constant_override("h_separation", 6)
 	for i in spec.stops.size():
 		if i:
+			chain.add_child(Ui.label("→", 13, Ui.MUTED))
 			chain.add_child(Ui.icon(MODE_IC[D.VT[sim._veh(spec.vid).t].mode] if spec.vid >= 0 else MODE_IC[spec.get("m", "road")], 14, Ui.ACCENT))
+			chain.add_child(Ui.label("→", 13, Ui.MUTED))
 		chain.add_child(Windows._b(_pl(spec.stops[i]), 13))
 	chain.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if st.kind != "trunk":

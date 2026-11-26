@@ -6,7 +6,7 @@ extends Control
 ## network changes.
 
 const F_MONO_B := preload("res://assets/fonts/JetBrainsMono-Bold.ttf")
-const MODE_COL := {"road": Color("#b5620c"), "rail": Color("#9c4a1c"), "sea": Color("#1f62b0"), "air": Color("#6a3fb0")}   # solid, darker than the roads
+const FLOW_COL := Color("#8b959e")   # one solid grey for every kind of transport
 
 var camera: MapCamera
 var session: GameSession
@@ -83,7 +83,7 @@ func _draw() -> void:
 		var B: Dictionary = sim.PL[int(p[1])]
 		var t: float = CO.net.flow[key]
 		var wd := rw * (.75 + minf(.15, log(1 + t) * .03))   # a little thinner than a road, a little wider with more tons
-		var col: Color = MODE_COL.get(p[2], Color.WHITE)
+		var col: Color = FLOW_COL
 		# along the road, the railway or the sea lane the runs take (a plane flies straight)
 		var pts := _route_pts(sim, p[2], int(p[0]), int(p[1]), A, B)
 		if pts.size() < 2:

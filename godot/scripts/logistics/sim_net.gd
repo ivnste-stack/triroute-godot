@@ -543,6 +543,21 @@ func _run_cs(r: Dictionary) -> Array:
 	return out
 
 
+## runs that are loading (at the start or at a stop on the way) or waiting for a partner's departure: shown
+## among the trips under way from the moment they are sent
+func net_loading() -> Array:
+	return CO.net.runs.filter(func(r): return r.st == "load") if alt() else []
+
+
+## what the cargo booked on a run pays at its towns
+func net_run_pay(rid: int) -> float:
+	var x := 0.0
+	for c in CO.net.cs:
+		if c.run == rid:
+			x += c.k.pay
+	return x
+
+
 func _veh(id: int) -> Variant:
 	for v in CO.veh:
 		if v.id == id:

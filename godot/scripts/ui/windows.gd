@@ -1104,7 +1104,7 @@ func _job_row(j: Dictionary) -> PanelContainer:
 		rt.set_meta("tail", " · ".join(parts.slice(1)))
 		rt.add_to_group("trip_live")
 	var mid := Ui.vbox(5, [head, mt, rt])
-	var row := _lrow(T.ic, mid, Ui.num(Ui.usd(j.k.pay), 14))
+	var row := _lrow(T.ic, mid, Ui.num(Ui.usd(sim.net_run_pay(j.net.run) if j.get("net") != null else j.k.pay), 14))
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	row.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: select_job.emit(j))
 	row.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE_HI, 1, Vector4(12, 10, 12, 10))))
@@ -1140,16 +1140,22 @@ func _trips(body: VBoxContainer) -> void:
 	var jf: String = st.jfl
 	var m_ok := func(m): return jf == "all" or m == jf
 	var jobs: Array = CO.jobs.filter(func(j): return m_ok.call(j.mode))
+	var lds: Array = sim.net_loading().filter(func(r): return m_ok.call(r.m))   # the alternative balance: runs still loading
 	var last: Array = CO.last.filter(func(l): return m_ok.call(l.mode))
 	var nret: int = CO.jobs.filter(func(j): return j.get("ret")).size()
 	body.add_child(_grid(3, [
-		_stat("У дорозі", str(CO.jobs.size() - nret), "%d од. техніки" % CO.veh.filter(func(v): return v.st == "trip").size(), _tip("Рейси", "Техніка, що зараз везе вантаж або їде по нього.")),
+		_stat("У дорозі", str(CO.jobs.size() - nret + lds.size()), "%d од. техніки" % CO.veh.filter(func(v): return v.st == "trip").size(), _tip("Рейси", "Техніка, що зараз везе вантаж або їде по нього.")),
 		_stat("Повертаються в хаб", str(nret), "порожні пробіги додому"),
 		_stat("Доставлено", Ui.grp(CO.cdel), Ui.grp(CO.tons) + " т")]))
-	body.add_child(_mode_seg("jfl", func(m): return CO.jobs.size() if m == "all" else CO.jobs.filter(func(j): return j.mode == m).size()))
-	body.add_child(_sect("У дорозі · %d" % CO.jobs.size()))
+	body.add_child(_mode_seg("jfl", func(m): return CO.jobs.size() + sim.net_loading().size() if m == "all" else CO.jobs.filter(func(j): return j.mode == m).size() + sim.net_loading().filter(func(r): return r.m == m).size()))
+	body.add_child(_sect("У дорозі · %d" % (CO.jobs.size() + lds.size())))
 	jobs.sort_custom(func(a, b): return a.t0 > b.t0)
 	var n: int = maxi(st.jmore, 15)
+	if lds.size():
+		var lv := Ui.vbox(6)
+		for r in lds:
+			lv.add_child(_load_row(r))
+		body.add_child(lv)
 	if jobs.size():
 		var v := Ui.vbox(6)
 		for j in jobs.slice(0, n):
@@ -1157,7 +1163,7 @@ func _trips(body: VBoxContainer) -> void:
 		body.add_child(v)
 		if jobs.size() > n:
 			body.add_child(_more(jobs.size() - n, "jmore"))
-	else:
+	elif lds.is_empty():
 		body.add_child(_note("Немає активних рейсів%s." % (" цього типу" if jf != "all" else "")))
 	if last.size():
 		body.add_child(_sect("Останні доставки"))
@@ -1166,6 +1172,29 @@ func _trips(body: VBoxContainer) -> void:
 			rows.append([Ui.label(Ui.date_str(l.d), 13, Ui.FG2), _icl(MODE_IC[l.mode], "%s → %s" % [_pl(l.from), _pl(l.to)], Ui.FG),
 				Ui.label(sim.cargo_i[l.cg].n, 13, Ui.FG2), Ui.num(Ui.usd(l.pay, true), 13, _tone_col(l.get("tone", "")))])
 		body.add_child(_table_rows(rows, [["", 120, false], ["", 0, false], ["", 150, false], ["", 90, true]]))
+
+
+## a run of the network that is loading or waits for a partner's departure: it is already on its way in the list
+func _load_row(r: Dictionary) -> PanelContainer:
+	var v: Variant = sim._veh(r.vid) if r.vid >= 0 else null
+	var T: Dictionary = D.VT[v.t] if v != null else D.VT[SimNet.NET_VT[r.m]]
+	var head := Ui.hbox(6)
+	for i in r.stops.size():
+		if i:
+			head.add_child(Ui.label("→", 14))
+		head.add_child(_b(_pl(r.stops[i]), 14) if i == r.i else Ui.label(_pl(r.stops[i]), 14, Ui.FG2))
+	head.add_child(Ui.spacer())
+	var n := 0
+	var tons := 0.0
+	for c in sim.CO.net.cs:
+		if c.run == r.id:
+			n += 1
+			tons += c.k.tons
+	head.add_child(Ui.label("%s · вантажів мережі: %d · %s т" % [T.n if v != null else "Партнер-перевізник", n, Ui.loc(tons)], 13, Ui.FG2))
+	var left := maxf(0, r.t_dep - sim.co_now())
+	var what: String = ("Завантаження в %s" if r.vid >= 0 else "Чекає відправлення партнера в %s") % _pl(r.stops[r.i])
+	var mid := Ui.vbox(5, [head, _meter(0.0, Ui.ACCENT, 0, true), Ui.rich("%s · рушить за %s" % [what, Ui.days(left)], 13)])
+	return _lrow(T.ic, mid, Ui.num(Ui.usd(sim.net_run_pay(r.id)), 14))
 
 
 static func _table_rows(rows: Array, cols: Array) -> VBoxContainer:
