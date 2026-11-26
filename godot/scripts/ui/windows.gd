@@ -1300,30 +1300,54 @@ func _fleet(body: VBoxContainer) -> void:
 	if rows.size() > nmax:
 		body.add_child(_more(rows.size() - nmax, "fmore"))
 	body.add_child(_sect("Купити"))
-	var types: Array = D.VT.keys().filter(func(t): return f_ok.call(t))
+	# every kind of transport, whatever the filter above: a full-width row a vehicle, grouped by kind
+	var types: Array = D.VT.keys()
 	types.sort_custom(func(a, b): return D.VT[a].tier < D.VT[b].tier or (D.VT[a].tier == D.VT[b].tier and D.VT[a].cost < D.VT[b].cost))
-	var cards := []
-	for t in types:
-		await _pause()
-		var T: Dictionary = D.VT[t]
-		var lock: bool = CO.tier < T.tier
-		var sub: String = D.MODE_N[T.mode]
-		if T.get("cap"):
-			sub += " · до %s т" % Ui.loc(T.cap)
-		if T.get("vol"):
-			sub += " · %s м³" % Ui.grp(T.vol)
-		var price := Ui.num(Ui.usd(T.cost), 14)
-		price.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		var c := Ui.vbox(6, [Ui.hbox(10, [_tt(T.n, sub, T.ic), price]),
-			_note("%s Екіпаж: %d (%s). Утримання %s/міс." % [T.d, T.get("crew", 1), D.ROLE[T.role].n.to_lower(), Ui.usd(T.up * 30)])])
-		if lock:
-			c.add_child(Ui.hbox(0, [Ui.pill("Ліцензія «%s»" % D.LIC[T.tier].n, "", "lock")]))
-		else:
-			var tt: String = t
-			c.add_child(Ui.hbox(0, [_btn("Купити", "pri sm" if CO.cash >= T.cost else "sm", "plus", func(): _do(sim.act_buy(tt)), CO.cash >= T.cost)]))
-		cards.append(_blk(c, Ui.LINE, .5 if lock else 1.0))
-	body.add_child(_grid(2, cards))
+	for m in ["road", "rail", "sea", "air"]:
+		var mt: Array = types.filter(func(t): return D.VT[t].mode == m)
+		if mt.is_empty():
+			continue
+		body.add_child(Ui.margin(_icl(MODE_IC[m], D.MODE_N[m], Ui.FG2, 13), 0, 6, 0, 2))
+		var list := Ui.vbox(6)
+		for t in mt:
+			await _pause()
+			list.add_child(_buy_row(t))
+		body.add_child(list)
 	await _upg_sect(body, ff)
+
+
+## a vehicle to buy: the icon, the name with what it carries and its note, the price and «Купити» (or the
+## licence it waits for), across the whole window
+func _buy_row(t: String) -> PanelContainer:
+	var CO := sim.CO
+	var T: Dictionary = D.VT[t]
+	var lock: bool = CO.tier < T.tier
+	var sub: String = D.MODE_N[T.mode]
+	if T.get("cap"):
+		sub += " · до %s т" % Ui.loc(T.cap)
+	if T.get("vol"):
+		sub += " · %s м³" % Ui.grp(T.vol)
+	var mid := Ui.vbox(2, [_b(T.n, 14), Ui.label(sub, 12, Ui.FG2),
+		_note("%s Екіпаж: %d (%s). Утримання %s/міс." % [T.d, T.get("crew", 1), D.ROLE[T.role].n.to_lower(), Ui.usd(T.up * 30)], Ui.MUTED, 12)])
+	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var price := Ui.num(Ui.usd(T.cost), 15)
+	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var act: Control
+	if lock:
+		act = Ui.pill("Ліцензія «%s»" % D.LIC[T.tier].n, "", "lock")
+	else:
+		var tt: String = t
+		act = _btn("Купити", "pri sm" if CO.cash >= T.cost else "sm", "plus", func(): _do(sim.act_buy(tt)), CO.cash >= T.cost)
+	var right := Ui.vbox(6, [price, _right([act])])
+	right.custom_minimum_size.x = 210
+	right.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var ic := Ui.icon(T.ic, 20, Ui.MUTED if lock else Ui.ACCENT)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(14, 10, 14, 10)))
+	p.add_child(Ui.hbox(12, [ic, mid, right]))
+	p.modulate.a = .55 if lock else 1.0
+	return p
 
 
 ## upgSect: upgrades of the company

@@ -876,6 +876,12 @@ func _on_world(w: Dictionary) -> void:
 				Input.warp_mouse(at)
 			for i in 6:
 				await get_tree().process_frame
+	if _args.has("winscroll") and win.visible:   # test: the open window scrolled down by so many pixels
+		for i in 30:
+			await get_tree().process_frame
+		win.scroll.scroll_vertical = int(_args.winscroll)
+		for i in 4:
+			await get_tree().process_frame
 	if _args.has("cam"):
 		var c: PackedStringArray = String(_args.cam).split(",")
 		if c[0] == "hq" and session != null:   # --cam=hq,dist: the headquarters
