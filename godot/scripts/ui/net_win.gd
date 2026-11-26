@@ -118,7 +118,7 @@ func card(k: Dictionary) -> PanelContainer:
 	if P == null:
 		pills.add_child(Ui.pill("Шляху немає", "bad", "alert"))
 	pills.add_child(Ui.pill("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info"))
-	var bs := Ui.hbox(8, [Ui.spacer(), w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
+	var bs := Ui.hbox(8, [w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
 		Windows._tip("Взяти в роботу", "Замовник чекає, що ви заберете вантаж у місті %s і доставите в %s за %s. Далі — у вікні «Прийняті вантажі»." % [A.name, B.name, Ui.days(k.dlDays)]))])
 	return Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), bs]))
 
