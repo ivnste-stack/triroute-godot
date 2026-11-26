@@ -1351,16 +1351,16 @@ func _net(body: VBoxContainer) -> void:
 		name_c.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: goto_place.emit(pid))
 		var hi := Ui.icon("star" if pid == CO.hq else "building", 18, Ui.ACCENT)
 		hi.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		var info := Ui.vbox(2, [name_c, _note("%s · %s · %s · %s" % [D.HUB_LV[lvl], TYPE_N.get(p.type, ""), Ui.people(p.pop), ", ".join(infra) if infra.size() else "тільки автодороги"])])
+		var info := Ui.vbox(2, [name_c, _note("%s · %s · %s · %s" % [sim.hub_lv(lvl), TYPE_N.get(p.type, ""), Ui.people(p.pop), ", ".join(infra) if infra.size() else "тільки автодороги"])])
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var acts := _right([])
 		if alt:
 			acts.add_child(_btn("Керування терміналом", "sm", "gear", func(): net_dialog.emit("manage", {"a": pid})))
 		elif lvl < 4:
 			var up: float = sim.hub_cost(p) * D.HUB_UP[lvl]
-			var tip := _tip(D.HUB_LV[lvl + 1], "Техніки в хабі: %d → %d. Робочих місць: +%d. Завантаження й розвантаження %d%% швидше. Замовлень від підприємств поблизу ×%s. +1 місце на біржі. Оренда %s/міс." % [
+			var tip := _tip(sim.hub_lv(lvl + 1), "Техніки в хабі: %d → %d. Робочих місць: +%d. Завантаження й розвантаження %d%% швидше. Замовлень від підприємств поблизу ×%s. +1 місце на біржі. Оренда %s/міс." % [
 				D.HUB_VEH[lvl], D.HUB_VEH[lvl + 1], D.HUB_STAFF[lvl + 1] - D.HUB_STAFF[lvl], int(JS.round_js((1 - D.HUB_HAND[lvl + 1]) * 100)), str(D.HUB_ORD[lvl + 1]), Ui.usd(D.HUB_RENT[lvl + 1] * sim.price_k(p.cid))])
-			acts.add_child(_btn("%s · %s" % [D.HUB_LV[lvl + 1], Ui.usd(up)], "sm", "up", func(): _do(sim.act_hub_up(pid)), true, tip))
+			acts.add_child(_btn("%s · %s" % [sim.hub_lv(lvl + 1), Ui.usd(up)], "sm", "up", func(): _do(sim.act_hub_up(pid)), true, tip))
 		if pid != CO.hq:
 			acts.add_child(_btn("", "sm", "trash", func(): _do(sim.act_hub_close(pid)), true, "Закрити хаб"))
 		var nveh := sim.hub_veh_n(pid)

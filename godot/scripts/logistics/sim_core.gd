@@ -160,6 +160,11 @@ func hub_at(pid: int) -> Variant:
 	return null
 
 
+## the name of a hub's level; in the alternative balance the fourth level is a terminal
+func hub_lv(l: int) -> String:
+	return "Термінал" if l >= 4 and CO.get("alt", false) else D.HUB_LV[l]
+
+
 func co_grade() -> int:
 	var x: float = CO.get("xp", 0)
 	var g := 0

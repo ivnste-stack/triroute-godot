@@ -308,7 +308,7 @@ func _place_tip(p: Dictionary) -> Control:
 	v.add_child(_row_sp(W._b(p.name, 13), Ui.label("%s · %s" % [TYPE_N.get(p.type, "Поселення"), sim.states[p.cid].name], 12, Ui.FG2)))
 	var pop := "Населення " + Ui.people(p.pop)
 	if h != null:
-		pop += " · [color=#f1c453]%s%s[/color]" % [D.HUB_LV[h.lvl], " · штаб" if p.id == sim.CO.hq else ""]
+		pop += " · [color=#f1c453]%s%s[/color]" % [sim.hub_lv(h.lvl), " · штаб" if p.id == sim.CO.hq else ""]
 	v.add_child(Ui.rich(pop, 12))
 	if p.get("rail") or p.get("port") != null or p.get("air"):
 		var iv := Ui.vbox(3)
@@ -538,6 +538,15 @@ func show_order(k: Variant) -> void:
 
 func _pv_draw() -> void:
 	if prev_k == null:
+		return
+	if prev_k.get("cs") != null:   # the alternative balance: a taken consignment — where it is, where it goes
+		var c: Variant = sim._cs(prev_k.cs) if sim.alt() else null
+		if c == null or c.at == c.k.to:
+			prev_k = null
+			prev_gone.emit()
+			return
+		planner._wave(_pv_node, sim.PL[c.at], Planner.DEP)
+		planner._wave(_pv_node, sim.PL[c.k.to], Planner.ARR)
 		return
 	if not sim.CO.board.any(func(x): return is_same(x, prev_k)):
 		prev_k = null
@@ -985,7 +994,7 @@ func _build_insp(keep: bool = false) -> void:
 			var hq: bool = h.pid == CO.hq
 			var pid: int = q.id
 			var nveh: int = CO.veh.filter(func(v): return v.loc == pid).size()
-			var row := W._lrow("star" if hq else "building", Ui.vbox(2, [W._b(("Штаб · " if hq else "") + D.HUB_LV[h.lvl], 14), W._note("%s · %d од. техніки" % [q.name, nveh])]), Ui.pill("На мапі", "warn", "pin"))
+			var row := W._lrow("star" if hq else "building", Ui.vbox(2, [W._b(("Штаб · " if hq else "") + sim.hub_lv(h.lvl), 14), W._note("%s · %d од. техніки" % [q.name, nveh])]), Ui.pill("На мапі", "warn", "pin"))
 			row.add_theme_stylebox_override("panel", Ui.box(Color(1, 179 / 255.0, 71 / 255.0, .07), Color(1, 179 / 255.0, 71 / 255.0, .45), 1, Vector4(12, 10, 12, 10)))
 			row.get_child(0).get_child(0).texture = Icons.tex("star" if hq else "building", Ui.WARN, 18)
 			row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -1112,13 +1121,13 @@ func _place_row(p: Dictionary) -> PanelContainer:
 			sub.add_child(Ui.icon(x[1], 13, Ui.FG2))
 	if h != null:
 		sub.add_child(Ui.label(" · ", 13, Ui.FG2))
-		sub.add_child(Ui.label(D.HUB_LV[h.lvl], 13, Ui.WARN))
+		sub.add_child(Ui.label(sim.hub_lv(h.lvl), 13, Ui.WARN))
 	var right: Control
 	if h != null:
 		if h.lvl < 4:
 			right = W._btn(Ui.usd(cost * D.HUB_UP[h.lvl]), "sm", "up", func(): acted.emit(sim.act_hub_up(pid)))
 		else:
-			right = Ui.pill("Логістичний хаб", "good")
+			right = Ui.pill(sim.hub_lv(4), "good")
 	elif can:
 		right = _hub_btns(p)
 	else:

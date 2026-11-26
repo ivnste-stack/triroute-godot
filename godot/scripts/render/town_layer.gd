@@ -355,7 +355,7 @@ func _town_info(pid: int) -> Dictionary:
 	var font: Font = F_INTER_B if big else F_INTER_SB
 	var tag := ""
 	if hb != null:
-		tag = I18n.t(("★ ШТАБ · " if hq else "") + ("ОРЕНДА · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl]).to_upper())
+		tag = I18n.t(("★ ШТАБ · " if hq else "") + ("ОРЕНДА · " if hb.get("rent") else "") + (sim.hub_lv(hb.lvl) if sim != null else String(GameData.HUB_LV[hb.lvl])).to_upper())
 	var tgw := _tw(F_MONO_B, tag, int(round(9 * d))) if tag else 0.0
 	var icl := []
 	if p.port and MapVis.vis("port"):
@@ -423,7 +423,7 @@ func _chip_info(ch: Dictionary, far: bool) -> Dictionary:
 	var sub: String = I18n.t(ch.sub)
 	var tag := ""
 	if hb != null:
-		tag = I18n.t((("★ Штаб · " if hq else "") + ("Оренда · " if hb.get("rent") else "") + String(GameData.HUB_LV[hb.lvl])).to_upper())
+		tag = I18n.t((("★ Штаб · " if hq else "") + ("Оренда · " if hb.get("rent") else "") + (sim.hub_lv(hb.lvl) if sim != null else String(GameData.HUB_LV[hb.lvl]))).to_upper())
 	var f1 := 11.0 * d
 	var tw := _spaced_w(_onest_600, title, int(round(f1)), .08 * f1)
 	var sw := 0.0 if far else 11 * d + 4 * d + _tw(_onest_500, sub, int(round(11 * d)))

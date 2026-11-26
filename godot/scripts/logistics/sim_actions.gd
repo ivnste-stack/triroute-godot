@@ -89,7 +89,7 @@ func act_buy(t: String) -> Dictionary:
 				o = x
 				break
 		if o == null:
-			return _toast("warn", "Хаби заповнені", "%s у місті %s вміщує %d од. техніки. Покращіть хаб або відкрийте новий." % [D.HUB_LV[h.lvl], PL[h.pid].name, hub_veh_cap(h)])
+			return _toast("warn", "Хаби заповнені", "%s у місті %s вміщує %d од. техніки. Покращіть хаб або відкрийте новий." % [hub_lv(h.lvl), PL[h.pid].name, hub_veh_cap(h)])
 		note = "%s: місця немає, техніку поставлено в хаб %s" % [PL[h.pid].name, PL[o.pid].name]
 		h = o
 	CO.cash -= T.cost
@@ -411,7 +411,7 @@ func act_hub_up(pid: int) -> Dictionary:
 		return _toast("warn", "Бракує грошей", usd_s(c))
 	CO.cash -= c
 	h.lvl += 1
-	return _toast("good", D.HUB_LV[h.lvl], PL[h.pid].name)
+	return _toast("good", hub_lv(h.lvl), PL[h.pid].name)
 
 
 func act_hub_close(pid: int) -> Dictionary:

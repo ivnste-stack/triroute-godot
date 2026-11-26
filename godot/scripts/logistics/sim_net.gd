@@ -363,7 +363,7 @@ func net_gen() -> Variant:
 	return k
 
 
-## «Взяти в мережу»: the order becomes a consignment waiting where it is
+## «Взяти в роботу»: the order becomes a consignment waiting where it is
 func net_accept(k: Dictionary) -> Dictionary:
 	if not CO.board.has(k):
 		return {}
@@ -1465,7 +1465,7 @@ func net_day() -> void:
 	if near.size():
 		var c: Dictionary = near[0]
 		if near.size() > 1:
-			_nt({"tone": "warn", "t": "Дедлайн близько: %d вантажів" % near.size(), "d": "Перший — %s → %s, ще в місті %s. Решта — у вікні «Вантажі в мережі»." % [PL[c.k.from].name, PL[c.k.to].name, PL[c.at].name]})
+			_nt({"tone": "warn", "t": "Дедлайн близько: %d вантажів" % near.size(), "d": "Перший — %s → %s, ще в місті %s. Решта — у вікні «Прийняті вантажі»." % [PL[c.k.from].name, PL[c.k.to].name, PL[c.at].name]})
 		else:
 			_nt({"tone": "warn", "t": "Дедлайн близько", "d": "%s → %s: вантаж ще в місті %s" % [PL[c.k.from].name, PL[c.k.to].name, PL[c.at].name]})
 	if store > 0:

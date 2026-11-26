@@ -1219,7 +1219,7 @@ func _decision(spec: Dictionary) -> Dictionary:
 # ---------- windows ----------
 const WIN_HEAD := {"coHome": ["briefcase", "Компанія"], "coJobs": ["box", "Біржа вантажів"], "coTrips": ["road", "Рейси в дорозі"], "coFleet": ["truck", "Автопарк"],
 	"coNet": ["globe", "Мережа хабів"], "coStaff": ["users", "Персонал і менеджмент"], "coFin": ["coins", "Фінанси"], "news": ["news", "Стрічка новин"],
-	"coCargo": ["sack", "Вантажі в мережі"]}
+	"coCargo": ["layers", "Прийняті вантажі"]}
 
 
 func _toggle_window(id: String) -> void:

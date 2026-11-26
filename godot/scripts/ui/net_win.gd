@@ -59,7 +59,7 @@ func board(body: VBoxContainer) -> void:
 		Windows._stat("На біржі", str(CO.board.size()), "до %d одночасно" % sim.co_board_max(), Windows._tip("Біржа", "Відправники ближче до ваших хабів замовляють більше. Кожен рівень хабу, модуль терміналу й комерційний директор додають місць на біржі.")),
 		Windows._stat("Вантажів у мережі", str(CO.net.cs.size()), "чекають %d · на складах %d · у дорозі %d" % [st.get("wait", 0), st.get("ready", 0) + st.get("proc", 0), st.get("move", 0)]),
 		Windows._stat("Рейсів", str(CO.net.runs.size()), "ліній за розкладом: %d" % CO.net.lines.size())]))
-	body.add_child(Ui.hint("[b]Альтернативний баланс: мережа терміналів.[/b] «Взяти в мережу» — і вантаж чекає у відправника. Забирайте його кільцевими рейсами з хабів, збирайте на складах, везіть магістралями (своєю технікою або партнерами) і розвозьте по містах. Чим більше вантажів в одному рейсі, тим дешевше кожен: це і є прибуток. Вікна «Вантажі» й «Термінали» — ваші склади, рейси й лінії.", "layers"))
+	body.add_child(Ui.hint("[b]Альтернативний баланс: мережа терміналів.[/b] «Взяти в роботу» — і вантаж чекає у відправника. Забирайте його кільцевими рейсами з хабів, збирайте на складах, везіть магістралями (своєю технікою або партнерами) і розвозьте по містах. Чим більше вантажів в одному рейсі, тим дешевше кожен: це і є прибуток. Вікна «Прийняті вантажі» й «Термінали» — ваші склади, рейси й лінії.", "layers"))
 	body.add_child(Windows._sect("Біржа вантажів"))
 	if CO.board.is_empty():
 		body.add_child(Windows._note("Нових замовлень поки немає — вони з'являються щодня."))
@@ -116,11 +116,8 @@ func card(k: Dictionary) -> PanelContainer:
 	if P == null:
 		pills.add_child(Ui.pill("Шляху немає", "bad", "alert"))
 	pills.add_child(Ui.pill("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info"))
-	var id: int = k.id
-	var bs := Ui.hbox(8, [Ui.spacer(), w._show_btn(k), Windows._btn("", "sm", "trash", func():
-		sim.act_decline(id)
-		w._do({}), true, "Прибрати"), Windows._btn("Взяти в мережу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
-		Windows._tip("Взяти в мережу", "Замовник чекає, що ви заберете вантаж у місті %s і доставите в %s за %s. Далі — у вікні «Вантажі»." % [A.name, B.name, Ui.days(k.dlDays)]))])
+	var bs := Ui.hbox(8, [Ui.spacer(), w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
+		Windows._tip("Взяти в роботу", "Замовник чекає, що ви заберете вантаж у місті %s і доставите в %s за %s. Далі — у вікні «Прийняті вантажі»." % [A.name, B.name, Ui.days(k.dlDays)]))])
 	return Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), bs]))
 
 
@@ -129,9 +126,33 @@ func cargo(body: VBoxContainer) -> void:
 	var CO := sim.CO
 	var cs: Array = CO.net.cs.duplicate()
 	if cs.is_empty():
-		body.add_child(Ui.hint("Вантажів у мережі поки немає. Беріть замовлення на «Біржі вантажів» кнопкою «Взяти в мережу».", "box"))
+		body.add_child(Ui.hint("Прийнятих вантажів поки немає. Беріть замовлення на «Біржі вантажів» кнопкою «Взяти в роботу».", "box"))
 		return
 	cs.sort_custom(func(a, b): return a.dl < b.dl)
+	# the countries: where the cargo is, comes from or goes to
+	var by := {}
+	for c in cs:
+		for pid in [c.at, c.k.from, c.k.to]:
+			var cid: int = sim.PL[pid].cid
+			if not by.has(cid):
+				by[cid] = {}
+			by[cid][c.id] = true
+	var cur: int = w.st.get("ccty", -1)
+	if not by.has(cur):
+		cur = -1
+		w.st.ccty = -1
+	if by.size():
+		var opts := [[-1, "Усі країни · %d" % cs.size(), "globe"]]
+		var ks: Array = by.keys()
+		ks.sort_custom(func(x, y): return by[x].size() > by[y].size())
+		for cid in ks:
+			opts.append([cid, "%s · %d" % [sim.states[cid].name, by[cid].size()], "flag"])
+		var dd := Dropdown.make(opts, cur, func(x):
+			w.st.ccty = x
+			w._do({}))
+		body.add_child(Ui.hbox(10, [Ui.lbl("Країна"), dd]))
+	if cur >= 0:
+		cs = cs.filter(func(c): return by[cur].has(c.id))
 	var groups := [["wait", "Чекають у відправників", "pin"], ["store", "На складах", "building"], ["move", "У рейсах", "road"]]
 	for g in groups:
 		var L: Array = cs.filter(func(c): return (c.st == "wait" and c.run < 0) if g[0] == "wait" else ((c.st == "ready" or c.st == "proc") and c.run < 0 if g[0] == "store" else (c.st == "move" or c.run >= 0)))
@@ -190,7 +211,12 @@ func cs_row(c: Dictionary) -> PanelContainer:
 		else:
 			acts.add_child(Ui.spacer())
 		var cid: int = c.id
-		acts.add_child(Windows._btn("", "sm", "mapIc", func(): w.goto_place.emit(c.at), true, "Показати на мапі"))
+		# «На мапі»: waves where it is now and where it goes, as on the board
+		var pk := {"id": -1000000 - cid, "from": c.at, "to": k.to, "cs": cid}
+		var shown: bool = w.st.prev == pk.id
+		acts.add_child(Windows._btn("Сховати" if shown else "На мапі", "sm", "mapIc", func():
+			w.st.prev = -1 if shown else pk.id
+			w.show_order.emit(null if shown else pk)))
 		if c.st == "wait":
 			acts.add_child(Windows._btn("Забрати", "pri sm", "truck", func(): w.net_dialog.emit("pick", {"cs": cid})))
 		else:
@@ -297,14 +323,14 @@ func _manage_fill(box: VBoxContainer, pid: int, done: Callable, redraw: Callable
 	if h.lvl < 4:
 		var up: float = sim.hub_cost(p) * D.HUB_UP[h.lvl]
 		var n2: int = h.lvl + 1
-		var tip := Windows._tip(D.HUB_LV[n2], "Склад %s → %s т, пропускна здатність %s → %s т/добу. Техніки в хабі: %d → %d. Робочих місць: +%d. Більше замовлень поблизу й +3 місця на біржі. Оренда %s/міс." % [
+		var tip := Windows._tip(sim.hub_lv(n2), "Склад %s → %s т, пропускна здатність %s → %s т/добу. Техніки в хабі: %d → %d. Робочих місць: +%d. Більше замовлень поблизу й +3 місця на біржі. Оренда %s/міс." % [
 			Ui.grp(SimNet.NET_CAP[h.lvl]), Ui.grp(SimNet.NET_CAP[n2]), Ui.grp(SimNet.NET_THR[h.lvl]), Ui.grp(SimNet.NET_THR[n2]), D.HUB_VEH[h.lvl], D.HUB_VEH[n2],
 			D.HUB_STAFF[n2] - D.HUB_STAFF[h.lvl], Ui.usd(D.HUB_RENT[n2] * sim.price_k(p.cid))])
-		var b := Windows._btn("%s · %s" % [D.HUB_LV[n2], Ui.usd(up)], "sm", "up", func(): act.call(sim.act_hub_up(pid)), CO.cash >= up, tip)
+		var b := Windows._btn("%s · %s" % [sim.hub_lv(n2), Ui.usd(up)], "sm", "up", func(): act.call(sim.act_hub_up(pid)), CO.cash >= up, tip)
 		box.add_child(Ui.hbox(10, [Windows._note("Склад %s → %s т · пропускна здатність %s → %s т/добу · техніки %d → %d" % [Ui.grp(SimNet.NET_CAP[h.lvl]), Ui.grp(SimNet.NET_CAP[n2]),
 			Ui.grp(SimNet.NET_THR[h.lvl]), Ui.grp(SimNet.NET_THR[n2]), D.HUB_VEH[h.lvl], D.HUB_VEH[n2]]), b]))
 	else:
-		box.add_child(Ui.pill("Логістичний хаб — найвищий рівень", "good", "star"))
+		box.add_child(Ui.pill(sim.hub_lv(4) + " — найвищий рівень", "good", "star"))
 	# modules and upgrades
 	box.add_child(Windows._sect("Модулі й покращення"))
 	var mods := HFlowContainer.new()

@@ -259,7 +259,7 @@ func _entries() -> Array:
 			out.append([_sq(HUB, Color("#071420"), Vector2(6, 6)), "Хаб 1 рівня"])
 			out.append([_sq(HUB), "Хаб 2 рівня"])
 			out.append([_sq(HUB, Color("#071420"), Vector2(10, 10)), "Хаб 3 рівня"])
-			out.append([_sq(HUB, Color("#071420"), Vector2(12, 12)), "Логістичний хаб"])
+			out.append([_sq(HUB, Color("#071420"), Vector2(12, 12)), sim.hub_lv(4) if sim != null else "Логістичний хаб"])
 		_:
 			out.append([_sq(HUB), "Хаби"])
 			for v in [["#34c759", "Фургони й вантажівки"], ["#ec965c", "Потяги"], ["#6ebeff", "Кораблі"], ["#d696ff", "Літаки"],
