@@ -819,7 +819,7 @@ func _on_world(w: Dictionary) -> void:
 					var wt: Array = sm.CO.net.cs.filter(func(c): return c.st == "wait" and c.run < 0)
 					if wt.size():   # as «Забрати» does: the route panel from the headquarters
 						var c0: Dictionary = wt[0]
-						_net_dialog("route", {"a": sm.CO.hq, "way": [c0.at, c0.k.to, sm.CO.hq].filter(func(p): return p != sm.CO.hq) + [sm.CO.hq]})
+						_net_dialog("route", {"a": sm.CO.hq, "focus": c0.id})
 				"manage":
 					_net_dialog("manage", {"a": sm.CO.hq})
 				"trunk", "route":

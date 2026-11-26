@@ -312,20 +312,15 @@ func cs_row(c: Dictionary) -> PanelContainer:
 			# on to the consignee, back to the hub; more towns can be added on the way
 			var hb := _pick_hub(c)
 			if hb >= 0:
-				var way: Array = [c.at]
-				if sim.PL[k.to].land == sim.PL[c.at].land and k.to != hb:
-					way.append(k.to)
-				if hb != c.at:
-					way.append(hb)
-				acts.add_child(Windows._btn("Забрати", "pri sm", "truck", func(): w.net_dialog.emit("route", {"a": hb, "way": way}), true,
-					Windows._tip("Забрати", "Маршрут на мапі з хабу %s: забрати в %s, доставити в %s і повернутися. Можна додати інші міста, де чекають вантажі." % [_pl(hb), _pl(c.at), _pl(k.to)])))
+				acts.add_child(Windows._btn("Забрати", "pri sm", "truck", func(): w.net_dialog.emit("route", {"a": hb, "focus": cid}), true,
+					Windows._tip("Забрати", "Маршрут на мапі з хабу %s: клікайте міста по черзі — %s, щоб забрати вантаж, далі куди везти." % [_pl(hb), _pl(c.at)])))
 			else:
 				acts.add_child(Windows._btn("Забрати", "sm", "truck", func(): pass, false, "Немає хабу на цьому материку"))
 		else:
 			var b: int = nx.b if nx != null else k.to
 			var m: String = nx.m if nx != null else "road"
-			acts.add_child(Windows._btn("Відправити", "pri sm", "send", func(): w.net_dialog.emit("route", {"a": c.at, "way": [b], "m": m}), c.st == "ready" or c.st == "proc",
-				Windows._tip("Відправити", "Маршрут на мапі від міста %s: перша зупинка — %s, далі можна додати попутні міста." % [_pl(c.at), _pl(b)])))
+			acts.add_child(Windows._btn("Відправити", "pri sm", "send", func(): w.net_dialog.emit("route", {"a": c.at, "m": m, "focus": cid}), c.st == "ready" or c.st == "proc",
+				Windows._tip("Відправити", "Маршрут на мапі від міста %s: клікайте міста по черзі. Далі вантажу — %s." % [_pl(c.at), _pl(b)])))
 		mid.add_child(acts)
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Color(Ui.BAD, .5) if left < 0 else Ui.LINE, 1, Vector4(12, 8, 12, 8)))
@@ -534,33 +529,35 @@ func dialog(kind: String, args: Dictionary, done: Callable) -> Control:
 ## puts the chosen one where it lengthens the way the least; «Попутні» adds the ones worth it
 func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	var v := Ui.vbox(6)
-	var row0 := Ui.hbox(8, [Ui.icon("building" if sim.hub_at(st.a) != null else "pin", 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("старт", 12, Ui.MUTED)])
-	v.add_child(row0)
 	var way: Array = st.way
+	var cnt: Dictionary = st.get("cnt", {})   # stop index (0 — the start) → [loaded, unloaded] on this run
+	var tags := func(i: int, pid: int) -> Control:
+		var h := Ui.hbox(6)
+		var on := 0
+		var off := 0
+		if cnt.has(i):
+			on = cnt[i][0]
+			off = cnt[i][1]
+		elif i > 0:   # no plan yet: what could happen there
+			for c in sim.CO.net.cs:
+				if c.run < 0 and c.st != "move":
+					if c.k.to == pid and (c.at == st.a or way.slice(0, i - 1).has(c.at)):
+						off += 1
+					if c.at == pid:
+						on += 1
+		for e in [[off, "вивантаження"], [on, "завантаження"]]:
+			if e[0] > 0 or (i == 0 and e[1] == "завантаження"):
+				h.add_child(Ui.label(e[1], 12, Ui.MUTED))
+				if e[0] > 1:   # several in one town: a count, like a fleet's ×N
+					h.add_child(Ui.pill("×%d" % e[0]))
+		if h.get_child_count() == 0 and sim.hub_at(pid) != null:
+			h.add_child(Ui.label("хаб", 12, Ui.MUTED))
+		h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		return h
+	v.add_child(Ui.hbox(8, [Ui.icon("building" if sim.hub_at(st.a) != null else "pin", 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), tags.call(0, st.a)]))
 	for i in way.size():
 		var pid: int = way[i]
 		var k := i
-		var info := ""
-		var to_n := 0
-		var pk_n := 0
-		for c in sim.CO.net.cs:
-			if c.run < 0 and c.st != "move":
-				if c.k.to == pid and (c.at == st.a or way.slice(0, i).has(c.at)):
-					to_n += 1
-				if c.at == pid:
-					pk_n += 1
-		var parts := []
-		if to_n:
-			parts.append("доставка %d" % to_n)
-		if pk_n:
-			parts.append("тут чекає %d" % pk_n)
-		if sim.hub_at(pid) != null:
-			parts.append("хаб")
-		info = " · ".join(parts)
-		var ic := Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT)
-		var nm := Windows._b(_pl(pid), 13)
-		var nt := Ui.label(info, 12, Ui.MUTED)
-		nt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var up := Windows._btn("", "sm", "up", func():
 			way.remove_at(k)
 			way.insert(k - 1, pid)
@@ -571,13 +568,12 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 			redraw.call(), k < way.size() - 1, "Пізніше")
 		var rm := Windows._btn("", "sm", "close", func():
 			way.remove_at(k)
-			st.way_auto = true
 			redraw.call(), true, "Прибрати зупинку")
-		v.add_child(Ui.hbox(8, [ic, nm, nt, up, dn, rm]))
-	if st.back and way.size():
+		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(pid), 13), tags.call(i + 1, pid), up, dn, rm]))
+	if st.get("back", false) and way.size():
 		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
-	# adding stops
-	var cands := sim.net_way_cands(st.a, way, st.m, st.back)
+	# a town picked from the list goes to the end of the route, as a click on the map does
+	var cands := sim.net_way_cands(st.a, way, st.m, st.get("back", false))
 	var opts := []
 	for x in cands.slice(0, 14):
 		var why := []
@@ -589,20 +585,14 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 			why.append("забрати %s т" % Ui.loc(x.pick))
 		if why.is_empty():
 			why.append("хаб")
-		opts.append([x.pid, "%s · %s · +%d%% шляху" % [_pl(x.pid), ", ".join(why), int(round(x.det * 100))] if way.size() else "%s · %s" % [_pl(x.pid), ", ".join(why)],
-			"building" if sim.hub_at(x.pid) != null else "pin"])
-	var bar := Ui.hbox(8)
+		opts.append([x.pid, "%s · %s" % [_pl(x.pid), ", ".join(why)], "building" if sim.hub_at(x.pid) != null else "pin"])
 	if opts.size():
 		var dd := Dropdown.make(opts, null, func(pid):
-			st.way = sim.net_way_insert(st.a, way, pid, st.back).way
+			way.append(pid)
 			redraw.call())
 		dd.placeholder = "Додати зупинку"
 		dd.custom_minimum_size.x = 240
-		bar.add_child(dd)
-	bar.add_child(Windows._btn("Попутні", "sm", "layers", func():
-		st.way = sim.net_way_auto(st.a, way, st.m, st.back)
-		redraw.call(), true, Windows._tip("Попутні зупинки", "Додає міста, куди їдуть вантажі зі старту й із зупинок, та міста поблизу, де чекає вантаж, — поки об'їзд не довший за третину шляху.")))
-	v.add_child(bar)
+		v.add_child(Ui.hbox(8, [dd]))
 	return v
 
 

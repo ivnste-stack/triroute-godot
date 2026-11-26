@@ -16,7 +16,8 @@ var _C := {}
 
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
-	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false}
+	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
+		"focus": int(args.get("focus", -1))}
 	LP = {"k": {}, "pts": [a], "modes": []}   # what the planner's own parts read
 	on = true
 	_prev_speed = session.speed
@@ -121,16 +122,28 @@ func _panel_build() -> void:
 	if st.vid < 0:   # partners know the market: they keep most of the pay for their part of the way
 		B.add_child(Ui.margin(W._note(("Вільної власної техніки цього виду тут немає. " if cars.size() == 1 else "") + "Партнер забирає ≈85% оплати вантажів за свою ділянку і бере плату за бронювання: це вихід, щоб не зірвати дедлайн, а заробіток — на власній техніці.", Ui.WARN, 12), 0, 4, 0, 0))
 	# the stops
-	B.add_child(_sect("Зупинки"))
+	# the cargo this was opened for: where it is and where it goes (waves on the map too)
+	var fc: Variant = sim._cs(st.focus) if st.focus >= 0 else null
+	if fc != null:
+		B.add_child(Ui.margin(W._icl("box", "%s: забрати в %s → доставити в %s" % [sim.cargo_i[fc.k.cg].n, sim.PL[fc.at].name, sim.PL[fc.k.to].name], Ui.ACCENT, 12), 0, 8, 0, 0))
+	# the plan of the route as it is now (what each stop loads and unloads goes into the route's rows)
+	_spec = {}
+	_C = {}
+	st.cnt = {}
+	if st.way.size():
+		_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, st.skip)
+		_C = sim.net_calc(_spec)
+		for row in _C.rows:
+			for e in [[row.on, 0], [row.off, 1]]:
+				if not st.cnt.has(e[0]):
+					st.cnt[e[0]] = [0, 0]
+				st.cnt[e[0]][e[1]] += 1
+	B.add_child(_sect("Маршрут"))
 	B.add_child(NetWin.new(_wins()).way_editor(st, _panel_build))
 	if st.way.is_empty():
 		B.add_child(Ui.margin(W._note("Клікніть на мапі перше місто маршруту.", Ui.MUTED), 0, 6, 0, 0))
-		_spec = {}
-		_C = {}
 		_end(B, keep)
 		return
-	_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, st.skip)
-	_C = sim.net_calc(_spec)
 	var C: Dictionary = _C
 	# the cargo
 	var listed := []
@@ -273,6 +286,10 @@ func _draw_route() -> void:
 			var r: Variant = sim.co_route(m, last, t)
 			if r != null:
 				map.vehicles._wdash_on(n, _path(r, m), Color(LP_C[m], .85), 2.4)
+	var fc: Variant = sim._cs(st.focus) if st.get("focus", -1) >= 0 else null
+	if fc != null:
+		_wave(n, sim.PL[fc.at], DEP)
+		_wave(n, sim.PL[fc.k.to], ARR)
 	if not _C.is_empty():
 		var ons := {}
 		var offs := {}
