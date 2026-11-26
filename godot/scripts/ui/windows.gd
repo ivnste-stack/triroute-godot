@@ -99,7 +99,6 @@ func build(id: String, body: VBoxContainer, slice := false) -> void:
 				await NetWin.new(self).board(body)
 			else:
 				await _jobs(body)
-		"coTerm": NetWin.new(self).terms(body)
 		"coCargo": NetWin.new(self).cargo(body)
 		"coTrips": _trips(body)
 		"coFleet":
@@ -1328,7 +1327,11 @@ func _upg_sect(body: VBoxContainer, ff: String) -> void:
 # ====================================================================== coNet
 func _net(body: VBoxContainer) -> void:
 	var CO := sim.CO
-	body.add_child(Ui.hint("Хаб — база вашої техніки в місті: звідси машини виїздять на рейси й сюди повертаються. Підприємства навколо хаба дають [b]замовлення[/b] на біржу. Рівні: 1, 2, 3, а хаб 3 рівня можна перетворити на [b]Логістичний хаб[/b]. Щоб відкрити хаб, клацніть на країну на мапі або оберіть її в списку нижче — там її міста.", "bulb"))
+	var alt := sim.alt()   # the alternative balance: every hub is a terminal («Керування терміналом»)
+	if alt:
+		body.add_child(Ui.hint("Кожен хаб — термінал: [b]склад[/b] (тонни), [b]пропускна здатність[/b] (тонн на добу: що понад неї, стає в чергу) і [b]модулі[/b] для потягів, суден і літаків. «Керування терміналом» — покращення хабу й терміналу, транзит партнерів і [b]маршрути[/b] звідти: клікаєте міста на мапі, обираєте техніку й як часто повторювати.", "bulb"))
+	else:
+		body.add_child(Ui.hint("Хаб — база вашої техніки в місті: звідси машини виїздять на рейси й сюди повертаються. Підприємства навколо хаба дають [b]замовлення[/b] на біржу. Рівні: 1, 2, 3, а хаб 3 рівня можна перетворити на [b]Логістичний хаб[/b]. Щоб відкрити хаб, клацніть на країну на мапі або оберіть її в списку нижче — там її міста.", "bulb"))
 	body.add_child(_sect("Ваші хаби"))
 	var list := Ui.vbox(8)
 	for h in CO.hubs:
@@ -1351,7 +1354,9 @@ func _net(body: VBoxContainer) -> void:
 		var info := Ui.vbox(2, [name_c, _note("%s · %s · %s · %s" % [D.HUB_LV[lvl], TYPE_N.get(p.type, ""), Ui.people(p.pop), ", ".join(infra) if infra.size() else "тільки автодороги"])])
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var acts := _right([])
-		if lvl < 4:
+		if alt:
+			acts.add_child(_btn("Керування терміналом", "sm", "gear", func(): net_dialog.emit("manage", {"a": pid})))
+		elif lvl < 4:
 			var up: float = sim.hub_cost(p) * D.HUB_UP[lvl]
 			var tip := _tip(D.HUB_LV[lvl + 1], "Техніки в хабі: %d → %d. Робочих місць: +%d. Завантаження й розвантаження %d%% швидше. Замовлень від підприємств поблизу ×%s. +1 місце на біржі. Оренда %s/міс." % [
 				D.HUB_VEH[lvl], D.HUB_VEH[lvl + 1], D.HUB_STAFF[lvl + 1] - D.HUB_STAFF[lvl], int(JS.round_js((1 - D.HUB_HAND[lvl + 1]) * 100)), str(D.HUB_ORD[lvl + 1]), Ui.usd(D.HUB_RENT[lvl + 1] * sim.price_k(p.cid))])
@@ -1366,8 +1371,13 @@ func _net(body: VBoxContainer) -> void:
 		facts.add_child(_icl("users", "Робочих місць %d" % D.HUB_STAFF[lvl]))
 		facts.add_child(_icl("box", "Завантаження " + (("−%d%%" % int(JS.round_js((1 - D.HUB_HAND[lvl]) * 100))) if lvl > 1 else "звичайне")))
 		facts.add_child(_icl("doc", "Замовлень ×%s" % str(D.HUB_ORD[lvl])))
-		list.add_child(_blk(Ui.vbox(10, [Ui.hbox(10, [hi, info, acts]), facts])))
+		var parts := [Ui.hbox(10, [hi, info, acts]), facts]
+		if alt:
+			parts.append(NetWin.new(self).term_facts(pid))
+		list.add_child(_blk(Ui.vbox(10, parts)))
 	body.add_child(list)
+	if alt:
+		NetWin.new(self).sections(body)
 	body.add_child(_sect("Відкрити хаб у країні"))
 	if CO.tier < 1:
 		body.add_child(_icl("lock", "Нові хаби відкриваються з ліцензією «Міжміська доставка».", Ui.FG2))

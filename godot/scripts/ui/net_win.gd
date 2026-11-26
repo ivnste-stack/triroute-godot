@@ -196,7 +196,8 @@ func cs_row(c: Dictionary) -> PanelContainer:
 		else:
 			var b: int = nx.b if nx != null else k.to
 			var m: String = nx.m if nx != null else "road"
-			acts.add_child(Windows._btn("Відправити", "pri sm", "send", func(): w.net_dialog.emit("trunk", {"a": c.at, "b": b, "m": m}), c.st == "ready" or c.st == "proc"))
+			acts.add_child(Windows._btn("Відправити", "pri sm", "send", func(): w.net_dialog.emit("route", {"a": c.at, "way": [b], "m": m}), c.st == "ready" or c.st == "proc",
+				Windows._tip("Відправити", "Маршрут на мапі від міста %s: перша зупинка — %s, далі можна додати попутні міста." % [_pl(c.at), _pl(b)])))
 		mid.add_child(acts)
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Color(Ui.BAD, .5) if left < 0 else Ui.LINE, 1, Vector4(12, 8, 12, 8)))
@@ -205,13 +206,10 @@ func cs_row(c: Dictionary) -> PanelContainer:
 	return p
 
 
-# ====================================================================== «Термінали»
-func terms(body: VBoxContainer) -> void:
+# ====================================================================== «Термінали» (the hub window of this mode)
+## below the hubs in «Термінали»: the partners' terminals the company keeps cargo in, the lines
+func sections(body: VBoxContainer) -> void:
 	var CO := sim.CO
-	body.add_child(Ui.hint("Кожен хаб — термінал: [b]склад[/b] (тонни), [b]пропускна здатність[/b] (тонн на добу: що понад неї, стає в чергу) і [b]модулі[/b] для потягів, суден і літаків. Без модуля вантаж перевантажують через термінал партнера в тому ж місті — дорожче й довше. Партнери можуть возити свої вантажі через ваш термінал: це дохід, але частина пропускної здатності йде їм.", "building"))
-	for h in CO.hubs:
-		body.add_child(_term_card(h))
-	# the partners' terminals the company keeps cargo in
 	var part := {}
 	for c in CO.net.cs:
 		if sim.n_kind(c.at) == "part" and (c.st == "ready" or c.st == "proc"):
@@ -221,43 +219,94 @@ func terms(body: VBoxContainer) -> void:
 		for pid in part:
 			var p_: int = pid
 			body.add_child(Windows._lrow("handshake", Ui.vbox(2, [w._place(pid), Windows._note("Ваших вантажів: %d · зберігання дорожче, ніж у своєму хабі" % part[pid])]),
-				Windows._btn("Відправити", "sm", "send", func(): w.net_dialog.emit("trunk", {"a": p_, "m": "road"}))))
+				Windows._btn("Створити маршрут", "sm", "road", func(): w.net_dialog.emit("route", {"a": p_}))))
 	body.add_child(Windows._sect("Лінії за розкладом"))
 	if CO.net.lines.is_empty():
-		body.add_child(Windows._note("Ліній ще немає. Сплануйте кільцевий рейс чи магістраль і натисніть «Створити лінію» — рейс повторюватиметься сам."))
+		body.add_child(Windows._note("Ліній ще немає. «Керування терміналом» → «Створити маршрут», обрати, як часто повторювати, — і рейс ходитиме сам."))
 	for L in CO.net.lines:
 		body.add_child(_line_row(L))
 
 
-func _term_card(h: Dictionary) -> PanelContainer:
-	var pid: int = h.pid
-	var p: Dictionary = sim.PL[pid]
-	var T: Dictionary = sim._T(pid)
+## the facts of a terminal under a hub's name in «Термінали»
+func term_facts(pid: int) -> Control:
 	var stored := sim.n_stored(pid)
 	var cap := sim.n_cap(pid)
 	var q := sim.n_queue(pid)
-	var idle_r := sim.net_idle_at(pid, "road").size()
-	var name_c := w._place(pid)
-	var info := Ui.vbox(2, [name_c, Windows._note("%s · %s т/добу · черга %s · вільної техніки тут: %d" % [D.HUB_LV[h.lvl], Ui.grp(sim.n_thr(pid)), Ui.days(q) if q > .05 else "немає", sim.net_idle_at(pid).size()])])
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var acts := Windows._right([
-		Windows._btn("Кільцевий рейс", "pri sm" if idle_r else "sm", "refresh", func(): w.net_dialog.emit("round", {"a": pid}), idle_r > 0,
-			Windows._tip("Кільцевий рейс", "Машина з цього хабу розвозить вантажі зі складу по містах округи й забирає те, що там чекає, — і повертається.") if idle_r else "Немає вільної авто-техніки в цьому хабі"),
-		Windows._btn("Магістральний рейс", "sm", "send", func(): w.net_dialog.emit("trunk", {"a": pid}))])
-	var v := Ui.vbox(10, [Ui.hbox(10, [Ui.icon("star" if pid == sim.CO.hq else "building", 18, Ui.ACCENT), info, acts])])
 	var fill := stored / cap if cap > 0 else 0.0
 	var mt := Windows._meter(fill, Ui.BAD if fill > 1 else (Ui.WARN if fill > .85 else Ui.ACCENT))
-	v.add_child(Ui.hbox(10, [Ui.label("Склад %s / %s т" % [Ui.loc(stored), Ui.grp(cap)], 13, Ui.BAD if fill > 1 else Ui.FG2), mt]))
-	if fill > 1:
-		v.add_child(Windows._icl("alert", "Склад переповнено: зберігання втричі дорожче, обробка повільніша", Ui.BAD))
-	var evs := HFlowContainer.new()
-	evs.add_theme_constant_override("h_separation", 6)
+	var v := Ui.vbox(6, [Ui.hbox(10, [Ui.label("Склад %s / %s т · %s т/добу · черга %s" % [Ui.loc(stored), Ui.grp(cap), Ui.grp(sim.n_thr(pid)), Ui.days(q) if q > .05 else "немає"], 13, Ui.BAD if fill > 1 else Ui.FG2), mt])])
+	var T: Dictionary = sim._T(pid)
+	var pills := HFlowContainer.new()
+	pills.add_theme_constant_override("h_separation", 6)
+	pills.add_theme_constant_override("v_separation", 6)
+	for M in SimNet.NET_MODS:
+		if T.mods.has(M.id):
+			pills.add_child(Ui.pill(M.n, "good", M.ic))
+	for U in SimNet.NET_UPS:
+		var lv := sim.n_up(pid, U.id)
+		if lv:
+			pills.add_child(Ui.pill(U.n + (" %d" % lv if U.cost.size() > 1 else ""), "good", U.ic))
 	for e in T.ev:
 		if e.until > sim.co_now():
-			evs.add_child(Ui.pill("%s · ще %s" % [SimNet.NET_EV[e.k][0], Ui.days(e.until - sim.co_now())], "bad", SimNet.NET_EV[e.k][1]))
-	if evs.get_child_count():
-		v.add_child(evs)
+			pills.add_child(Ui.pill("%s · ще %s" % [SimNet.NET_EV[e.k][0], Ui.days(e.until - sim.co_now())], "bad", SimNet.NET_EV[e.k][1]))
+	if pills.get_child_count():
+		v.add_child(pills)
+	return v
+
+
+## «Керування терміналом»: the hub's level, the warehouse, modules and upgrades, partner freight, the events,
+## this terminal's lines; «Кільцевий рейс» and «Створити маршрут» (the route on the map). Built again after
+## every purchase; done closes it
+func manage(pid: int, done: Callable) -> Control:
+	var box := Ui.vbox(12)
+	box.custom_minimum_size.x = 700
+	var redraw := func(): pass
+	redraw = func():
+		for ch in box.get_children():
+			ch.queue_free()
+		_manage_fill(box, pid, done, redraw)
+	redraw.call()
+	return box
+
+
+func _manage_fill(box: VBoxContainer, pid: int, done: Callable, redraw: Callable) -> void:
+	var CO := sim.CO
+	var h: Variant = sim.hub_at(pid)
+	if h == null:
+		box.add_child(Windows._note("Хабу тут більше немає."))
+		return
+	var p: Dictionary = sim.PL[pid]
+	var T: Dictionary = sim._T(pid)
+	var act := func(res: Dictionary) -> void:
+		w._do(res)
+		redraw.call()
+	# the terminal now
+	var stored := sim.n_stored(pid)
+	var cap := sim.n_cap(pid)
+	var q := sim.n_queue(pid)
+	box.add_child(Windows._grid(4, [
+		Windows._stat("Рівень хабу", "%d з 4" % h.lvl, "техніки до %d" % D.HUB_VEH[h.lvl]),
+		Windows._stat("Склад", "%s / %s т" % [Ui.loc(stored), Ui.grp(cap)], "переповнений" if stored > cap else "вантажів: %d" % CO.net.cs.filter(func(c): return c.at == pid and (c.st == "ready" or c.st == "proc")).size(), "", "bad" if stored > cap else ""),
+		Windows._stat("Пропускна здатність", "%s т/добу" % Ui.grp(sim.n_thr(pid)), "черга " + (Ui.days(q) if q > .05 else "порожня")),
+		Windows._stat("Техніка тут", str(sim.net_idle_at(pid).size()), "вільної зараз")], 8))
+	for e in T.ev:
+		if e.until > sim.co_now():
+			box.add_child(Windows._icl(SimNet.NET_EV[e.k][1], "%s · ще %s" % [SimNet.NET_EV[e.k][0], Ui.days(e.until - sim.co_now())], Ui.BAD))
+	# the hub's level
+	box.add_child(Windows._sect("Рівень хабу"))
+	if h.lvl < 4:
+		var up: float = sim.hub_cost(p) * D.HUB_UP[h.lvl]
+		var n2: int = h.lvl + 1
+		var tip := Windows._tip(D.HUB_LV[n2], "Склад %s → %s т, пропускна здатність %s → %s т/добу. Техніки в хабі: %d → %d. Робочих місць: +%d. Більше замовлень поблизу й +3 місця на біржі. Оренда %s/міс." % [
+			Ui.grp(SimNet.NET_CAP[h.lvl]), Ui.grp(SimNet.NET_CAP[n2]), Ui.grp(SimNet.NET_THR[h.lvl]), Ui.grp(SimNet.NET_THR[n2]), D.HUB_VEH[h.lvl], D.HUB_VEH[n2],
+			D.HUB_STAFF[n2] - D.HUB_STAFF[h.lvl], Ui.usd(D.HUB_RENT[n2] * sim.price_k(p.cid))])
+		var b := Windows._btn("%s · %s" % [D.HUB_LV[n2], Ui.usd(up)], "sm", "up", func(): act.call(sim.act_hub_up(pid)), CO.cash >= up, tip)
+		box.add_child(Ui.hbox(10, [Windows._note("Склад %s → %s т · пропускна здатність %s → %s т/добу · техніки %d → %d" % [Ui.grp(SimNet.NET_CAP[h.lvl]), Ui.grp(SimNet.NET_CAP[n2]),
+			Ui.grp(SimNet.NET_THR[h.lvl]), Ui.grp(SimNet.NET_THR[n2]), D.HUB_VEH[h.lvl], D.HUB_VEH[n2]]), b]))
+	else:
+		box.add_child(Ui.pill("Логістичний хаб — найвищий рівень", "good", "star"))
 	# modules and upgrades
+	box.add_child(Windows._sect("Модулі й покращення"))
 	var mods := HFlowContainer.new()
 	mods.add_theme_constant_override("h_separation", 6)
 	mods.add_theme_constant_override("v_separation", 6)
@@ -271,7 +320,7 @@ func _term_card(h: Dictionary) -> PanelContainer:
 			mods.add_child(pl)
 		else:
 			var c := sim.net_mod_cost(pid, mid)
-			mods.add_child(Windows._btn("%s · %s" % [M.n, Ui.usd(c)], "sm", M.ic, func(): w._do(sim.act_net_mod(pid, mid)), sim.CO.cash >= c, Windows._tip(M.n, M.d + " Утримання 1% вартості на місяць.")))
+			mods.add_child(Windows._btn("%s · %s" % [M.n, Ui.usd(c)], "sm", M.ic, func(): act.call(sim.act_net_mod(pid, mid)), CO.cash >= c, Windows._tip(M.n, M.d + " Утримання 1% вартості на місяць.")))
 	for U in SimNet.NET_UPS:
 		var uid: String = U.id
 		var lv := sim.n_up(pid, uid)
@@ -281,20 +330,35 @@ func _term_card(h: Dictionary) -> PanelContainer:
 			pl.tooltip_text = Windows._tip(U.n, U.d)
 			mods.add_child(pl)
 		else:
-			mods.add_child(Windows._btn("%s%s · %s" % [U.n, (" %d" % (lv + 1)) if U.cost.size() > 1 else "", Ui.usd(c)], "sm", U.ic, func(): w._do(sim.act_net_up(pid, uid)), sim.CO.cash >= c, Windows._tip(U.n, U.d)))
-	v.add_child(mods)
+			mods.add_child(Windows._btn("%s%s · %s" % [U.n, (" %d" % (lv + 1)) if U.cost.size() > 1 else "", Ui.usd(c)], "sm", U.ic, func(): act.call(sim.act_net_up(pid, uid)), CO.cash >= c, Windows._tip(U.n, U.d)))
+	box.add_child(mods)
 	# partner freight
 	var est: float = 3.0 * h.lvl * (1 + T.mods.size() * 1.2) * sqrt(maxf(.2, p.pop)) * (5 + 9 * T.mods.size()) * sim.price_k(p.cid)
 	var seg := Ui.seg([[0, "Закрито"], [1, "Частково"], [2, "Повністю"]], int(T.part), func(x):
 		sim.act_net_part(pid, x)
-		w._do({}))
+		act.call({}))
 	var pn := Windows._note("Транзит партнерів: ≈ %s/день, −%d%% пропускної здатності" % [Ui.usd(est * (0.0 if T.part == 0 else (.5 if T.part == 1 else 1.0))), 18 * int(T.part)], Ui.FG2, 12)
 	pn.tooltip_text = Windows._tip("Транзит партнерів", "Інші перевізники платять за перевалку своїх вантажів у вашому терміналі. Що вищий рівень хабу й більше модулів, то більше вони везуть — і то більше пропускної здатності забирають у ваших вантажів.")
-	v.add_child(Ui.hbox(10, [Ui.icon("handshake", 16, Ui.FG2), pn, seg]))
-	return Windows._blk(v)
+	box.add_child(Ui.hbox(10, [Ui.icon("handshake", 16, Ui.FG2), pn, seg]))
+	# this terminal's lines
+	var mine: Array = CO.net.lines.filter(func(L): return L.a == pid)
+	if mine.size():
+		box.add_child(Windows._sect("Лінії звідси"))
+		for L in mine:
+			box.add_child(_line_row(L, redraw))
+	# the runs
+	box.add_child(Windows._card_rule())
+	var idle_r := sim.net_idle_at(pid, "road").size()
+	box.add_child(Ui.hbox(10, [Ui.spacer(),
+		Windows._btn("Кільцевий рейс", "sm", "refresh", func():
+			done.call()
+			w.net_dialog.emit("round", {"a": pid}), idle_r > 0, Windows._tip("Кільцевий рейс", "Машина з цього хабу сама розвезе вантажі зі складу по містах округи й забере те, що там чекає, — і повернеться.") if idle_r else "Немає вільної авто-техніки в цьому хабі"),
+		Windows._btn("Створити маршрут", "pri", "road", func():
+			done.call()
+			w.net_dialog.emit("route", {"a": pid}), true, Windows._tip("Створити маршрут", "Маршрут на мапі: клікайте міста по черзі — де доставити й де забрати вантаж, — останнім хаб, куди машина повезе решту. Обираєте техніку й як часто повторювати."))]))
 
 
-func _line_row(L: Dictionary) -> PanelContainer:
+func _line_row(L: Dictionary, after: Callable = Callable()) -> PanelContainer:
 	var who := "партнер"
 	if L.get("vid", -1) >= 0:
 		var v: Variant = sim._veh(L.vid)
@@ -307,9 +371,13 @@ func _line_row(L: Dictionary) -> PanelContainer:
 	var id: int = L.id
 	var right := Windows._right([Windows._toggle(L.on, func():
 		L.on = not L.on
-		w._do({}), "Пауза / запуск"), Windows._btn("", "sm", "trash", func():
+		w._do({})
+		if after.is_valid():
+			after.call(), "Пауза / запуск"), Windows._btn("", "sm", "trash", func():
 		sim.net_line_del(id)
-		w._do({}), true, "Видалити лінію")])
+		w._do({})
+		if after.is_valid():
+			after.call(), true, "Видалити лінію")])
 	return Windows._lrow("refresh" if L.kind == "round" else MODE_IC.get(L.get("m", "road"), "truck"), Ui.vbox(2, [Windows._b(sim.net_line_name(L)), Windows._note(sub)]), right)
 
 
@@ -334,7 +402,7 @@ func dialog(kind: String, args: Dictionary, done: Callable) -> Control:
 ## the stops of a haul: the start, then every stop with what it is for and ↑ ↓ ✕; «Додати зупинку» lists the
 ## places on the way (the cargo's towns and next steps, pick-ups nearby, hubs) with the detour each costs, and
 ## puts the chosen one where it lengthens the way the least; «Попутні» adds the ones worth it
-func _way_editor(st: Dictionary, redraw: Callable) -> Control:
+func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	var v := Ui.vbox(6)
 	var row0 := Ui.hbox(8, [Ui.icon("building" if sim.hub_at(st.a) != null else "pin", 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("старт", 12, Ui.MUTED)])
 	v.add_child(row0)
@@ -464,7 +532,7 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 			if st.way.is_empty() and not st.get("way_auto", false):
 				st.way_auto = true
 				st.way = sim.net_way_auto(st.a, [], st.m, st.back)
-			box.add_child(field.call("Зупинки", _way_editor(st, redraw)))
+			box.add_child(field.call("Зупинки", way_editor(st, redraw)))
 			if st.way.is_empty():
 				box.add_child(Windows._note("Додайте зупинку: місто, куди везете, або термінал, де вантаж поїде далі.", Ui.MUTED))
 				return

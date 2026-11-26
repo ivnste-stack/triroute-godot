@@ -24,6 +24,7 @@ var perf_rec: PerfRecorder
 var perf_panel: PerfPanel
 var _bb: BackBufferCopy
 var planner: Planner
+var netp: NetPlanner
 var course: Course
 var menu: StartMenu
 var _args := {}
@@ -212,6 +213,10 @@ func _ready() -> void:
 	planner.acted.connect(_on_act)
 	planner.closed.connect(_planner_closed)
 	_ui.add_child(planner)
+	netp = NetPlanner.new()   # the alternative balance: «Створити маршрут» on the map
+	netp.acted.connect(_on_act)
+	netp.closed.connect(_planner_closed)
+	_ui.add_child(netp)
 	course = Course.new()
 	course.acted.connect(_on_act)
 	course.closed.connect(func(): hud.set_planning(false))
@@ -778,7 +783,9 @@ func _on_world(w: Dictionary) -> void:
 					var wt: Array = sm.CO.net.cs.filter(func(c): return c.st == "wait" and c.run < 0)
 					if wt.size():
 						_net_dialog("pick", {"cs": wt[0].id})
-				"trunk":
+				"manage":
+					_net_dialog("manage", {"a": sm.CO.hq})
+				"trunk", "route":
 					var ta := {"a": sm.CO.hq}
 					if _args.has("netway"):   # --netway=N: a truck and N stops the player put in
 						sm.CO.veh.push_front({"id": sm.CO.uid, "t": "truck", "loc": sm.CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})
@@ -791,7 +798,7 @@ func _on_world(w: Dictionary) -> void:
 								break
 							way = cs[0].way
 						ta.way = way
-					_net_dialog("trunk", ta)
+					_net_dialog(String(_args.netdlg), ta)
 				_:
 					_net_dialog("round", {"a": sm.CO.hq})
 		if _args.has("thenedit"):   # test: from a running game back to a new world in the editor
@@ -1167,6 +1174,8 @@ func _play(hq: int, auto_decisions: bool, loaded: bool = false) -> void:
 	map_ui.attach(session, map)
 	map_ui.planner = planner
 	planner.attach(session, map)
+	netp.attach(session, map)
+	map_ui.netp = netp
 	course.attach(session, map, planner)
 	map_ui.course = course
 	if not map_ui.reroute.is_connected(_reroute):
@@ -1210,7 +1219,7 @@ func _decision(spec: Dictionary) -> Dictionary:
 # ---------- windows ----------
 const WIN_HEAD := {"coHome": ["briefcase", "Компанія"], "coJobs": ["box", "Біржа вантажів"], "coTrips": ["road", "Рейси в дорозі"], "coFleet": ["truck", "Автопарк"],
 	"coNet": ["globe", "Мережа хабів"], "coStaff": ["users", "Персонал і менеджмент"], "coFin": ["coins", "Фінанси"], "news": ["news", "Стрічка новин"],
-	"coTerm": ["building", "Термінали"], "coCargo": ["sack", "Вантажі в мережі"]}
+	"coCargo": ["sack", "Вантажі в мережі"]}
 
 
 func _toggle_window(id: String) -> void:
@@ -1253,6 +1262,8 @@ func _win_tick(force: bool = false) -> void:
 	if smooth and _args.has("perf"):
 		print("PERF day %.1f ms" % (Perf.acc.get("co_day", 0) / 1000.0))
 	var h: Array = WIN_HEAD.get(id, ["info", id])
+	if id == "coNet" and sim.alt():   # the alternative balance: the hubs are terminals
+		h = ["globe", "Термінали"]
 	win.set_head(h[0], "%s · %s" % [sim.CO.name, Ui.date_str(sim.date)], h[1])
 	if smooth:
 		await get_tree().process_frame   # not in the frame the day was computed in
@@ -1375,6 +1386,19 @@ func _on_act(res: Dictionary) -> void:
 ## the alternative balance: a run of the network (a round of a hub's area, a haul, a pick-up) in a dialog
 func _net_dialog(kind: String, args: Dictionary) -> void:
 	var sim := session.sim
+	if kind == "route":   # the route on the map: the windows and the cards step aside
+		modals.clear()
+		if win.visible:
+			_toggle_window("")
+		map_ui.close_insp()
+		map_ui.close_card()
+		hud.set_planning(true)
+		netp.open_net(args.a, args)
+		return
+	if kind == "manage":
+		modals.push({"icon": "gear", "eyebrow": "Термінали · " + sim.PL[args.a].name, "title": "Керування терміналом", "close": true, "width": 780,
+			"content": NetWin.new(wins).manage(args.a, func(): modals.clear())})
+		return
 	var t: String = {"round": "Кільцевий рейс", "trunk": "Магістральний рейс", "pick": "Забрати вантаж"}.get(kind, "Рейс")
 	var sub := ""
 	if args.has("a"):
@@ -1460,7 +1484,7 @@ func _save_data() -> Dictionary:
 func _autosave() -> Variant:
 	if not Settings.get_value("autosave"):
 		return {}
-	if session == null or session.sim == null or not hud.visible or planner.on or course.on or modals.is_open():
+	if session == null or session.sim == null or not hud.visible or planner.on or netp.on or course.on or modals.is_open():
 		return {}
 	var s := _save_data()
 	toasts.push("", "Автозбереження", s.meta.date)
@@ -1571,6 +1595,8 @@ func _editor_done(e: Dictionary) -> void:
 func _end_game() -> void:
 	if planner.on:
 		planner.close()
+	if netp.on:
+		netp.close()
 	if course.on:
 		course.close()
 	if map_ui.sim != null:
@@ -1624,7 +1650,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_F4:
 			perf_rec.toggle()
 		KEY_ESCAPE:
-			if planner.on or course.on or map_ui.mv_v != null:
+			if planner.on or netp.on or course.on or map_ui.mv_v != null:
 				return
 			if win.visible:
 				_toggle_window("")

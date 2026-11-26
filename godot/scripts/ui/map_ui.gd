@@ -21,6 +21,7 @@ const LP_N := {"road": "авто", "rail": "залізниця", "sea": "мор�
 
 var map: MapView
 var planner: Planner   # while it is open, the clicks place the points of the route
+var netp: NetPlanner   # the alternative balance: «Створити маршрут», the clicks add its stops
 var course: Course     # the same for a new course of a trip under way
 var session: GameSession
 var sim: Sim
@@ -230,7 +231,7 @@ func _hover() -> void:
 	if best != null:
 		_show_tip("inc:%s:%d" % [best.kind, int(best.x * 7 + best.y)], func(): return _inc_tip(best), mp, 340)
 		return
-	if (planner != null and planner.on) or (course != null and course.on) or mv_v != null:
+	if (planner != null and planner.on) or (netp != null and netp.on) or (course != null and course.on) or mv_v != null:
 		_show_tip("", null, mp)
 		return
 	var pid := map.towns.place_at(mp)
@@ -442,6 +443,9 @@ func _on_click(mp: Vector2) -> void:
 		return
 	if planner != null and planner.on:
 		planner.click(mp)
+		return
+	if netp != null and netp.on:
+		netp.click(mp)
 		return
 	if course != null and course.on:
 		course.click(mp)
@@ -988,7 +992,7 @@ func _build_insp(keep: bool = false) -> void:
 			row.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: fly(pid))
 			B.add_child(row)
 			if sim.alt():   # the alternative balance: the terminal of this hub
-				var tb := W._btn("Термінал · склад %s / %s т · черга %s" % [Ui.loc(sim.n_stored(pid)), Ui.grp(sim.n_cap(pid)), Ui.days(sim.n_queue(pid)) if sim.n_queue(pid) > .05 else "немає"], "sm", "building", func(): open_window.emit("coTerm"))
+				var tb := W._btn("Термінал · склад %s / %s т · черга %s" % [Ui.loc(sim.n_stored(pid)), Ui.grp(sim.n_cap(pid)), Ui.days(sim.n_queue(pid)) if sim.n_queue(pid) > .05 else "немає"], "sm", "building", func(): open_window.emit("coNet"))
 				tb.size_flags_horizontal = Control.SIZE_FILL
 				B.add_child(tb)
 	# the settlements
