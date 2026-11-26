@@ -16,51 +16,51 @@ static func policy(sim: Sim, grow: bool = true) -> Dictionary:
 	var L: Array = CO.board.duplicate()
 	L.sort_custom(func(a, b): return a.pay > b.pay)
 	for k in L:
-		if open > 10 + CO.veh.size() * 6:
+		if open > 2 + CO.veh.size() * 3:
 			break
 		var P: Variant = sim.net_path(k.from, k.to, k.tons, k.dlDays, k.pay)
-		if P != null and P.c < k.pay * .75 and P.t < k.dlDays * .9:
+		if P != null and P.c < k.pay * .6 and P.t < k.dlDays * .9:
 			if sim.net_accept(k).get("tone", "") == "good":
 				n.acc += 1
 				open += 1
 	for h in CO.hubs:
-		# rounds with every idle road vehicle
+		# rounds with the idle road vehicles; one that has nothing in its area hauls along the towns the cargo
+		# in the warehouse goes to (own vehicles first: partners take most of the pay)
 		for v in sim.net_idle_at(h.pid, "road"):
 			var sp: Dictionary = sim.net_auto_round(h.pid, v.id)
 			var C: Dictionary = sim.net_calc(sp)
+			if not (C.ok and C.rows.size()):
+				var way: Array = sim.net_way_auto(h.pid, [], "road", true)
+				if way.is_empty():
+					continue
+				sp = sim.net_auto_multi(h.pid, way, "road", v.id, true)
+				C = sim.net_calc(sp)
 			if C.ok and C.rows.size():
 				sim.net_go(sp)
 				n.runs += 1
-		# hauls: by the next step of what waits here
+		# hauls by own vehicles of other kinds, by the next step of what waits here
 		var by := {}
 		for c in CO.net.cs:
 			if c.at == h.pid and c.run < 0 and c.st == "ready":
 				var nx: Variant = sim.net_next(c)
-				if nx != null and nx.b != h.pid and not sim.net_area(h.pid).has(nx.b):
+				if nx != null and nx.m != "road" and nx.b != h.pid:
 					var key := "%d|%s" % [nx.b, nx.m]
 					by[key] = by.get(key, 0.0) + c.k.tons
 		for key in by:
 			var p: PackedStringArray = key.split("|")
-			var b := int(p[0])
-			var m := p[1]
-			var vs: Array = sim.net_idle_at(h.pid, m)
-			var sp: Dictionary = sim.net_auto_trunk(h.pid, b, m, vs[0].id if vs.size() else -1, vs.size() > 0)
-			var C: Dictionary = sim.net_calc(sp)
-			var urgent := false
-			for row in C.rows:
-				if row.c.dl - sim.co_now() < C.t + 2:
-					urgent = true
-			if C.ok and (by[key] >= 8 or urgent or vs.size()):
+			var vs: Array = sim.net_idle_at(h.pid, p[1])
+			if vs.is_empty():
+				continue
+			var sp: Dictionary = sim.net_auto_trunk(h.pid, int(p[0]), p[1], vs[0].id, true)
+			if sim.net_calc(sp).ok:
 				sim.net_go(sp)
 				n.runs += 1
-				if not vs.size():
-					n.part += 1
-	# waiting in towns no round reaches: a partner truck to where it should go next
+	# a partner only for what would be late otherwise
 	for c in CO.net.cs:
-		if (c.st == "wait" or c.st == "ready") and c.run < 0 and sim.co_now() - c.since > 1.5:
+		if (c.st == "wait" or c.st == "ready") and c.run < 0 and c.dl - sim.co_now() < 2.5:
 			var nx: Variant = sim.net_next(c)
 			if nx != null:
-				var sp: Dictionary = {"vid": -1, "m": "road" if nx.m == "road" else nx.m, "stops": [c.at, nx.b], "picks": {0: [c.id]}}
+				var sp: Dictionary = {"vid": -1, "m": nx.m, "stops": [c.at, nx.b], "picks": {0: [c.id]}}
 				var C: Dictionary = sim.net_calc(sp)
 				if C.ok:
 					sim.net_go(sp)

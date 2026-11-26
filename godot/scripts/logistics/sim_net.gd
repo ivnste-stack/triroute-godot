@@ -423,6 +423,7 @@ func _net_path(from: int, to: int, tons: float, left: float, pay: float) -> Vari
 				nodes[q.id] = true
 	var N: Array = nodes.keys()
 	var own := _own_types()
+	own["_ppl"] = pay / maxf(.05, JS.hypot(A.x - B.x, A.z - B.z) * CO_DU * 1.3)   # what the cargo pays a unit of its way
 	var lam := pay / maxf(1.0, left) * .35
 	var dist := {}
 	var tim := {}
@@ -504,7 +505,7 @@ func _edge(m: String, U: Dictionary, V: Dictionary, tons: float, owns: Dictionar
 		c = run * minf(1.0, tons / (T.cap * .6))
 	else:
 		t = ln / (D.CH_SPD[m] * spd_k()) + NET_PERIOD[m] * .5
-		c = ch_cost(m, ln, tons)
+		c = maxf(owns.get("_ppl", 0.0) * ln * PART_SHARE, ch_cost(m, ln, tons)) + D.CH_BASE[m] * .25
 	t += D.HAND[m] * hand_k()
 	var hu := hub_at(V.id) != null
 	if not hu or not n_mod(V.id, m):
@@ -668,7 +669,8 @@ func net_calc(spec: Dictionary) -> Dictionary:
 			else:
 				var dep := _part_dep(t, a, b, m)
 				tm = dep - t + r.len / (D.CH_SPD[m] * spd_k())
-				lc = net_part_fee(m, r.len, loads[i - 1], PL[a].cid != PL[b].cid)
+				var aboard := ids.filter(func(c): return board[c.id][0] <= i - 1 and board[c.id][1] > i - 1)
+				lc = net_part_fee(m, r.len, aboard, PL[a].cid != PL[b].cid)
 			var cust := 0.0
 			if PL[a].cid != PL[b].cid and (m == "sea" or m == "air"):
 				cust = .3 * (.4 if n_up(a, "bond") else 1.0)
@@ -710,10 +712,19 @@ func net_calc(spec: Dictionary) -> Dictionary:
 	return res
 
 
-## a partner carrier's price for one booking: its rate for the load and a booking fee (several consignments
-## in one booking share it)
-func net_part_fee(m: String, len_: float, tons: float, border: bool) -> float:
-	return JS.round_js((ch_cost(m, len_, maxf(.5, tons)) + D.CH_BASE[m] * .25) * (1.1 if border else 1.0))
+const PART_SHARE := .85   # a partner's cut of what a consignment pays, for the part of its way it carries
+
+
+## a partner carrier's price for one booking: partners know the market — for every consignment they take most of
+## what the shipper pays, in proportion to the part of its way this leg covers — plus a booking fee. Partners
+## keep the network going where it has no vehicles of its own; the profit is in own vehicles, full ones
+func net_part_fee(m: String, len_: float, cs: Array, border: bool) -> float:
+	var x: float = D.CH_BASE[m] * .25
+	var tons := 0.0
+	for c in cs:
+		x += c.k.pay * PART_SHARE * clampf(len_ / maxf(.05, c.k.get("len", len_)), .15, 1.2)
+		tons += c.k.tons
+	return JS.round_js(maxf(x, ch_cost(m, len_, maxf(.5, tons)) + D.CH_BASE[m] * .25) * (1.1 if border else 1.0))
 
 
 func _part_dep(t: float, a: int, b: int, m: String) -> float:
@@ -824,7 +835,7 @@ func _run_leg(r: Dictionary) -> bool:
 			r.why = "Маршрут перекрито"
 			return false
 		var tm: float = rr.len / (D.CH_SPD[r.m] * spd_k())
-		var fee := net_part_fee(r.m, rr.len, tons, PL[a].cid != PL[b].cid)
+		var fee := net_part_fee(r.m, rr.len, cs, PL[a].cid != PL[b].cid)
 		_npay(fee, "part")
 		r.cost += fee
 		P = {"ok": true, "t": NET_VT[r.m], "n": 1, "vids": [], "lead": 0.0, "leadR": {"p": PackedFloat32Array([rr.p[0], rr.p[1]]), "len": 0.0}, "main": rr,

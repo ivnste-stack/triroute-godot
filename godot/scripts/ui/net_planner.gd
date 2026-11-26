@@ -118,8 +118,8 @@ func _panel_build() -> void:
 		_panel_build())
 	dd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	B.add_child(dd)
-	if cars.size() == 1:
-		B.add_child(Ui.margin(W._icl("info", "Вільної власної техніки цього виду тут немає: везе партнер за свій тариф.", Ui.FG2, 12), 0, 4, 0, 0))
+	if st.vid < 0:   # partners know the market: they keep most of the pay for their part of the way
+		B.add_child(Ui.margin(W._note(("Вільної власної техніки цього виду тут немає. " if cars.size() == 1 else "") + "Партнер забирає ≈85% оплати вантажів за свою ділянку і бере плату за бронювання: це вихід, щоб не зірвати дедлайн, а заробіток — на власній техніці.", Ui.WARN, 12), 0, 4, 0, 0))
 	# the stops
 	B.add_child(_sect("Зупинки"))
 	B.add_child(NetWin.new(_wins()).way_editor(st, _panel_build))

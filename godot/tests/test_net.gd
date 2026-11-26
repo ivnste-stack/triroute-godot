@@ -53,7 +53,7 @@ func test_network_carries_and_pays() -> String:
 	var cash0: float = sim.CO.cash
 	_days(sim, 90)
 	var st: Dictionary = sim.CO.net.stat
-	if st.done < 150:
+	if st.done < 80:
 		return "only %d consignments delivered in 90 days" % st.done
 	if st.fail > st.done * .08:
 		return "%d failed against %d delivered" % [st.fail, st.done]
