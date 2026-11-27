@@ -1102,6 +1102,7 @@ func _deliver(c: Dictionary, r: Variant) -> void:
 	CO.xp = CO.get("xp", 0) + maxf(1, JS.round_js(xp)) * (5.0 if CO.get("fast") else 1.0)
 	c.st = "done"
 	_drop(CO.net.cs, c)
+	_drop(CO.board, k)   # its card «Вантаж прийнято» leaves the board: the order is done
 	CO.net.stat.done += 1
 	_firm_note(c, late <= .25, pay)   # a few hours late still counts as on time for the business
 	var tone := "warn" if late > 0 or c.dmg > .05 else "good"
@@ -1124,6 +1125,7 @@ func _fail(c: Dictionary, why: String, lost: bool) -> void:
 	c.st = "fail"
 	c.why = why
 	_drop(CO.net.cs, c)
+	_drop(CO.board, k)
 	_firm_note(c, false, 0.0)
 	CO.net.stat.fail += 1
 	co_news("bad", "alert", "%s: «%s» %s → %s — %s, штраф %s" % [CO.name, cg.n.to_lower(), PL[k.from].name, PL[k.to].name, why, _usd(pen + claim - covered)])
@@ -1254,7 +1256,7 @@ func net_auto_multi(a: int, way: Array, m: String, vid: int, back: bool = false,
 	var spec := {"vid": vid, "m": m, "stops": stops, "picks": {}, "offs": {}}
 	# a route that ends at a town where the cargo picked up on the way is not for: the run goes on to the
 	# nearest hub and leaves it there (the player may put a hub last instead)
-	if way.size() and not back and n_kind(stops.back()) == "":
+	if way.size() and not back and n_kind(stops.back()) != "hub":   # a town, or a partner's port, station, airport
 		var last: int = stops.back()
 		var lose: bool = CO.net.cs.any(func(c): return c.run < 0 and c.st == "wait" and way.has(c.at) and not skip.has(c.id) \
 			and not way.slice(way.find(c.at) + 1).has(c.k.to))

@@ -355,6 +355,17 @@ static func _lrow(ic: String, mid: Control, right: Control) -> PanelContainer:
 	return p
 
 
+## the parts of a clickable row pass the clicks on to it (their tooltips stay); buttons keep their own
+static func _pass_clicks(n: Node) -> void:
+	for c in n.get_children():
+		if c is Control and not (c is BaseButton):
+			if c.mouse_filter == Control.MOUSE_FILTER_STOP:
+				c.mouse_filter = Control.MOUSE_FILTER_PASS
+			if c.mouse_default_cursor_shape == Control.CURSOR_ARROW:
+				c.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			_pass_clicks(c)
+
+
 ## .hint coloured by tone (advHint)
 static func _adv(tone: String, text: String) -> PanelContainer:
 	var h := Ui.hint(text, {"bad": "alert", "good": "check"}.get(tone, "bulb"))
@@ -1112,6 +1123,7 @@ func _job_row(j: Dictionary) -> PanelContainer:
 	var mid := Ui.vbox(5, [head, mt, rt])
 	var row := _lrow(T.ic, mid, Ui.num(Ui.usd(sim.net_run_pay(j.net.run) if j.get("net") != null else j.k.pay), 14))
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_pass_clicks(row)   # a click anywhere on the row follows the vehicle (the line under the bar, the towns too)
 	row.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT: select_job.emit(j))
 	row.mouse_entered.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE_HI, 1, Vector4(12, 10, 12, 10))))
 	row.mouse_exited.connect(func(): row.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(12, 10, 12, 10))))
