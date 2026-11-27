@@ -936,6 +936,9 @@ func _on_world(w: Dictionary) -> void:
 		win.scroll.scroll_vertical = int(_args.winscroll)
 		for i in 4:
 			await get_tree().process_frame
+	if _args.has("roadstyle"):   # test: the look of the roads (MapOverlay.road_style)
+		MapOverlay.road_style = int(_args.roadstyle)
+		map.overlay.road_colors()
 	if _args.has("cam"):
 		var c: PackedStringArray = String(_args.cam).split(",")
 		if c[0] == "hq" and session != null:   # --cam=hq,dist: the headquarters

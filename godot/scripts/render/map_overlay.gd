@@ -17,6 +17,19 @@ var _built := false
 var dpr := 1.0
 var host: SubViewport          # the buffer this is drawn into, refreshed only when the view changes
 var _key := ""
+var vis_road := true    # the legend's switches (MapView.apply_vis): the style's fades never show a hidden kind
+var vis_mway := true
+
+## the look of the roads and motorways: 0 — yellow with a thin dark outline; 1 — clean amber, the small roads
+## fading from afar, no outline; 2 — as 0, the outline only close up; 3 — light roads, amber motorways, the
+## outline close up; 4 — muted roads, amber motorways with a soft glow
+static var road_style := 0
+const ROAD_COL := [
+	["#f4b453", [6, 12, 18, .7], "#f6b94f", [6, 12, 18, .7]],
+	["#d9a04a", [0, 0, 0, 0], "#f2b450", [0, 0, 0, 0]],
+	["#f4b453", [6, 12, 18, .7], "#f6b94f", [6, 12, 18, .7]],
+	["#efe3c8", [40, 28, 12, .6], "#f2a93b", [40, 24, 6, .75]],
+	["#c9a66b", [0, 0, 0, 0], "#ffbe55", [255, 190, 85, .22]]]
 
 
 static func _c(r: int, g: int, b: int, a: float = 1.0) -> Color:
@@ -89,6 +102,19 @@ func build(lines: Array, board: Dictionary, size: Vector2, own: PackedByteArray,
 	_layer("mway_case", 52, mw_m, _c(6, 12, 18, .7), 3)
 	_layer("mway", 53, mw_m, Color("#f6b94f"), 2)
 	_built = true
+	_key = ""
+	road_colors()
+
+
+## the colours of the road style (road_style); the widths and fades follow the zoom in _process_t
+func road_colors() -> void:
+	if not _layers.has("road"):
+		return
+	var S: Array = ROAD_COL[clampi(road_style, 0, ROAD_COL.size() - 1)]
+	_layers.road.set_style(Color(S[0]), 1.5)
+	_layers.road_case.set_style(_c(S[1][0], S[1][1], S[1][2], S[1][3]), 3)
+	_layers.mway.set_style(Color(S[2]), 2)
+	_layers.mway_case.set_style(_c(S[3][0], S[3][1], S[3][2], S[3][3]), 3)
 	_key = ""
 
 
@@ -168,11 +194,37 @@ func _process_t(_delta: float) -> void:
 	var rw := 1.15 * zl
 	_layers.rail_case.set_width(rw * 2.6)
 	_layers.rail.set_width(rw * 1.85)
+	# the roads in their style: near — 0 from afar, 1 once a road is ~2.5 px wide (an outline thinner than that
+	# doubles the road into a ladder)
+	var near := clampf((rw - 1.3 * dpr) / (1.2 * dpr), 0, 1)
+	var a_case := 1.0
+	var a_road := 1.0
+	var mw := rw * 1.85
+	var mcase := mw + 2 * dpr
+	match road_style:
+		1:
+			a_case = 0.0
+			a_road = lerpf(.55, 1.0, near)
+			mw = rw * 2.0
+		2:
+			a_case = near
+		3:
+			a_case = near
+			mw = rw * 2.0
+			mcase = mw + 2 * dpr
+		4:
+			a_road = lerpf(.5, .9, near)
+			mw = rw * 1.9
+			mcase = rw * 5.5   # the glow
 	_layers.road_case.set_width(rw + 2 * dpr)
-	_layers.road.set_width(rw)
-	_layers.mway_case.set_width(rw * 1.85 + 2 * dpr)
-	_layers.mway.set_width(rw * 1.85)
+	_layers.road.set_width(rw * (1.1 if road_style == 3 else 1.0))
+	_layers.mway_case.set_width(mcase)
+	_layers.mway.set_width(mw)
+	_layers.road.set_alpha(a_road if vis_road else 0.0)
+	_layers.road_case.set_alpha((a_case if road_style != 4 else 0.0) if vis_road else 0.0)
+	_layers.mway.set_alpha(1.0 if vis_mway else 0.0)
+	_layers.mway_case.set_alpha((1.0 if road_style == 4 else a_case) if vis_mway else 0.0)
 	if _layers.has("toll"):
-		_layers.toll.set_width(rw * 1.85)   # the whole width of the motorway, inside its outline
+		_layers.toll.set_width(mw)   # the whole width of the motorway, inside its outline
 	if _layers.has("hban"):
 		_layers.hban.set_width(rw * 1.5)

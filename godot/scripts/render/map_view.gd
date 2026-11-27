@@ -497,10 +497,8 @@ const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78),
 func apply_vis() -> void:
 	if overlay != null and overlay._layers.size():
 		var L: Dictionary = overlay._layers
-		L.road.visible = MapVis.vis("r2")
-		L.mway.visible = MapVis.vis("r3")
-		L.road_case.visible = L.road.visible   # a thin dark outline, as the route being planned has
-		L.mway_case.visible = L.mway.visible
+		overlay.vis_road = MapVis.vis("r2")   # the roads' layers show and fade in MapOverlay (the road style)
+		overlay.vis_mway = MapVis.vis("r3")
 		for k in ["rail", "rail_case"]:
 			L[k].visible = MapVis.vis("rail")
 		L.borders.visible = not (mode == "pol" and not MapVis.vis("pol_b"))
