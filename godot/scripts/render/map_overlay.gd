@@ -101,7 +101,7 @@ func ppu() -> float:
 	return a.distance_to(b)
 
 
-## road rules (SimCore.road_mark_segs): toll motorways (light blue, the whole width of the motorway) and the stretches
+## road rules (SimCore.road_mark_segs): toll motorways (light grey, the whole width of the motorway) and the stretches
 ## closed to heavy vehicles (red); segs: [x1, z1, x2, z2, flags]
 func set_marks(segs: Array) -> void:
 	for nm in ["toll", "hban"]:
@@ -117,7 +117,7 @@ func set_marks(segs: Array) -> void:
 		if int(q[4]) & 2:
 			ban.append(pl)
 	if toll.size():
-		_layer("toll", 54, LineLayer.build_geometry(toll), Color("#8fe3ff"), 1)
+		_layer("toll", 54, LineLayer.build_geometry(toll), Color("#b8c0c8"), 1)
 	if ban.size():
 		_layer("hban", 55, LineLayer.build_geometry(ban), Color("#f0625f"), 2)
 	dirty()
