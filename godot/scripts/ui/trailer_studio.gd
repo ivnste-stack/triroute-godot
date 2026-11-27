@@ -1,7 +1,7 @@
 class_name TrailerStudio
 extends CanvasLayer
-## «Студія трейлера» (F8): the player films the game. The panel on the right, on its own layer, never in the
-## picture of a take.
+## «Студія трейлера» (the ` key, left of 1 — not F8: the Godot editor stops the running game on it): the player
+## films the game. The panel on the right, on its own layer, never in the picture of a take.
 ## · Camera: slower, softer keys (W A S D, Q / E, Z / X zoom); «Запис» keeps the camera's way frame by frame and
 ##   every button pressed meanwhile (with its second and place); «Програти» plays it back, smoothed;
 ##   «До стандартного виду» turns the camera north up and draws it back a little, slowly.
@@ -16,6 +16,7 @@ extends CanvasLayer
 ## Takes live in user://trailer/<name>.json; their snapshots in the save slot trailer_<name>.
 
 const W = preload("res://scripts/ui/windows.gd")
+const KEY := KEY_QUOTELEFT   # by its place: ` on the English layout, ' on the Ukrainian
 const DIR := "user://trailer"
 const KINDS := [["road", "Авто", "truck"], ["rail", "Залізниця", "train"], ["sea", "Море", "ship"], ["air", "Авіа", "plane"]]
 const WARM := 30   # frames before a rendered take starts: the map and the trips settle
@@ -120,7 +121,7 @@ func _build() -> void:
 		c.queue_free()
 	var B := _body
 	B.add_child(_row(Ui.hbox(8, [Ui.icon("video" if Icons.has("video") else "eye", 18, Ui.ACCENT), W._b("Студія трейлера", 15)]), MapUi._xbtn(close_studio)))
-	B.add_child(W._note("F8 — сховати / показати панель. Панель не потрапляє в кадр дубля.", Ui.MUTED, 12))
+	B.add_child(W._note("` (ліворуч від 1) — сховати / показати панель. Панель не потрапляє в кадр дубля.", Ui.MUTED, 12))
 	_status = Ui.label("", 12, Ui.ACCENT)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	B.add_child(_status)
@@ -162,7 +163,7 @@ func _build() -> void:
 		opts.ui = x
 		_build()))
 	B.add_child(_fill([W._btn("▶ Зняти дубль", "pri sm", "", func(): play(true), path.size() > 1 and not rec,
-		"Ховає панель (і інтерфейс, як обрано вище) та програє шлях камери й усі натиснуті під час запису кнопки. Записуйте екран у цей час. F8 — зупинити."),
+		"Ховає панель (і інтерфейс, як обрано вище) та програє шлях камери й усі натиснуті під час запису кнопки. Записуйте екран у цей час. ` — зупинити."),
 		W._btn("Команда рендеру", "sm", "doc", copy_render, path.size() > 1,
 		"Копіює команду: Godot сам запише дубль у відео 1920×1080, рівно 60 кадрів/с, зі знімка світу на початку запису.")]))
 
@@ -878,10 +879,10 @@ static func sub_state(it: Dictionary, t: float, vs: Vector2, sz: Vector2) -> Dic
 
 # ====================================================================== keys
 func _unhandled_key_input(e: InputEvent) -> void:
-	if not (e is InputEventKey) or not e.pressed or e.echo or e.keycode != KEY_F8:
+	if not (e is InputEventKey) or not e.pressed or e.echo or e.physical_keycode != KEY:
 		return
 	get_viewport().set_input_as_handled()
-	if _take == "live":   # F8 in a take stops it
+	if _take == "live":   # the key in a take stops it
 		_play_t = INF
 		_stop_play()
 		return

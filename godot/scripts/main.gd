@@ -25,7 +25,7 @@ var perf_panel: PerfPanel
 var _bb: BackBufferCopy
 var planner: Planner
 var netp: NetPlanner
-var studio: TrailerStudio   # «Студія трейлера» (F8)
+var studio: TrailerStudio   # «Студія трейлера» (the ` key, left of 1)
 var tutorial: Tutorial
 var course: Course
 var menu: StartMenu
@@ -999,6 +999,17 @@ func _on_world(w: Dictionary) -> void:
 		studio = TrailerStudio.new(self)
 		add_child(studio)
 		studio.render_take(String(_args.take))
+	if _args.has("studiokey"):   # test: the key left of 1 pressed as a player presses it
+		for pr in [true, false]:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = TrailerStudio.KEY
+			ev.keycode = KEY_APOSTROPHE   # what the Ukrainian layout gives there
+			ev.pressed = pr
+			Input.parse_input_event(ev)
+			await get_tree().process_frame
+		for i in 3:
+			await get_tree().process_frame
+		print("TEST studio by its key: %s" % is_instance_valid(studio))
 	if _args.has("studio"):   # test: the trailer studio open
 		studio = TrailerStudio.new(self)
 		add_child(studio)
@@ -1809,13 +1820,16 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		_key_action(act)
 		return
+	# the trailer studio (scripts/ui/trailer_studio.gd): the key left of 1, by its place (` on the English layout,
+	# ' on the Ukrainian); not F8 — the Godot editor stops the running game on F8
+	if e.physical_keycode == TrailerStudio.KEY:
+		if session != null and session.sim != null and hud.visible and not is_instance_valid(studio):
+			studio = TrailerStudio.new(self)
+			add_child(studio)
+		return
 	match e.keycode:
 		KEY_F9:
 			_toggle_checks()
-		KEY_F8:   # the trailer studio (scripts/ui/trailer_studio.gd)
-			if session != null and session.sim != null and hud.visible and not is_instance_valid(studio):
-				studio = TrailerStudio.new(self)
-				add_child(studio)
 		KEY_F3:
 			perf_panel.toggle()
 		KEY_F4:
