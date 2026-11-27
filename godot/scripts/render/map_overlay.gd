@@ -84,10 +84,10 @@ func build(lines: Array, board: Dictionary, size: Vector2, own: PackedByteArray,
 		(mways if h.lv >= 3 else roads).append(h.p)
 	var road_m := LineLayer.build_geometry(roads)
 	_layer("road_case", 50, road_m, _c(6, 12, 18, .7), 3)   # the outline of a planned route: 1 px each side
-	_layer("road", 51, road_m, Color("#f4b453"), 1.5)
+	_layer("road", 51, road_m, Color("#cf9338"), 1.5)
 	var mw_m := LineLayer.build_geometry(mways)
 	_layer("mway_case", 52, mw_m, _c(6, 12, 18, .7), 3)
-	_layer("mway", 53, mw_m, Color("#f6b94f"), 2)
+	_layer("mway", 53, mw_m, Color("#d29634"), 2)
 	_built = true
 	_key = ""
 
@@ -169,9 +169,9 @@ func _process_t(_delta: float) -> void:
 	_layers.rail_case.set_width(rw * 2.6)
 	_layers.rail.set_width(rw * 1.85)
 	_layers.road_case.set_width(rw + 2 * dpr)
-	_layers.road.set_width(maxf(rw, 1.4 * dpr))   # never thinner than a crisp line: thinner ones fade out
+	_layers.road.set_width(rw)
 	_layers.mway_case.set_width(rw * 1.85 + 2 * dpr)
-	_layers.mway.set_width(maxf(rw * 1.85, 2 * dpr))
+	_layers.mway.set_width(rw * 1.85)
 	if _layers.has("toll"):
 		_layers.toll.set_width(rw * .7)
 	if _layers.has("hban"):

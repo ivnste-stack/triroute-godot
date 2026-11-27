@@ -499,7 +499,7 @@ func apply_vis() -> void:
 		var L: Dictionary = overlay._layers
 		L.road.visible = MapVis.vis("r2")
 		L.mway.visible = MapVis.vis("r3")
-		for k in ["road_case", "mway_case"]:   # no outline: from afar it doubles every road into a ladder
+		for k in ["road_case", "mway_case"]:   # roads without a dark outline
 			L[k].visible = false
 		for k in ["rail", "rail_case"]:
 			L[k].visible = MapVis.vis("rail")
