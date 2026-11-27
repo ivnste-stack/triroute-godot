@@ -1002,6 +1002,18 @@ func _on_world(w: Dictionary) -> void:
 	if _args.has("studio"):   # test: the trailer studio open
 		studio = TrailerStudio.new(self)
 		add_child(studio)
+		if _args.has("studioret"):   # test: the camera turned and close, then back to the standard view
+			for c in [["yaw", 1.3], ["tyaw", 1.3], ["dist", 3.0], ["tdist", 3.0]]:
+				map.camera.set(c[0], c[1])
+			for i in 3:
+				await get_tree().process_frame
+			studio.opts.ret = 1.0
+			var d0 := map.camera.dist
+			studio.return_view()
+			var t0 := Time.get_ticks_msec()
+			while not studio._ret.is_empty() and Time.get_ticks_msec() - t0 < 20000:
+				await get_tree().process_frame
+			print("TEST studio return: yaw %.3f, dist %.2f → %.2f" % [map.camera.yaw, d0, map.camera.dist])
 		if _args.has("subdemo"):   # test: a subtitle's preview, --subdemo=<seconds into it>
 			var it: Dictionary = studio.sub.duplicate()
 			it.dir = "center"

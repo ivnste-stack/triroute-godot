@@ -151,7 +151,7 @@ func _build() -> void:
 	B.add_child(_fill([W._btn("Зберегти", "sm", "doc", save_take, path.size() > 1), W._btn("Відкрити", "sm", "folder" if Icons.has("folder") else "doc", func(): load_take(take_name))]))
 	var tk := _takes()
 	if tk.size():
-		B.add_child(W._note("Збережені: " + ", ".join(PackedStringArray(tk)), Ui.MUTED, 12))
+		B.add_child(W._note("Збережені: %s" % ", ".join(PackedStringArray(tk)), Ui.MUTED, 12))
 	B.add_child(Ui.hbox(8, [W._toggle(opts.snap, func():
 		opts.snap = not opts.snap
 		_build()), Ui.label("Знімок світу на початку запису (для рендеру)", 12, Ui.FG2)]))
@@ -178,7 +178,7 @@ func _build() -> void:
 			opts.kinds[k_] = not opts.kinds[k_]
 			act("kinds", {"kinds": opts.kinds.duplicate()})
 			_build())
-		b.tooltip_text = "Показувати й створювати рейси: " + K[1]
+		b.tooltip_text = "Показувати й створювати рейси: %s" % K[1]
 		kr.add_child(b)
 	B.add_child(kr)
 	B.add_child(_slider("Рейсів по карті", float(opts.n_trips), 20.0, 600.0, func(v): opts.n_trips = int(v), "", 0))
@@ -541,9 +541,16 @@ func copy_render() -> void:
 	var exe := OS.get_executable_path()
 	var out := ProjectSettings.globalize_path("%s/%s.avi" % [DIR, take_name])
 	var proj := "" if OS.has_feature("template") else " --path \"%s\"" % ProjectSettings.globalize_path("res://")
+	# Movie Maker records at the window's size: 1920×1080 by an override.cfg the render removes once it runs
+	var ov := (OS.get_executable_path().get_base_dir() + "/override.cfg") if OS.has_feature("template") else ProjectSettings.globalize_path("res://override.cfg")
+	if not FileAccess.file_exists(ov):
+		var f := FileAccess.open(ov, FileAccess.WRITE)
+		if f != null:
+			f.store_string("; the trailer studio's render (removed by it)\n[display]\n\nwindow/size/viewport_width=1920\nwindow/size/viewport_height=1080\nwindow/size/mode=0\n")
+			f.close()
 	var cmd := "\"%s\"%s --write-movie \"%s\" --fixed-fps 60 --resolution 1920x1080 -- --load=trailer_%s --take=%s" % [exe, proj, out, take_name, take_name]
 	DisplayServer.clipboard_set(cmd)
-	main.toasts.push("good", "Команду скопійовано", "Вставте її в термінал: відео буде в " + out)
+	main.toasts.push("good", "Команду скопійовано", "Вставте її в термінал: відео буде в %s" % out)
 
 
 ## --take=<name>: the take recorded by Movie Maker (the world loaded from its snapshot by --load)
@@ -552,6 +559,9 @@ func render_take(name: String) -> void:
 		get_tree().quit()
 		return
 	panel.visible = false
+	var ov := (OS.get_executable_path().get_base_dir() + "/override.cfg") if OS.has_feature("template") else ProjectSettings.globalize_path("res://override.cfg")
+	if FileAccess.file_exists(ov) and FileAccess.get_file_as_string(ov).begins_with("; the trailer studio's render"):
+		DirAccess.remove_absolute(ov)   # read at the start already: the game's own window size next time
 	var M: Dictionary = _meta
 	main.session.set_speed(int(M.get("speed", 1)))
 	if M.has("mode"):
@@ -735,8 +745,13 @@ static func _pair_at(S: Sim, x: float, z: float) -> Array:
 func _trips(n: int, kinds: Dictionary) -> void:
 	var S := sim()
 	var CO: Dictionary = S.CO
-	if not CO.get("sandbox", false):
+	if not CO.get("sandbox", false):   # vehicles and licences for every kind; the numbers in the top bar stay
+		var keep := [CO.cash, CO.rating, CO.tier]
 		main.sandbox()
+		CO.cash = maxf(keep[0], 5e6)   # enough for the trips, not a sandbox's trillion
+		CO.rating = keep[1]
+		if not main.hud.studio.has("lic"):
+			main.hud.studio.lic = float(keep[2])
 	var want: int = CO.jobs.size() + n
 	for i in 240:
 		if CO.jobs.size() >= want:
@@ -759,6 +774,7 @@ func _trips(n: int, kinds: Dictionary) -> void:
 func _sub_editor() -> Control:
 	var v := Ui.vbox(6)
 	var te := LineEdit.new()
+	te.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	te.text = sub.text
 	te.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	te.text_changed.connect(func(t): sub.text = t)
@@ -812,6 +828,7 @@ func copy_subs() -> void:
 ## colour, height, motion and fades
 func preview_sub(it: Dictionary, delay: float = 0.0) -> void:
 	var l := Label.new()
+	l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # the player's own words
 	l.text = it.text
 	var fs := int(float(it.size) * get_viewport().get_visible_rect().size.y / 1080.0)
 	l.add_theme_font_override("font", Ui.font("display", 600) if it.font == "display" else Ui.font("body", 600))
