@@ -555,10 +555,12 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	var cnt: Dictionary = st.get("cnt", {})   # stop index (0 — the start) → [loaded, unloaded] on this run
 	# a stop: ↓ where cargo is loaded, ↑ where it is unloaded (a count when several), the town's name
 	var planned: bool = st.get("planned", false)   # the route panel: what the plan does, no guesses
+	var marks_all := []   # the squares of the timeline, joined by a line from the first stop to the last
 	var arrow := func(t: String, tip: String) -> Label:
-		var l := Ui.label(t, 15, Ui.FG2, Ui.font("body", 700))
+		var l := Ui.label(t, 14, Ui.FG2, Ui.font("body", 700))
 		l.tooltip_text = tip
 		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		return l
 	var row := func(i: int, pid: int, note: String) -> Control:
 		var h := Ui.hbox(6)
@@ -574,9 +576,10 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 						off += 1
 					if c.at == pid:
 						on += 1
-		# ↓ loading, ↑ unloading, ← the start of an empty run; a tooltip on each
-		var marks := Ui.hbox(2)
-		marks.custom_minimum_size.x = 30
+		# ↓ loading, ↑ unloading, ← the start of an empty run, in a square on the timeline; a tooltip on each
+		var tl := TLMark.new()
+		var marks: HBoxContainer = tl.inner
+		marks_all.append(tl)
 		if i == 0 and on == 0 and way.size():
 			marks.add_child(arrow.call("←", "Перегін: машина їде з %s порожньою до першої зупинки" % _pl(pid)))
 		if on > 0:
@@ -584,8 +587,8 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		if off > 0:
 			marks.add_child(arrow.call("↑", "Вивантаження" + ((" · %d" % off) if off > 1 else "")))
 		if marks.get_child_count() == 0:
-			marks.add_child(Ui.icon(MODE_IC[st.m] if i > 0 else ("building" if sim.hub_at(pid) != null else "pin"), 14, Ui.MUTED))
-		h.add_child(marks)
+			marks.add_child(Ui.icon(MODE_IC[st.m] if i > 0 else ("building" if sim.hub_at(pid) != null else "pin"), 12, Ui.MUTED))
+		h.add_child(tl)
 		h.add_child(Windows._b(_pl(pid), 13))
 		for e in [on, off]:
 			if e > 1:   # several in one town: a count, like a fleet's ×N
@@ -602,7 +605,13 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		r.modulate.a = .75
 		v.add_child(r)
 	if st.get("back", false) and way.size():
-		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
+		var tb := TLMark.new()
+		tb.inner.add_child(Ui.icon(MODE_IC[st.m], 12, Ui.ACCENT))
+		marks_all.append(tb)
+		v.add_child(Ui.hbox(6, [tb, Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
+	for k in marks_all.size():
+		marks_all[k].up = k > 0
+		marks_all[k].down = k < marks_all.size() - 1
 	if st.has("foci"):   # the route panel: «Додати замовлення» marks an order on the map, the route stays the player's
 		var A: Dictionary = sim.PL[st.a]
 		var os := []
@@ -834,3 +843,38 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 			w._do(res), true, Windows._tip("Лінія за розкладом", "Такий рейс повторюватиметься сам: щоразу з тим, що на той момент чекає. Рушає, коли заповнення не менше обраного (або коли вантаж інакше запізниться). Досвіду за рейси ліній менше, ніж за сплановані вручну."))
 		box.add_child(Ui.hbox(10, [Ui.lbl("Лінія"), ev, Ui.lbl("заповнення від"), fl, Ui.spacer(), mk]))
 	box.add_child(bs)
+
+
+## a stop on the route's timeline: its marks in a square, a vertical line to the stops before and after it (drawn
+## across the gap between the rows)
+class TLMark extends Control:
+	const GAP := 6.0   # the rows' separation the line crosses
+	var up := false
+	var down := false
+	var inner := HBoxContainer.new()
+	var _sq := PanelContainer.new()
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(34, 36)
+		mouse_filter = Control.MOUSE_FILTER_PASS
+		inner.add_theme_constant_override("separation", 1)
+		inner.alignment = BoxContainer.ALIGNMENT_CENTER
+		_sq.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE_HI, 1, Vector4(4, 0, 4, 0)))
+		_sq.custom_minimum_size = Vector2(24, 24)
+		_sq.add_child(inner)
+		var cc := CenterContainer.new()
+		cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		cc.mouse_filter = Control.MOUSE_FILTER_PASS
+		cc.add_child(_sq)
+		add_child(cc)
+		_sq.resized.connect(queue_redraw)
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var r := Rect2(_sq.global_position - global_position, _sq.size)
+		var x := roundf(r.get_center().x) + .5
+		var col := Ui.LINE_HI
+		if up:
+			draw_line(Vector2(x, -GAP / 2 - 1), Vector2(x, r.position.y), col, 1.0)
+		if down:
+			draw_line(Vector2(x, r.end.y), Vector2(x, size.y + GAP / 2 + 1), col, 1.0)

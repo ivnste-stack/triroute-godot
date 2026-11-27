@@ -222,12 +222,14 @@ func _panel_build() -> void:
 	B.add_child(_sect("Рейс"))
 	var own: bool = st.vid >= 0
 	var fs := W._stat("Заповнення", ("%d%%" % int(C.fill * 100)) if own else "%s т" % Ui.loc(C.tons), "%s т" % Ui.loc(C.tons) if own else "партнер бере будь-яку вагу", "", "bad" if C.get("over") else "")
-	if own:   # the card fills up to the load
-		var fb := FillBg.new()
-		fb.f = C.fill
-		fb.col = Ui.BAD if C.fill > 1 else Ui.ACCENT
-		fs.add_child(fb)
-		fs.move_child(fb, 0)
+	if own:   # a square at the right that fills from the bottom up to the load
+		var txt: Control = fs.get_child(0)
+		fs.remove_child(txt)
+		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var sq := FillSq.new()
+		sq.f = C.fill
+		sq.col = Ui.BAD if C.fill > 1 else Ui.ACCENT
+		fs.add_child(Ui.hbox(10, [txt, sq]))
 	var g := W._grid(2, [
 		fs,
 		W._stat("Час", Ui.days(C.t), "з обробкою на складах"),
@@ -314,19 +316,23 @@ func _size_to_body() -> void:
 	_panel.reset_size()
 
 
-class FillBg extends Control:
+class FillSq extends Control:
 	var f := 0.0
 	var col := Color.WHITE
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		show_behind_parent = true
+		custom_minimum_size = Vector2(44, 44)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	func _draw() -> void:
-		var w := size.x * clampf(f, 0, 1)
-		draw_rect(Rect2(0, 0, w, size.y), Color(col, .22))
-		if w > 1:
-			draw_rect(Rect2(w - 2, 0, 2, size.y), Color(col, .8))
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, Color(1, 1, 1, .04))
+		var h := (size.y - 4) * clampf(f, 0, 1)
+		if h > 0:
+			draw_rect(Rect2(2, size.y - 2 - h, size.x - 4, h), Color(col, .45))
+			draw_rect(Rect2(2, size.y - 2 - h, size.x - 4, minf(2, h)), col)
+		draw_rect(r, Ui.LINE_HI, false, 1.0)
 
 
 func _wins() -> Windows:
