@@ -605,26 +605,7 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	for k in marks_all.size():
 		marks_all[k].up = k > 0
 		marks_all[k].down = k < marks_all.size() - 1
-	if st.has("foci"):   # the route panel: «Додати замовлення» marks an order on the map, the route stays the player's
-		var A: Dictionary = sim.PL[st.a]
-		var os := []
-		for c in sim.CO.net.cs:
-			if c.run >= 0 or st.foci.has(c.id) or not (c.st == "wait" or c.st == "ready" or c.st == "proc"):
-				continue
-			if not sim.node_ok(st.m, sim.PL[c.at]) or ((st.m == "road" or st.m == "rail") and sim.PL[c.at].land != A.land):
-				continue
-			os.append(c)
-		os.sort_custom(func(x, y): return x.dl < y.dl)
-		var oo := []
-		for c in os.slice(0, 20):
-			oo.append([c.id, "%s → %s · %s т · до дедлайну %s" % [_pl(c.at), _pl(c.k.to), Ui.loc(c.k.tons), Ui.days(maxf(0, c.dl - sim.co_now()))], sim.cargo_i[c.k.cg].ic])
-		if oo.size():
-			var dd := Dropdown.make(oo, null, func(cid):
-				st.foci.append(cid)
-				redraw.call())
-			dd.placeholder = "Додати замовлення"
-			dd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			v.add_child(Ui.margin(dd, 0, 4, 0, 0))
+	if st.has("foci"):   # the route panel: the orders are switched on in «Прийняті вантажі», the route stays the player's
 		return v
 	# a town picked from the list goes to the end of the route, as a click on the map does
 	var cands := sim.net_way_cands(st.a, way, st.m, st.get("back", false))

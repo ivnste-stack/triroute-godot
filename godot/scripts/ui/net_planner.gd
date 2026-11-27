@@ -7,7 +7,7 @@ extends Planner
 ## the run takes (each on or off), the load, the time, the costs and the pay, «Відправити» once, or a line
 ## that repeats the run every few days. Time stands still while it is open, as in the planner.
 
-const MODE_N := {"road": "Авто", "rail": "Залізниця", "sea": "Море", "air": "Авіа"}
+const MODE_N := {"road": "Авто", "rail": "Залізниця", "sea": "Корабель", "air": "Авіа"}
 
 var st := {}
 var _spec := {}
@@ -16,7 +16,7 @@ var _C := {}
 
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
-	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "incl": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
+	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
 		"focus": int(args.get("focus", -1)), "foci": []}
 	if st.focus >= 0:
 		st.foci.append(st.focus)
@@ -47,8 +47,6 @@ func undo() -> void:
 ## for stays marked
 func clear_route() -> void:
 	st.way = []
-	st.skip = {}
-	st.incl = {}
 	st.foci = [st.focus] if st.focus >= 0 and sim._cs(st.focus) != null else []
 	_panel_build()
 
@@ -58,11 +56,73 @@ func clear_route() -> void:
 func _skip_eff() -> Dictionary:
 	var sk := {}
 	for c in sim.CO.net.cs:
-		if c.run >= 0 or c.st == "move" or c.st == "done":
-			continue
-		if st.skip.has(c.id) or not (st.foci.has(c.id) or st.incl.has(c.id)):
+		if c.run < 0 and not st.foci.has(c.id) and c.st != "move" and c.st != "done":
 			sk[c.id] = true
 	return sk
+
+
+## «Прийняті вантажі»: every order taken that waits in the start's country, local ones (to a town of the same
+## country) or international ones (to another), each with its switch: on — it goes on this run (and is marked on
+## the map), and a tag for how it ends on the route laid
+func _cargo_list(B: VBoxContainer) -> void:
+	var A: Dictionary = sim.PL[st.a]
+	var rows := {}
+	for row in _C.get("rows", []):
+		rows[row.c.id] = row
+	var stops: Array = _spec.get("stops", [])
+	var loc := []
+	var intl := []
+	for c in sim.CO.net.cs:
+		if c.run >= 0 or not (c.st == "ready" or c.st == "wait" or c.st == "proc") or sim.PL[c.at].cid != A.cid:
+			continue
+		(loc if sim.PL[c.k.to].cid == A.cid else intl).append(c)
+	var cf: String = st.get("cf", "loc")
+	B.add_child(_sect("Прийняті вантажі"))
+	B.add_child(_seg_eq([["loc", "Локальні · %d" % loc.size()], ["intl", "Міжнародні · %d" % intl.size()]], cf, func(x):
+		st.cf = x
+		_panel_build()))
+	var L: Array = loc if cf == "loc" else intl
+	L.sort_custom(func(x, y): return st.foci.has(x.id) and not st.foci.has(y.id) or (st.foci.has(x.id) == st.foci.has(y.id) and x.dl < y.dl))
+	if L.is_empty():
+		B.add_child(Ui.margin(W._note("Локальних прийнятих вантажів у цій країні зараз немає: візьміть замовлення на біржі." if cf == "loc" else "Міжнародних прийнятих вантажів у цій країні зараз немає: візьміть замовлення на біржі.", Ui.MUTED, 12), 0, 6, 0, 0))
+		return
+	var lv := Ui.vbox(0)
+	for c in L:
+		var row: Variant = rows.get(c.id)
+		var cid: int = c.id
+		var on: bool = st.foci.has(cid)
+		# how it ends on the route: on time, late by…, to a warehouse, no room, the route misses it
+		var tag: Control = null
+		if row != null:
+			if not row.dest:
+				tag = Ui.pill("на склад · %s" % sim.PL[stops[row.off]].name, "acc", "building")
+			elif row.late <= 0:
+				tag = Ui.pill("вчасно", "good", "check")
+			else:
+				tag = Ui.pill("затримка %s" % Ui.days(row.late), "bad", "alert")
+		elif on and stops.size():
+			var i0: int = stops.find(c.at)
+			if i0 >= 0 and i0 < stops.size() - 1:
+				tag = Ui.pill("не вміщується", "bad", "alert")
+				tag.tooltip_text = W._tip("Не вміщується", "%s т не влазять у машину разом з іншими: оберіть більшу техніку або вимкніть інший вантаж." % Ui.loc(c.k.tons))
+			else:
+				tag = Ui.pill("поза маршрутом", "warn")
+				tag.tooltip_text = W._tip("Поза маршрутом", "Маршрут не проходить через %s, де чекає вантаж: клікніть це місто на мапі." % sim.PL[c.at].name)
+		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.at].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)   # from where it is now
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.tooltip_text = "%s · до дедлайну %s" % [sim.cargo_i[c.k.cg].n, Ui.days(maxf(0, c.dl - sim.co_now()))]
+		var tg := W._toggle(on, func():
+			if st.foci.has(cid):
+				st.foci.erase(cid)
+			else:
+				st.foci.append(cid)
+			_panel_build())
+		var h := Ui.hbox(8, [tg, nm])
+		if tag != null:
+			tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(tag)
+		lv.add_child(Ui.margin(h, 0, 3, 0, 3))
+	B.add_child(Ui.margin(lv, 0, 6, 0, 0))
 
 
 func click(mp: Vector2) -> void:
@@ -114,14 +174,20 @@ func _panel_build() -> void:
 	B.add_child(Ui.margin(W._note("Старт — %s. Клікайте на мапі міста по черзі: куди доставити й де забрати вантаж. Останнім — хаб чи термінал, куди машина повезе решту. Ctrl+Z прибирає останню зупинку." % A.name), 0, 4, 0, 0))
 	# the kind of transport
 	B.add_child(_sect("Вид транспорту"))
-	var ms := ["road", "rail", "sea", "air"].filter(func(m): return sim.node_ok(m, A))
-	if not ms.has(st.m):
+	var ms := ["road", "rail", "sea", "air"]
+	if not sim.node_ok(st.m, A):
 		st.m = "road"
-	B.add_child(_seg_eq(ms.map(func(m): return [m, MODE_N[m]]), st.m, func(x):
+	var mseg := _seg_eq(ms.map(func(m): return [m, MODE_N[m]]), st.m, func(x):
 		st.m = x
 		st.way = []
 		st.vid = -2
-		_panel_build()))
+		_panel_build())
+	var mb: Array = mseg.get_child(0).get_children()
+	for k in ms.size():   # no station, port or airport at the start: the kind shown, not chosen
+		if not sim.node_ok(ms[k], A):
+			mb[k].disabled = true
+			mb[k].tooltip_text = "У %s немає %s" % [A.name, {"rail": "залізничної станції", "sea": "порту", "air": "аеропорту"}.get(ms[k], "дороги")]
+	B.add_child(mseg)
 	# who drives
 	B.add_child(_sect("Хто їде"))
 	var cars := []
@@ -138,24 +204,6 @@ func _panel_build() -> void:
 	B.add_child(dd)
 	if st.vid < 0:   # partners know the market: they keep most of the pay for their part of the way
 		B.add_child(Ui.margin(W._note(("Вільної власної техніки цього виду тут немає. " if cars.size() == 1 else "") + "Партнер забирає ≈85% оплати вантажів за свою ділянку і бере плату за бронювання: це вихід, щоб не зірвати дедлайн, а заробіток — на власній техніці.", Ui.WARN, 12), 0, 4, 0, 0))
-	# the stops
-	# the cargo this was opened for: where it is and where it goes (waves on the map too)
-	var fl := Ui.vbox(2)
-	for fid in st.foci.duplicate():
-		var fc: Variant = sim._cs(fid)
-		if fc == null:
-			st.foci.erase(fid)
-			continue
-		var f_: int = fid
-		var ln := W._icl("box", "%s: %s → %s" % [sim.cargo_i[fc.k.cg].n, sim.PL[fc.at].name, sim.PL[fc.k.to].name], Ui.ACCENT, 12)
-		ln.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var x := MapUi._xbtn(func():
-			st.foci.erase(f_)
-			_panel_build())
-		x.tooltip_text = "Прибрати з позначених"
-		fl.add_child(Ui.hbox(6, [ln, x]))
-	if fl.get_child_count():
-		B.add_child(Ui.margin(fl, 0, 8, 0, 0))
 	# the plan of the route as it is now (what each stop loads and unloads goes into the route's rows)
 	_spec = {}
 	_C = {}
@@ -174,67 +222,11 @@ func _panel_build() -> void:
 	B.add_child(NetWin.new(_wins()).way_editor(st, _panel_build))
 	if st.way.is_empty():
 		B.add_child(Ui.margin(W._note("Клікніть на мапі перше місто маршруту.", Ui.MUTED), 0, 6, 0, 0))
+		_cargo_list(B)
 		_end(B, keep)
 		return
 	var C: Dictionary = _C
-	# the cargo
-	var listed := []
-	for row in C.rows:
-		listed.append(row.c)
-	# the rest of the cargo along the route: off until switched on, or no room for it in the vehicle
-	var on_route := {}
-	for row in C.rows:
-		on_route[row.c.id] = true
-	var sk := _skip_eff()
-	var full := []
-	var all_st: Array = _spec.stops
-	for c in sim.CO.net.cs:
-		if on_route.has(c.id) or c.run >= 0 or not (c.st == "ready" or c.st == "wait" or c.st == "proc"):
-			continue
-		var i0: int = all_st.find(c.at)
-		if (i0 >= 0 and i0 < all_st.size() - 1 and all_st.slice(i0 + 1).has(c.k.to)) or st.skip.has(c.id):
-			if not sk.has(c.id):
-				full.append(c)
-			listed.append(c)
-	B.add_child(_sect("Вантажі в рейсі"))
-	if listed.is_empty():
-		B.add_child(W._note("Для цих зупинок вантажів зараз немає: додайте міста, куди їдуть вантажі зі старту, або де вони чекають.", Ui.MUTED))
-	var rows := {}
-	for row in C.rows:
-		rows[row.c.id] = row
-	for c in listed:
-		var row: Variant = rows.get(c.id)
-		var cid: int = c.id
-		# the cargo, its weight, and how it ends as a tag: on time, late by…, to a warehouse, not going
-		var tag: Control
-		if row == null and full.has(c):
-			tag = Ui.pill("не вміщується", "bad", "alert")
-			tag.tooltip_text = W._tip("Не вміщується", "%s т не влазять у машину разом з іншими: оберіть більшу техніку або вимкніть інший вантаж." % Ui.loc(c.k.tons))
-		elif row == null:
-			tag = Ui.pill("не їде", "")
-		elif not row.dest:
-			tag = Ui.pill("на склад · %s" % sim.PL[_spec.stops[row.off]].name, "acc", "building")
-		elif row.late <= 0:
-			tag = Ui.pill("вчасно", "good", "check")
-		else:
-			tag = Ui.pill("затримка %s" % Ui.days(row.late), "bad", "alert")
-		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.at].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)   # from where it is now
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var tg := W._toggle(row != null, func():
-			if full.has(c):   # no room: nothing to switch on
-				return
-			if row != null:   # off: the order stays marked on the map, it just does not go on this run
-				st.incl.erase(cid)
-				st.skip[cid] = true
-			else:
-				st.skip.erase(cid)
-				if not st.foci.has(cid):
-					st.incl[cid] = true
-			_panel_build())
-		if full.has(c):
-			tg.disabled = true
-		B.add_child(Ui.margin(Ui.hbox(8, [tg, nm, tag]), 0, 2, 0, 2))
+	_cargo_list(B)
 	# the sums
 	B.add_child(_sect("Рейс"))
 	var own: bool = st.vid >= 0
