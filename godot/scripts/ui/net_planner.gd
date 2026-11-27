@@ -129,6 +129,7 @@ func _panel_build() -> void:
 	_spec = {}
 	_C = {}
 	st.cnt = {}
+	st.planned = st.way.size() > 0
 	if st.way.size():
 		_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, st.skip)
 		st.auto_end = _spec.get("auto_end", -1)
@@ -153,6 +154,19 @@ func _panel_build() -> void:
 		var c: Variant = sim._cs(id)
 		if c != null:
 			listed.append(c)
+	# cargo the route could take but the vehicle has no room for: shown, not loaded
+	var on_route := {}
+	for row in C.rows:
+		on_route[row.c.id] = true
+	var full := []
+	var all_st: Array = _spec.stops
+	for c in sim.CO.net.cs:
+		if on_route.has(c.id) or st.skip.has(c.id) or c.run >= 0 or not (c.st == "ready" or c.st == "wait" or c.st == "proc"):
+			continue
+		var i0: int = all_st.find(c.at)
+		if i0 >= 0 and i0 < all_st.size() - 1 and all_st.slice(i0 + 1).has(c.k.to):
+			full.append(c)
+			listed.append(c)
 	B.add_child(_sect("Вантажі в рейсі"))
 	if listed.is_empty():
 		B.add_child(W._note("Для цих зупинок вантажів зараз немає: додайте міста, куди їдуть вантажі зі старту, або де вони чекають.", Ui.MUTED))
@@ -164,7 +178,10 @@ func _panel_build() -> void:
 		var cid: int = c.id
 		# the cargo, its weight, and how it ends as a tag: on time, late by…, to a warehouse, not going
 		var tag: Control
-		if row == null:
+		if row == null and full.has(c):
+			tag = Ui.pill("не вміщується", "bad", "alert")
+			tag.tooltip_text = W._tip("Не вміщується", "%s т не влазять у машину разом з іншими: оберіть більшу техніку або вимкніть інший вантаж." % Ui.loc(c.k.tons))
+		elif row == null:
 			tag = Ui.pill("не їде", "")
 		elif not row.dest:
 			tag = Ui.pill("на склад · %s" % sim.PL[_spec.stops[row.off]].name, "acc", "building")
@@ -175,12 +192,17 @@ func _panel_build() -> void:
 		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.k.from].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		B.add_child(Ui.margin(Ui.hbox(8, [W._toggle(row != null, func():
+		var tg := W._toggle(row != null, func():
+			if full.has(c):   # no room: nothing to switch on
+				return
 			if st.skip.has(cid):
 				st.skip.erase(cid)
 			else:
 				st.skip[cid] = true
-			_panel_build()), nm, tag]), 0, 2, 0, 2))
+			_panel_build())
+		if full.has(c):
+			tg.disabled = true
+		B.add_child(Ui.margin(Ui.hbox(8, [tg, nm, tag]), 0, 2, 0, 2))
 	# the sums
 	B.add_child(_sect("Рейс"))
 	var own: bool = st.vid >= 0
@@ -226,7 +248,7 @@ func _panel_build() -> void:
 		B.add_child(Ui.margin(W._note("Рейс повторюватиметься сам — щоразу з тим, що на той момент чекає на цих зупинках.", Ui.MUTED, 12), 0, 4, 0, 0))
 	# the buttons
 	var bs := Ui.hbox(8)
-	bs.add_child(W._btn("Очистити маршрут", "sm", "trash", clear_route, true))
+	bs.add_child(W._btn("Очистити маршрут", "", "trash", clear_route, true))
 	bs.add_child(Ui.spacer())
 	if st.every > 0:
 		bs.add_child(W._btn("Створити лінію", "pri", "refresh", _make_line, C.ok or C.rows.is_empty(), W._tip("Лінія за розкладом", "Перший рейс — зараз, якщо вантаж уже є й заповнення досягнуто, далі кожні %d дн." % st.every)))

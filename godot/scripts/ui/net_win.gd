@@ -551,6 +551,12 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	var way: Array = st.way
 	var cnt: Dictionary = st.get("cnt", {})   # stop index (0 — the start) → [loaded, unloaded] on this run
 	# a stop: ↓ where cargo is loaded, ↑ where it is unloaded (a count when several), the town's name
+	var planned: bool = st.get("planned", false)   # the route panel: what the plan does, no guesses
+	var arrow := func(t: String, tip: String) -> Label:
+		var l := Ui.label(t, 15, Ui.FG2, Ui.font("body", 700))
+		l.tooltip_text = tip
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		return l
 	var row := func(i: int, pid: int, note: String) -> Control:
 		var h := Ui.hbox(6)
 		var on := 0
@@ -558,20 +564,22 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		if cnt.has(i):
 			on = cnt[i][0]
 			off = cnt[i][1]
-		elif i > 0:   # no plan yet: what could happen there
+		elif i > 0 and not planned:   # no plan yet: what could happen there
 			for c in sim.CO.net.cs:
 				if c.run < 0 and c.st != "move":
 					if c.k.to == pid and (c.at == st.a or way.slice(0, i - 1).has(c.at)):
 						off += 1
 					if c.at == pid:
 						on += 1
+		# ↓ loading, ↑ unloading, ← the start of an empty run; a tooltip on each
 		var marks := Ui.hbox(2)
 		marks.custom_minimum_size.x = 30
-		for e in [[on, "down", Planner.DEP, "Завантаження"], [off, "up", Planner.ARR, "Вивантаження"]]:
-			if e[0] > 0:
-				var ic := Ui.icon(e[1], 15, e[2], 2.2)
-				ic.tooltip_text = e[3] + ((" · %d" % e[0]) if e[0] > 1 else "")
-				marks.add_child(ic)
+		if i == 0 and on == 0 and way.size():
+			marks.add_child(arrow.call("←", "Перегін: машина їде з %s порожньою до першої зупинки" % _pl(pid)))
+		if on > 0:
+			marks.add_child(arrow.call("↓", "Завантаження" + ((" · %d" % on) if on > 1 else "")))
+		if off > 0:
+			marks.add_child(arrow.call("↑", "Вивантаження" + ((" · %d" % off) if off > 1 else "")))
 		if marks.get_child_count() == 0:
 			marks.add_child(Ui.icon(MODE_IC[st.m] if i > 0 else ("building" if sim.hub_at(pid) != null else "pin"), 14, Ui.MUTED))
 		h.add_child(marks)
@@ -579,10 +587,6 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		for e in [on, off]:
 			if e > 1:   # several in one town: a count, like a fleet's ×N
 				h.add_child(Ui.pill("×%d" % e))
-		if i == 0 and on == 0 and way.size():   # nothing loaded at the start: the vehicle drives empty to its first stop
-			var pg := Ui.label("перегін", 12, Ui.MUTED)
-			pg.tooltip_text = "Машина їде з %s порожньою до першої зупинки, де забирає вантаж." % _pl(pid)
-			h.add_child(pg)
 		if note != "":
 			h.add_child(Ui.label(note, 12, Ui.MUTED))
 		return h
@@ -590,7 +594,7 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	for i in way.size():
 		v.add_child(row.call(i + 1, way[i], ""))
 	if st.get("auto_end", -1) >= 0 and way.size():   # the nearest hub, added for the cargo picked up on the way
-		var r: Control = row.call(way.size() + 1, st.auto_end, "автоматично")
+		var r: Control = row.call(way.size() + 1, st.auto_end, "")
 		r.tooltip_text = "Маршрут закінчується містом, де вантаж не вивантажується: машина відвезе його в найближчий хаб і залишить на складі. Клікніть інший хаб останнім, щоб везти туди."
 		r.modulate.a = .75
 		v.add_child(r)
