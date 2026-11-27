@@ -719,8 +719,14 @@ func _on_world(w: Dictionary) -> void:
 		elif _args.has("days"):
 			session.run_days(int(_args.days))
 		session.set_speed(int(_args.get("speed", "0")))
+		if _args.get("select", "") == "net" and session.sim.alt():   # test: the day goes on until a run of the network is on the road
+			var sm := session.sim
+			for f in 16:
+				if sm.CO.jobs.any(func(x): return x.get("net") != null and x.vids.size()):
+					break
+				sm.co_frame(minf(.99, sm.co_now() - sm.day + 1 / 16.0))
 		if _args.has("select") and session.sim.CO.jobs.size():
-			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret") and (String(_args.select) in ["", "true"] or x.mode == _args.select))
+			var js: Array = session.sim.CO.jobs.filter(func(x): return not x.get("ret") and (String(_args.select) in ["", "true"] or x.mode == _args.select or (_args.select == "net" and x.get("net") != null and x.vids.size())))
 			map_ui.select_job(js[0] if js.size() else session.sim.CO.jobs[0], true)
 		if _args.has("plan"):
 			if _args.plan == "road" and _args.has("sandbox"):   # test: plenty of vehicles and every licence first

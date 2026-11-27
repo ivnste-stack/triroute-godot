@@ -680,6 +680,14 @@ func _follow() -> void:
 			_card.visible = false
 		return
 	if not sim.CO.jobs.any(func(x): return is_same(x, j)):
+		var r: Variant = _net_run(j)
+		if r != null:   # a run of the network between two legs: the next leg, or the card while it loads
+			for x in sim.CO.jobs:
+				if x.get("net") != null and x.net.run == r.id:
+					map.vehicles.selected = x
+					_build_card()
+					return
+			return
 		close_card()
 		return
 	if follow:
@@ -691,6 +699,15 @@ func _follow() -> void:
 			map.camera.ttz = q[1]
 		else:
 			follow = false
+
+
+func _net_run(j: Variant) -> Variant:
+	if j == null or j.get("net") == null or not sim.alt():
+		return null
+	for r in sim.CO.net.runs:
+		if r.id == j.net.run:
+			return r
+	return null
 
 
 ## placeUnitCard: next to its vehicle, on the side away from the screen edge
@@ -740,6 +757,19 @@ func build_card_for(j: Dictionary) -> void:
 	var T: Dictionary = D.VT[j.t]
 	var ret: bool = j.get("ret", false)
 	var cg: Dictionary = {"n": "Повернення в хаб", "val": 0} if ret else sim.cargo_i[j.k.cg]
+	var run: Variant = _net_run(j)   # the alternative balance: the whole run, every stop
+	var live: bool = sim.CO.jobs.any(func(x): return is_same(x, j))   # false: the run loads at a stop
+	var ncs: Array = sim.CO.net.cs.filter(func(c): return c.run == run.id) if run != null else []
+	var onb := 0.0
+	var names := {}
+	for c in ncs:
+		names[sim.cargo_i[c.k.cg].n] = 1
+		# on board: loaded and not yet off; on the empty run to the stop the vehicle loads at, what waits there
+		# is not on board yet
+		if c.st == "move" and not (live and c.get("on_i", -1) == run.i and sim.co_now() - j.t0 < j.get("tl", 0.0)):
+			onb += c.k.tons
+	if run != null:
+		cg = {"n": names.keys()[0] if names.size() == 1 else "Збірні вантажі: %d" % ncs.size(), "val": 0}
 	var back: bool = j.get("back", false)
 	var A: Dictionary = sim.PL[j.k.to if back else j.k.from]
 	var B: Dictionary = sim.PL[j.k.from if back else j.k.to]
@@ -752,21 +782,38 @@ func build_card_for(j: Dictionary) -> void:
 	if ret:
 		rows = [["Техніка", T.n], ["Рейс", "Порожній, повернення в хаб"], ["Відстань", Ui.km(j.len)], ["Етап", st.ph]]
 	else:
-		rows.append(["Техніка", T.n + ((" ×%d" % j.n) if j.get("n", 1) > 1 else "")])
-		rows.append(["Вантаж", "%s, %s т" % [cg.n, Ui.loc(j.k.tons)]])
+		rows.append(["Техніка", "%s%s · %s т" % [T.n, (" ×%d" % j.n) if j.get("n", 1) > 1 else "", Ui.loc(T.cap)]])
+		if run != null:
+			var tons := 0.0
+			for c in ncs:
+				tons += c.k.tons
+			rows.append(["Вантаж", "%s · %s т" % [cg.n, Ui.loc(tons)]])
+		else:
+			rows.append(["Вантаж", "%s · %s т" % [cg.n, Ui.loc(j.k.tons)]])
 		if j.get("lp") and j.lp.plan.legs.size() > 1:
 			var legs: Array = j.lp.plan.legs
 			rows.append(["Маршрут", "ділянка %d з %d: %s" % [j.lp.i + 1, legs.size(), " → ".join(PackedStringArray(legs.map(func(L): return LP_N[L.m])))]])
 		if j.k.get("fs"):
 			rows.append(["Відправник", j.k.fs])
 			rows.append(["Отримувач", j.k.ft])
-		rows.append(["Вартість вантажу", Ui.usd(j.k.tons * cg.val)])
-		rows.append(["Оплата", Ui.usd(j.k.pay)])
+		if run != null:
+			var vs := 0.0
+			var pay := 0.0
+			for c in ncs:
+				vs += c.k.tons * sim.cargo_i[c.k.cg].val
+				pay += c.k.pay
+			rows.append(["Вартість вантажу", Ui.usd(vs)])
+			rows.append(["Оплата", Ui.usd(pay)])
+		else:
+			rows.append(["Вартість вантажу", Ui.usd(j.k.tons * cg.val)])
+			rows.append(["Оплата", Ui.usd(j.k.pay)])
 		rows.append(["Відстань", Ui.km(j.lead + j.len)])
 		if j.get("hold", 0) > 0:
 			rows.append(["Етап", "Захоплено піратами" if j.get("seized") else "Затримано", Ui.BAD])
 		elif st.get("inc") != null:
 			rows.append(["Етап", st.ph, Ui.BAD if SimIncidents.INC_RED.has(st.inc.k) else Ui.WARN])
+		elif run != null and not live:
+			rows.append(["Етап", ("Завантаження в %s" if run.vid >= 0 else "Чекає партнера в %s") % sim.PL[run.stops[run.i]].name])
 		else:
 			rows.append(["Етап", st.ph])
 		rows.append(["Термін", "запізнення %.1f дн." % late_by, Ui.BAD] if late_by > .05 else ["Термін", "встигаємо", Ui.GOOD])
@@ -774,7 +821,10 @@ func build_card_for(j: Dictionary) -> void:
 		rows.append(["Пошкодження", "%.0f%%" % (j.dmg * 100), Ui.WARN])
 	if j.get("lost"):
 		rows.append(["Вантаж", "втрачено", Ui.BAD])
-	rows.append(["Прибуття через", Ui.days(left)])
+	if run != null and not live:
+		rows.append(["Рушить через", Ui.days(maxf(0, run.t_dep - sim.co_now()))])
+	else:
+		rows.append(["Прибуття через", Ui.days(left)])
 	# head
 	var ic := PanelContainer.new()
 	ic.custom_minimum_size = Vector2(40, 40)
@@ -793,14 +843,32 @@ func build_card_for(j: Dictionary) -> void:
 	# the route
 	var rt := PanelContainer.new()
 	rt.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE, 1, Vector4(10, 10, 10, 10)))
-	rt.add_child(Ui.vbox(2, [Ui.hbox(8, [_flag(A.cid, 24, 16), Ui.label(A.name, 14)]), _left(Ui.margin(Ui.icon("down", 14, Ui.MUTED), 4, 0, 0, 0)), Ui.hbox(8, [_flag(B.cid, 24, 16), Ui.label(B.name, 14)])]))
+	if run != null:   # every stop of the run: ↓ loading, ↑ unloading, the leg under way bright
+		var sv := Ui.vbox(3)
+		for i in run.stops.size():
+			var pid: int = run.stops[i]
+			var on: int = run.picks.get(i, []).size()
+			var off: int = run.offn.get(i, 0)
+			var mk := ("↓" if on else "") + ("↑" if off else "")
+			var now_leg: bool = i == run.i or (live and i == run.i + 1)
+			var ar := Ui.label(mk if mk != "" else "·", 14)   # the glyph of the board's arrows
+			ar.custom_minimum_size.x = 26
+			var nm := Ui.label(sim.PL[pid].name, 14, Ui.FG if now_leg else Ui.MUTED, Ui.font("body", 600) if now_leg else null)
+			sv.add_child(Ui.hbox(6, [ar, _flag(sim.PL[pid].cid, 24, 16), nm]))
+		rt.add_child(sv)
+	else:
+		var ar := Ui.label("↓", 14)   # the glyph of the board's arrows
+		rt.add_child(Ui.vbox(2, [Ui.hbox(8, [_flag(A.cid, 24, 16), Ui.label(A.name, 14)]), _left(Ui.margin(ar, 6, 0, 0, 0)), Ui.hbox(8, [_flag(B.cid, 24, 16), Ui.label(B.name, 14)])]))
 	body.add_child(rt)
 	# the vehicle and its hold: empty on the way to the cargo, filling while it loads, full on the road,
 	# emptying while it unloads
 	var nv: int = j.get("n", 1)
 	var load := 0.0
 	var ltxt := ""
-	if not ret:
+	if run != null:   # the hold as it is now: what is on board, the stops before it loaded and unloaded
+		load = clampf(onb / maxf(.01, T.cap), 0, 1)
+		ltxt = "%s т з %s т" % [Ui.loc(onb), Ui.loc(T.cap)]
+	elif not ret:
 		var lw: float = j.k.tons / maxf(.01, T.cap * nv)
 		var lv: float = sim.k_vol(j.k) / maxf(.01, T.get("vol", 1e9) * nv) if T.get("vol", 0) else 0.0
 		load = clampf(maxf(lw, lv), 0, 1)
@@ -808,7 +876,9 @@ func build_card_for(j: Dictionary) -> void:
 	var ph := 0.0
 	var hs: float = j.get("hs", 0.0)
 	var tl: float = j.get("tl", 0.0)
-	if ret or e < tl:
+	if run != null:
+		ph = 1.0   # the hold shows what is on board, between the stops too
+	elif ret or e < tl:
 		ph = 0.0
 	elif hs > 0 and e < tl + hs:
 		ph = (e - tl) / hs
@@ -838,20 +908,22 @@ func build_card_for(j: Dictionary) -> void:
 		kv.add_child(k)
 		var vv := Ui.label(r[1], 12, r[2] if r.size() > 2 else Ui.FG, Ui.font("mono", 500))
 		vv.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		vv.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		vv.custom_minimum_size.x = 150
+		if String(r[1]).length() > 26 and r[0] != "Вантаж":   # long phrases wrap; the cargo and its tons, numbers stay on one line
+			vv.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			vv.custom_minimum_size.x = 150
 		kv.add_child(vv)
 	body.add_child(kv)
-	var pr := Ui.vbox(6, [_row_sp(Ui.lbl("Маршрут" if ret else "Маршрут · відкрити замовлення ›"), Ui.num("%d%%" % int(prog * 100), 12, Ui.MUTED)), W._meter(prog, Ui.ACCENT, 0, j.get("hold", 0) <= 0 and (st.seg < 0 or st.get("inc") != null))])
+	if run != null and not live:
+		prog = 1.0
+	var pr := Ui.vbox(6, [_row_sp(Ui.lbl("Маршрут" if ret else "Маршрут · відкрити замовлення ›"), Ui.num("%d%%" % int(prog * 100), 12, Ui.MUTED) if live else Ui.label("", 12)),
+		W._meter(prog, Ui.ACCENT, 0, (run != null and not live) or (j.get("hold", 0) <= 0 and (st.seg < 0 or st.get("inc") != null)))])
 	if not ret:
-		var op := PanelContainer.new()
+		var op := HoverPanel.new()
 		op.add_theme_stylebox_override("panel", Ui.box(Color.TRANSPARENT, Color.TRANSPARENT, 1, Vector4(8, 8, 8, 8)))
 		op.add_child(pr)
 		op.mouse_filter = Control.MOUSE_FILTER_STOP
 		op.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		op.tooltip_text = "Відкрити в «Рейси в дорозі»"
-		op.mouse_entered.connect(func(): op.add_theme_stylebox_override("panel", Ui.box(Color(4 / 255.0, 9 / 255.0, 14 / 255.0, .55), Ui.LINE, 1, Vector4(8, 8, 8, 8))))
-		op.mouse_exited.connect(func(): op.add_theme_stylebox_override("panel", Ui.box(Color.TRANSPARENT, Color.TRANSPARENT, 1, Vector4(8, 8, 8, 8))))
 		op.gui_input.connect(func(ev): if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT: open_window.emit("coTrips"))
 		body.add_child(Ui.margin(op, -8, 2, -8, 0))
 	else:
@@ -1146,3 +1218,20 @@ func fly(pid: int) -> void:
 	map.camera.ttx = p.x
 	map.camera.ttz = p.z + .12
 	map.camera.tdist = minf(map.camera.tdist, 2.4)
+
+
+
+## a panel that draws its hover itself, from where the pointer is: rebuilt under the pointer, it shows it at once
+class HoverPanel extends PanelContainer:
+	var _hot := false
+
+	func _process(_d: float) -> void:
+		var h := get_global_rect().has_point(get_global_mouse_position()) and is_visible_in_tree()
+		if h != _hot:
+			_hot = h
+			queue_redraw()
+
+	func _draw() -> void:
+		if _hot:
+			var sb := Ui.box(Color(4 / 255.0, 9 / 255.0, 14 / 255.0, .55), Ui.LINE, 1)
+			sb.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))

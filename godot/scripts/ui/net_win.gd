@@ -59,7 +59,8 @@ func board(body: VBoxContainer) -> void:
 		st[c.st] = st.get(c.st, 0) + 1
 	body.add_child(Windows._grid(3, [
 		Windows._stat("На біржі", str(sim.net_board_n()), "до %d одночасно" % sim.co_board_max(), Windows._tip("Біржа", "Відправники ближче до ваших хабів замовляють більше. Кожен рівень хабу, модуль терміналу й комерційний директор додають місць на біржі.")),
-		Windows._stat("Вантажів у мережі", str(CO.net.cs.size()), "чекають %d · на складах %d · у дорозі %d" % [st.get("wait", 0), st.get("ready", 0) + st.get("proc", 0), st.get("move", 0)]),
+		Windows._stat("Вантажів у мережі", str(CO.net.cs.size()), "чекають %d · склад %d · їдуть %d" % [st.get("wait", 0), st.get("ready", 0) + st.get("proc", 0), st.get("move", 0)],
+			Windows._tip("Вантажі в мережі", "Чекають у відправника, лежать на складах терміналів, їдуть у рейсах.")),
 		Windows._stat("Рейсів", str(CO.net.runs.size()), "ліній за розкладом: %d" % CO.net.lines.size())]))
 	body.add_child(Ui.hint("[b]Альтернативний баланс: мережа терміналів.[/b] «Взяти в роботу» — і вантаж чекає у відправника. Забирайте його кільцевими рейсами з хабів, збирайте на складах, везіть магістралями (своєю технікою або партнерами) і розвозьте по містах. Чим більше вантажів в одному рейсі, тим дешевше кожен: це і є прибуток. Вікна «Прийняті вантажі» й «Термінали» — ваші склади, рейси й лінії.", "layers"))
 	contracts(body)
@@ -602,6 +603,27 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		v.add_child(r)
 	if st.get("back", false) and way.size():
 		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
+	if st.has("foci"):   # the route panel: «Додати замовлення» marks an order on the map, the route stays the player's
+		var A: Dictionary = sim.PL[st.a]
+		var os := []
+		for c in sim.CO.net.cs:
+			if c.run >= 0 or st.foci.has(c.id) or not (c.st == "wait" or c.st == "ready" or c.st == "proc"):
+				continue
+			if not sim.node_ok(st.m, sim.PL[c.at]) or ((st.m == "road" or st.m == "rail") and sim.PL[c.at].land != A.land):
+				continue
+			os.append(c)
+		os.sort_custom(func(x, y): return x.dl < y.dl)
+		var oo := []
+		for c in os.slice(0, 20):
+			oo.append([c.id, "%s → %s · %s т · до дедлайну %s" % [_pl(c.at), _pl(c.k.to), Ui.loc(c.k.tons), Ui.days(maxf(0, c.dl - sim.co_now()))], sim.cargo_i[c.k.cg].ic])
+		if oo.size():
+			var dd := Dropdown.make(oo, null, func(cid):
+				st.foci.append(cid)
+				redraw.call())
+			dd.placeholder = "Додати замовлення"
+			dd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			v.add_child(Ui.margin(dd, 0, 4, 0, 0))
+		return v
 	# a town picked from the list goes to the end of the route, as a click on the map does
 	var cands := sim.net_way_cands(st.a, way, st.m, st.get("back", false))
 	var opts := []

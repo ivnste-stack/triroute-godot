@@ -217,7 +217,7 @@ static func _meter(frac: float, col: Color = Ui.ACCENT, w: float = 0, hand := fa
 	fg.color = col
 	fg.hand = hand
 	fg.anchor_bottom = 1
-	fg.anchor_right = clampf(frac, 0, 1)
+	fg.anchor_right = 1.0 if hand else clampf(frac, 0, 1)   # loading, unloading, held up: stripes the whole length
 	bg.add_child(fg)
 	return bg
 
@@ -1072,7 +1072,13 @@ func _job_row(j: Dictionary) -> PanelContainer:
 	var e: float = sim.co_now() - j.t0
 	var stt := sim.co_job_state(j, e)
 	var T: Dictionary = D.VT[j.t]
-	var cg_n: String = "повернення в хаб" if j.get("ret") else ("вантажів мережі: %d" % j.net.n if j.get("net") != null else sim.cargo_i[j.k.cg].n)
+	var cg_n: String = "повернення в хаб" if j.get("ret") else sim.cargo_i[j.k.cg].n
+	if j.get("net") != null and not j.get("ret"):   # a run of the network: its cargo's name, or how many it carries
+		var ns := {}
+		for c in sim.CO.net.cs:
+			if c.run == j.net.run:
+				ns[sim.cargo_i[c.k.cg].n] = 1
+		cg_n = ns.keys()[0] if ns.size() == 1 else "збірні вантажі: %d" % j.net.n
 	var prog := clampf(e / j.tot, 0, 1)
 	var left := maxf(0, j.tot - e)
 	var late_by: float = sim.day + left - j.dl
@@ -1129,10 +1135,10 @@ static func tick_trips(sim: Sim, tree: SceneTree) -> void:
 				n.text = txt
 		else:
 			var fg: MeterFill = n.get_child(0)
-			fg.anchor_right = clampf(e / j.tot, 0, 1)
 			var stt := sim.co_job_state(j, e)
 			fg.color = Ui.BAD if j.get("lost", false) or (stt.get("inc") != null and SimIncidents.INC_RED.has(stt.inc.k)) else Ui.ACCENT
-			fg.hand = stt.seg < 0 or stt.get("inc") != null   # loading, unloading or held up: running stripes
+			fg.hand = stt.seg < 0 or stt.get("inc") != null   # loading, unloading or held up: running stripes the whole length
+			fg.anchor_right = 1.0 if fg.hand else clampf(e / j.tot, 0, 1)
 
 
 func _trips(body: VBoxContainer) -> void:
@@ -1193,7 +1199,7 @@ func _load_row(r: Dictionary) -> PanelContainer:
 	head.add_child(Ui.label("%s · вантажів мережі: %d · %s т" % [T.n if v != null else "Партнер-перевізник", n, Ui.loc(tons)], 13, Ui.FG2))
 	var left := maxf(0, r.t_dep - sim.co_now())
 	var what: String = ("Завантаження в %s" if r.vid >= 0 else "Чекає відправлення партнера в %s") % _pl(r.stops[r.i])
-	var mid := Ui.vbox(5, [head, _meter(0.0, Ui.ACCENT, 0, true), Ui.rich("%s · рушить за %s" % [what, Ui.days(left)], 13)])
+	var mid := Ui.vbox(5, [head, _meter(1.0, Ui.ACCENT, 0, true), Ui.rich("%s · рушить за %s" % [what, Ui.days(left)], 13)])
 	return _lrow(T.ic, mid, Ui.num(Ui.usd(sim.net_run_pay(r.id)), 14))
 
 

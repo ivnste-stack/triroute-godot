@@ -811,7 +811,10 @@ func net_go(spec: Dictionary, by_line: bool = false) -> Dictionary:
 	var stops: Array = spec.stops.duplicate()
 	var own: bool = spec.get("vid", -1) >= 0
 	var m: String = D.VT[_veh(spec.vid).t].mode if own else spec.m
-	var r := {"id": rid, "vid": spec.get("vid", -1), "m": m, "stops": stops, "picks": {}, "i": 0, "st": "load", "t_dep": 0.0, "line": spec.get("line", -1), "cost": 0.0, "rev": 0.0, "job": -1}
+	var r := {"id": rid, "vid": spec.get("vid", -1), "m": m, "stops": stops, "picks": {}, "i": 0, "st": "load", "t_dep": 0.0, "line": spec.get("line", -1), "cost": 0.0, "rev": 0.0, "job": -1,
+		"offn": {}}
+	for row in C.rows:   # what each stop unloads (kept for the trip card, the cargo itself leaves the run there)
+		r.offn[row.off] = r.offn.get(row.off, 0) + 1
 	for row in C.rows:
 		var c: Dictionary = row.c
 		c.run = rid
@@ -929,7 +932,6 @@ func _run_leg(r: Dictionary) -> bool:
 			W += q.w
 	j.tot = j.tl + j.tm + j.cust + .04 + W
 	j.net = {"run": r.id, "leg": i, "n": cs.size()}
-	j.ev.append("Вантажів у рейсі: %d · %s т" % [cs.size(), JS.fixed1(tons)])
 	r.st = "go"
 	r.job = j.id
 	r.why = ""

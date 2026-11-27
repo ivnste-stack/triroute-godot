@@ -17,7 +17,9 @@ var _C := {}
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
 	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
-		"focus": int(args.get("focus", -1))}
+		"focus": int(args.get("focus", -1)), "foci": []}
+	if st.focus >= 0:
+		st.foci.append(st.focus)
 	LP = {"k": {}, "pts": [a], "modes": []}   # what the planner's own parts read
 	on = true
 	_prev_speed = session.speed
@@ -122,9 +124,22 @@ func _panel_build() -> void:
 		B.add_child(Ui.margin(W._note(("Вільної власної техніки цього виду тут немає. " if cars.size() == 1 else "") + "Партнер забирає ≈85% оплати вантажів за свою ділянку і бере плату за бронювання: це вихід, щоб не зірвати дедлайн, а заробіток — на власній техніці.", Ui.WARN, 12), 0, 4, 0, 0))
 	# the stops
 	# the cargo this was opened for: where it is and where it goes (waves on the map too)
-	var fc: Variant = sim._cs(st.focus) if st.focus >= 0 else null
-	if fc != null:
-		B.add_child(Ui.margin(W._icl("box", "%s: забрати в %s → доставити в %s" % [sim.cargo_i[fc.k.cg].n, sim.PL[fc.at].name, sim.PL[fc.k.to].name], Ui.ACCENT, 12), 0, 8, 0, 0))
+	var fl := Ui.vbox(2)
+	for fid in st.foci.duplicate():
+		var fc: Variant = sim._cs(fid)
+		if fc == null:
+			st.foci.erase(fid)
+			continue
+		var f_: int = fid
+		var ln := W._icl("box", "%s: забрати в %s → доставити в %s" % [sim.cargo_i[fc.k.cg].n, sim.PL[fc.at].name, sim.PL[fc.k.to].name], Ui.ACCENT, 12)
+		ln.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var x := MapUi._xbtn(func():
+			st.foci.erase(f_)
+			_panel_build())
+		x.tooltip_text = "Прибрати з позначених"
+		fl.add_child(Ui.hbox(6, [ln, x]))
+	if fl.get_child_count():
+		B.add_child(Ui.margin(fl, 0, 8, 0, 0))
 	# the plan of the route as it is now (what each stop loads and unloads goes into the route's rows)
 	_spec = {}
 	_C = {}
@@ -362,10 +377,11 @@ func _draw_route() -> void:
 			var r: Variant = sim.co_route(m, last, t)
 			if r != null:
 				map.vehicles._wdash_on(n, _path(r, m), Color(LP_C[m], .85), 2.4)
-	var fc: Variant = sim._cs(st.focus) if st.get("focus", -1) >= 0 else null
-	if fc != null:
-		_wave(n, sim.PL[fc.at], DEP)
-		_wave(n, sim.PL[fc.k.to], ARR)
+	for fid in st.get("foci", []):
+		var fc: Variant = sim._cs(fid)
+		if fc != null:
+			_wave(n, sim.PL[fc.at], DEP)
+			_wave(n, sim.PL[fc.k.to], ARR)
 	if not _C.is_empty():
 		var ons := {}
 		var offs := {}
