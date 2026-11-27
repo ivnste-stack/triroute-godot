@@ -1025,17 +1025,28 @@ func _on_world(w: Dictionary) -> void:
 			while not studio._ret.is_empty() and Time.get_ticks_msec() - t0 < 20000:
 				await get_tree().process_frame
 			print("TEST studio return: yaw %.3f, dist %.2f → %.2f" % [map.camera.yaw, d0, map.camera.dist])
-		if _args.has("subdemo"):   # test: a subtitle's preview, --subdemo=<seconds into it>
-			var it: Dictionary = studio.sub.duplicate()
-			it.dir = "center"
-			studio.preview_sub(it)
+		if _args.has("subdemo"):   # test: subtitles' previews — a card drifting right, bare text still
+			studio.preview_sub(studio.sub.duplicate())
 			var it2: Dictionary = studio.sub.duplicate()
-			it2.text = "Вантажівки · потяги · кораблі · літаки"
+			it2.title = "ВАНТАЖІВКИ · ПОТЯГИ · КОРАБЛІ"
+			it2.text = ""
+			it2.box = false
+			it2.drift = 0
 			it2.color = "#f1c453"
-			it2.size = 40
-			it2.font = "body"
-			it2.y = .2
+			it2.size = 56
+			it2.y = .18
 			studio.preview_sub(it2)
+			if _args.has("trips"):   # and trips all over the world, ×N per town
+				var t0 := Time.get_ticks_msec()
+				studio.act("trips", {"dens": int(_args.trips), "kinds": studio.opts.kinds.duplicate(), "seed": 7})
+				print("TEST studio trips ×%s: %d trips in %d ms, %d towns" % [_args.trips, session.sim.CO.jobs.size(), Time.get_ticks_msec() - t0, session.sim.PL.size()])
+				if _args.has("cleartrips"):
+					studio.act("clear_trips", {})
+					print("TEST studio trips cleared: %d left" % session.sim.CO.jobs.size())
+			if _args.has("hubwave"):
+				var h := studio._here()
+				h.spd = 200.0
+				studio.act("hubs", h)
 		if _args.has("studiodemo"):   # test: a way recorded with some buttons, saved, played as a take
 			for i in 5:
 				await get_tree().process_frame

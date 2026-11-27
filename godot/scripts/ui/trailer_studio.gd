@@ -27,7 +27,7 @@ var _body: VBoxContainer
 var _status: Label
 var _sub_layer: CanvasLayer   # the subtitles' preview, over everything
 
-var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "n_trips": 150, "ret": 5.0, "snap": true,
+var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true,
 	"kinds": {"road": true, "rail": true, "sea": true, "air": true}}
 var take_name := "take1"
 
@@ -50,9 +50,9 @@ var _render_take := {}
 
 # subtitles: the list and the one being edited
 var subs: Array = []
-var sub := {"text": "Будуйте логістичну імперію", "t0": 0.0, "dur": 6.0, "color": "#ffffff", "size": 64, "font": "display",
-	"y": .82, "dir": "ltr", "outline": 0, "shadow": true}
-var _sub_prev := {}           # {lbl, t, item}
+var sub := {"title": "Будуйте логістичну імперію", "text": "Вантажівки, потяги, кораблі й літаки по всьому світу", "t0": 0.0, "dur": 5.0,
+	"color": "#ffffff", "accent": "#5cc8f2", "size": 44, "font": "display", "x": .5, "box": true, "drift": 1,
+	"y": .8}
 
 
 func _init(main_: Node) -> void:
@@ -147,8 +147,13 @@ func _build() -> void:
 	var pb := W._btn("▶ Програти", "sm", "", func(): play(false), path.size() > 1 and not rec)
 	B.add_child(_fill([rb, pb]))
 	B.add_child(_fill([W._btn("До стандартного виду", "sm", "refresh", return_view, true,
-		"Плавно й повільно повертає камеру на північ і трохи віддаляє. Під час запису теж записується."),
+		"Плавно й повільно повертає камеру на північ і наближає чи віддаляє до обраного зуму. Під час запису теж записується."),
 		_slider_small(opts.ret, 2.0, 12.0, func(v): opts.ret = v, "с")]))
+	var mx: float = cam().world_size.x * 1.2
+	B.add_child(Ui.hbox(8, [_slider("Зум повернення", opts.ret_d, cam().min_dist, mx, func(v): opts.ret_d = v, "", 1),
+		W._btn("Поточний", "sm", "", func():
+			opts.ret_d = cam().dist
+			_build(), true, "Узяти зум, який зараз")]))
 	B.add_child(_fill([W._btn("Зберегти", "sm", "doc", save_take, path.size() > 1), W._btn("Відкрити", "sm", "folder" if Icons.has("folder") else "doc", func(): load_take(take_name))]))
 	var tk := _takes()
 	if tk.size():
@@ -182,9 +187,17 @@ func _build() -> void:
 		b.tooltip_text = "Показувати й створювати рейси: %s" % K[1]
 		kr.add_child(b)
 	B.add_child(kr)
-	B.add_child(_slider("Рейсів по карті", float(opts.n_trips), 20.0, 600.0, func(v): opts.n_trips = int(v), "", 0))
-	B.add_child(W._btn("Рейси по всій карті", "sm", "road", func(): act("trips", {"n": opts.n_trips, "kinds": opts.kinds.duplicate()}), true,
-		"Дає компанії техніку й ліцензії (пісочниця) і відправляє рейси обраними видами транспорту по всій карті."))
+	B.add_child(Ui.hbox(8, [Ui.label("Рейсів з кожного міста", 12, Ui.FG2), Ui.seg([[1, "×1"], [2, "×2"], [3, "×3"], [4, "×4"], [8, "×8"], [16, "×16"]], opts.dens, func(x):
+		opts.dens = x
+		_build())]))
+	B.add_child(_fill([W._btn("Рейси по всьому світу", "pri sm", "road", func(): act("trips", {"dens": opts.dens, "kinds": opts.kinds.duplicate(), "seed": randi()}), true,
+		"Рівномірно по всьому світу: з кожного міста стільки рейсів обраними видами транспорту до сусідніх міст, уже в дорозі. Гроші компанії не змінюються."),
+		W._btn("Прибрати рейси", "sm", "close", func(): act("clear_trips", {}), true, "Прибирає з мапи всі рейси")]))
+	B.add_child(_slider("Хабів за секунду", opts.hub_spd, 1.0, 40.0, func(v): opts.hub_spd = v, "", 0))
+	B.add_child(W._btn("Відкрити всі хаби", "sm", "building", func():
+		var h := _here()
+		h.spd = opts.hub_spd
+		act("hubs", h), true, "Міста одне за одним стають хабами компанії (помаранчеві квадрати), хвилею від місця, куди дивиться камера"))
 	B.add_child(W._note("Події — там, куди дивиться камера:", Ui.FG2, 12))
 	var ev := GridContainer.new()
 	ev.columns = 2
@@ -404,12 +417,12 @@ func _put_cam(x: float, z: float, d: float, y: float) -> void:
 	c.tyaw = y
 
 
-## «До стандартного виду»: north up (the nearest whole turn), the same point, a little farther — slowly
+## «До стандартного виду»: north up (the nearest whole turn), the same point, at the zoom chosen — slowly
 func return_view() -> void:
 	var c := cam()
 	var y0 := c.yaw
 	var y1 := roundf(y0 / TAU) * TAU
-	_ret = {"t": 0.0, "dur": opts.ret, "from": [c.tx, c.tz, c.dist, y0], "to": [c.tx, c.tz, minf(c.dist * 1.35 + .6, c.world_size.x * 1.2), y1]}
+	_ret = {"t": 0.0, "dur": opts.ret, "from": [c.tx, c.tz, c.dist, y0], "to": [c.tx, c.tz, clampf(opts.ret_d, c.min_dist, c.world_size.x * 1.2), y1]}
 
 
 func _process(delta: float) -> void:
@@ -447,6 +460,7 @@ func _process(delta: float) -> void:
 		var c := cam()
 		path.append([_rec_t, c.tx, c.tz, c.dist, c.yaw])
 	_tick_counters(dt)
+	_tick_hubs(dt)
 	_tick_sub(dt)
 	if rec or playing:
 		_show_status()
@@ -602,7 +616,15 @@ func _do(kind: String, a: Dictionary) -> void:
 					MapVis.toggle(key)
 			main.map.apply_vis()
 		"trips":
-			_trips(int(a.n), a.kinds)
+			_trips(int(a.get("dens", 2)), a.kinds, int(a.get("seed", 1)))
+		"clear_trips":
+			_clear_trips()
+		"hubs":
+			var q: Array = S.PL.filter(func(p): return S.hub_at(p.id) == null)
+			q.sort_custom(func(p1, p2): return Vector2(p1.x - a.x, p1.z - a.z).length() < Vector2(p2.x - a.x, p2.z - a.z).length())
+			_hubq = q.map(func(p): return p.id)
+			_hub_spd = float(a.get("spd", 8.0))
+			_hub_acc = 0.0
 		"jam":
 			var n0 := _road_node(a.x, a.z)
 			var put := 0
@@ -741,62 +763,148 @@ static func _pair_at(S: Sim, x: float, z: float) -> Array:
 	return [a, best] if best >= 0 else []
 
 
-## trips all over the map by the kinds chosen: plenty of vehicles and every licence (the sandbox), then the
-## board's orders sent off until there are n more
-func _trips(n: int, kinds: Dictionary) -> void:
+## trips evenly over the whole world: from every town `dens` trips by the kinds chosen to towns around it
+## (road and rail on its land, sea and air farther), already on their way — no vehicles of the company, no lead
+## from a hub, no pay: the picture of a busy world, the company's money untouched
+func _trips(dens: int, kinds: Dictionary, seed_: int) -> void:
 	var S := sim()
 	var CO: Dictionary = S.CO
-	if not CO.get("sandbox", false):   # vehicles and licences for every kind; the numbers in the top bar stay
-		var keep := [CO.cash, CO.rating, CO.tier]
-		main.sandbox()
-		CO.cash = maxf(keep[0], 5e6)   # enough for the trips, not a sandbox's trillion
-		CO.rating = keep[1]
-		if not main.hud.studio.has("lic"):
-			main.hud.studio.lic = float(keep[2])
-	var want: int = CO.jobs.size() + n
-	for i in 240:
-		if CO.jobs.size() >= want:
-			break
-		S.co_board_day()
-		for k in CO.board.duplicate():
-			if CO.jobs.size() >= want:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_
+	var ms: Array = KINDS.map(func(K): return K[0]).filter(func(m): return kinds.get(m, false))
+	if ms.is_empty():
+		return
+	var by_m := {}
+	for m in ms:
+		by_m[m] = S.PL.filter(func(p): return S.node_ok(m, p))
+	var vt := {}
+	for t in D_VT():
+		var T: Dictionary = D_VT()[t]
+		if not vt.has(T.mode) and not T.get("loc", 0) and T.tier <= 7:
+			vt[T.mode] = t
+	var now := S.co_now()
+	for A in S.PL:
+		for n in dens:
+			var cand: Array = ms.filter(func(m): return S.node_ok(m, A) and vt.has(m))
+			if cand.is_empty():
 				break
-			if not kinds.get(k.get("mode", "road"), false):
-				continue
-			var P: Dictionary = S.co_plan(k)
-			if P.ok:
+			var m: String = cand[rng.randi() % cand.size()]
+			var far: Vector2 = Vector2(.6, 5.0) if m == "road" or m == "rail" else Vector2(2.5, 12.0)
+			var pool: Array = by_m[m]
+			for tries in 14:
+				var B: Dictionary = pool[rng.randi() % pool.size()]
+				var d := Vector2(B.x - A.x, B.z - A.z).length()
+				if B.id == A.id or d < far.x or d > far.y or ((m == "road" or m == "rail") and B.land != A.land):
+					continue
+				var rr: Variant = S.co_route(m, A.id, B.id)
+				if rr == null:
+					continue
+				var T: Dictionary = D_VT()[vt[m]]
+				var tm: float = rr.len / (T.spd * S.spd_k())
+				var k := {"id": CO.uid, "from": A.id, "to": B.id, "cg": "parcel", "tons": 4.0, "pay": 0, "dlDays": 99.0, "mode": m, "risk": .2,
+					"minR": 0, "len": rr.len, "_demo": 1}
+				CO.uid += 1
+				var P := {"ok": true, "fuel": 0.0, "leadR": {"p": PackedFloat32Array([A.x, A.z]), "len": 0.0}, "main": rr, "t": vt[m], "n": 1, "vids": [],
+					"lead": 0.0, "tl": 0.0, "tm": tm, "hs": .03, "cust": 0.0, "tot": tm + .06}
 				S.co_dispatch(k, P, true)
-			else:
-				CO.board.erase(k)
+				var j: Dictionary = CO.jobs.back()
+				j.t0 = now - rng.randf() * j.tot * .9   # already on their way, each at its own point
+				break
 	main.map.company_colors()
 
 
+static func D_VT() -> Dictionary:
+	return preload("res://scripts/logistics/game_data.gd").VT
+
+
+## «Прибрати рейси»: every trip off the map; the vehicles back home, the network's runs undone
+func _clear_trips() -> void:
+	var S := sim()
+	var CO: Dictionary = S.CO
+	for v in CO.veh:
+		if v.st != "idle":
+			v.st = "idle"
+			v.loc = CO.hq
+		v.erase("resv")
+		v.erase("nres")
+	CO.jobs.clear()
+	if S.alt():
+		for c in CO.net.cs:
+			if c.st == "move":
+				c.st = "ready"
+			c.run = -1
+		CO.net.runs.clear()
+	main.map.company_colors()
+
+
+var _hubq: Array = []
+var _hub_spd := 8.0
+var _hub_acc := 0.0
+var _hub_paint := 0.0
+
+
+## «Відкрити всі хаби»: town by town, from the nearest to the camera outwards, a hub of the company
+func _tick_hubs(dt: float) -> void:
+	if _hubq.is_empty():
+		return
+	var S := sim()
+	_hub_acc += dt * _hub_spd
+	var added := false
+	while _hub_acc >= 1.0 and _hubq.size():
+		_hub_acc -= 1.0
+		var pid: int = _hubq.pop_front()
+		if S.hub_at(pid) == null:
+			S.CO.hubs.append({"pid": pid, "lvl": 1, "share": .01, "mk": 0})
+			added = true
+	_hub_paint -= dt
+	if added and (_hub_paint <= 0 or _hubq.is_empty()):   # the map's colours a few times a second
+		_hub_paint = .2
+		main.map.company_colors()
+
+
 # ====================================================================== subtitles
+## A subtitle is a card (or bare text): a title and a line under it, in the game's fonts, at a place on the
+## screen (its centre: x, y as parts of the width and the height), drifting a little to one side over its time
+## (2% of the width each way) or still, fading in and out over 0.4 s. The sizes are pixels at 1080p.
+## tools/subtitles.py draws the same from the copied code.
 func _sub_editor() -> Control:
 	var v := Ui.vbox(6)
 	var te := LineEdit.new()
 	te.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	te.text = sub.text
+	te.text = sub.title
+	te.placeholder_text = "Заголовок"
 	te.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	te.text_changed.connect(func(t): sub.text = t)
+	te.text_changed.connect(func(t): sub.title = t)
 	v.add_child(te)
+	var tx := LineEdit.new()
+	tx.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	tx.text = sub.text
+	tx.placeholder_text = "Текст під заголовком (можна порожній)"
+	tx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tx.text_changed.connect(func(t): sub.text = t)
+	v.add_child(tx)
 	var cp := ColorPickerButton.new()
 	cp.color = Color(sub.color)
-	cp.custom_minimum_size = Vector2(46, 28)
+	cp.custom_minimum_size = Vector2(40, 28)
 	cp.color_changed.connect(func(c): sub.color = "#" + c.to_html(false))
-	v.add_child(Ui.hbox(8, [Ui.lbl("Колір"), cp, Ui.lbl("Шрифт"), Ui.seg([["display", "Заголовок"], ["body", "Текст"]], sub.font, func(x):
+	var ap := ColorPickerButton.new()
+	ap.color = Color(sub.accent)
+	ap.custom_minimum_size = Vector2(40, 28)
+	ap.color_changed.connect(func(c): sub.accent = "#" + c.to_html(false))
+	v.add_child(Ui.hbox(8, [Ui.lbl("Заголовок"), cp, Ui.lbl("Акцент"), ap, Ui.spacer(), W._toggle(sub.box, func():
+		sub.box = not sub.box
+		_build(), "Картка: темне скло, рамка й смуга акценту"), Ui.label("Картка", 12, Ui.FG2)]))
+	v.add_child(Ui.hbox(8, [Ui.lbl("Шрифт"), Ui.seg([["display", "Широкий"], ["body", "Звичайний"]], sub.font, func(x):
 		sub.font = x
 		_build())]))
-	v.add_child(Ui.seg([["ltr", "Зліва → направо"], ["rtl", "Справа → наліво"], ["center", "По центру"]], sub.dir, func(x):
-		sub.dir = x
-		_build()))
-	v.add_child(_slider("Розмір (px при 1080p)", float(sub.size), 20.0, 160.0, func(x): sub.size = int(x), "", 0))
-	v.add_child(_slider("Висота (0 — верх)", float(sub.y), .05, .95, func(x): sub.y = x))
+	v.add_child(Ui.hbox(8, [Ui.lbl("Рух"), Ui.seg([[-1, "← трохи вліво"], [0, "на місці"], [1, "трохи вправо →"]], int(sub.drift), func(x):
+		sub.drift = x
+		_build())]))
+	v.add_child(_slider("Розмір заголовка", float(sub.size), 20.0, 120.0, func(x): sub.size = int(x), "", 0))
+	v.add_child(_slider("Де по горизонталі", float(sub.x), .1, .9, func(x): sub.x = x))
+	v.add_child(_slider("Де по вертикалі", float(sub.y), .08, .92, func(x): sub.y = x))
 	v.add_child(_slider("Тривалість", float(sub.dur), 1.0, 20.0, func(x): sub.dur = x, " с", 1))
 	v.add_child(_slider("Початок у відео", float(sub.t0), 0.0, 120.0, func(x): sub.t0 = x, " с", 1))
-	v.add_child(Ui.hbox(8, [W._toggle(sub.shadow, func():
-		sub.shadow = not sub.shadow
-		_build()), Ui.label("Тінь", 12, Ui.FG2)]))
 	v.add_child(_fill([W._btn("Показати", "sm", "eye" if Icons.has("eye") else "", func(): preview_sub(sub.duplicate())),
 		W._btn("Додати до списку", "pri sm", "", func():
 			subs.append(sub.duplicate())
@@ -806,7 +914,8 @@ func _sub_editor() -> Control:
 		for i in subs.size():
 			var it: Dictionary = subs[i]
 			var i_: int = i
-			var row := Ui.label("%.1f–%.1f с · %s" % [it.t0, it.t0 + it.dur, it.text], 12, Color(it.color))
+			var row := Ui.label("%.1f–%.1f с · %s" % [it.t0, it.t0 + it.dur, it.title], 12, Color(it.color))
+			row.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 			row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.clip_text = true
 			L.add_child(Ui.hbox(6, [row, MapUi._xbtn(func():
@@ -825,23 +934,59 @@ func copy_subs() -> void:
 	main.toasts.push("good", "Код субтитрів скопійовано", "%d рядків" % subs.size())
 
 
-## a subtitle over the game as tools/subtitles.py draws it on the frames: the same font, size (at 1080p),
-## colour, height, motion and fades
+## the sizes of a subtitle at a screen height (pixels): title, text, paddings, the accent bar — as in
+## tools/subtitles.py
+static func sub_sizes(it: Dictionary, h: float) -> Dictionary:
+	var k := h / 1080.0
+	var ts := maxi(8, int(round(float(it.size) * k)))
+	var box: bool = it.get("box", true)
+	return {"ts": ts, "xs": maxi(int(round(14 * k)), int(round(ts * .5))), "pad": int(round(ts * .55)) if box else 0,
+		"padv": int(round(ts * .4)) if box else 0, "gap": int(round(ts * .25)), "bar": maxi(3, int(round(ts * .09))) if box else 0}
+
+
+## a subtitle over the game as tools/subtitles.py draws it on the frames
 func preview_sub(it: Dictionary, delay: float = 0.0) -> void:
+	var vs := get_viewport().get_visible_rect().size
+	var z := sub_sizes(it, vs.y)
+	var box: bool = it.get("box", true)
+	var card := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(.03, .07, .11, .86) if box else Color.TRANSPARENT
+	if box:
+		st.set_border_width_all(1)
+		st.border_color = Color(1, 1, 1, .14)
+	card.add_theme_stylebox_override("panel", st)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 0)
+	if box:
+		var bar := ColorRect.new()
+		bar.color = Color(it.accent)
+		bar.custom_minimum_size.x = z.bar
+		h.add_child(bar)
+	var col := Ui.vbox(z.gap)
+	var t := _sub_label(it.title, Ui.font("display", 600) if it.font == "display" else Ui.font("body", 600), z.ts, Color(it.color), not box)
+	col.add_child(t)
+	if String(it.get("text", "")) != "":
+		col.add_child(_sub_label(it.text, Ui.font("body", 500), z.xs, Color("#c9d4de"), not box))
+	h.add_child(Ui.margin(col, z.pad, z.padv, z.pad, z.padv))
+	card.add_child(h)
+	card.modulate.a = 0
+	_sub_layer.add_child(card)
+	_subs_live.append({"lbl": card, "t": -delay, "it": it})
+
+
+static func _sub_label(text: String, f: Font, size: int, c: Color, shadow: bool) -> Label:
 	var l := Label.new()
 	l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # the player's own words
-	l.text = it.text
-	var fs := int(float(it.size) * get_viewport().get_visible_rect().size.y / 1080.0)
-	l.add_theme_font_override("font", Ui.font("display", 600) if it.font == "display" else Ui.font("body", 600))
-	l.add_theme_font_size_override("font_size", fs)
-	l.add_theme_color_override("font_color", Color(it.color))
-	if it.get("shadow", true):
+	l.text = text
+	l.add_theme_font_override("font", f)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", c)
+	if shadow:
 		l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .55))
-		l.add_theme_constant_override("shadow_offset_x", maxi(1, fs / 18))
-		l.add_theme_constant_override("shadow_offset_y", maxi(1, fs / 18))
-	l.modulate.a = 0
-	_sub_layer.add_child(l)
-	_subs_live.append({"lbl": l, "t": -delay, "it": it})
+		l.add_theme_constant_override("shadow_offset_x", maxi(1, size / 18))
+		l.add_theme_constant_override("shadow_offset_y", maxi(1, size / 18))
+	return l
 
 
 var _subs_live: Array = []
@@ -851,30 +996,25 @@ func _tick_sub(dt: float) -> void:
 	var vs := get_viewport().get_visible_rect().size
 	for e in _subs_live.duplicate():
 		e.t += dt
-		var l: Label = e.lbl
+		var c: Control = e.lbl
 		var it: Dictionary = e.it
-		var st := sub_state(it, e.t, vs, l.get_combined_minimum_size())
-		l.position = st.pos
-		l.modulate.a = st.a
+		c.size = c.get_combined_minimum_size()
+		var st := sub_state(it, e.t, vs, c.size)
+		c.position = st.pos
+		c.modulate.a = st.a
 		if e.t > float(it.dur):
-			l.queue_free()
+			c.queue_free()
 			_subs_live.erase(e)
 
 
-## where a subtitle is and how visible, t seconds into it (tools/subtitles.py does the same): a steady crawl
-## across the whole width (left → right or right → left) or still in the middle; a fade over the first and the
-## last 0.35 s
+## where a subtitle is and how visible, t seconds into it (tools/subtitles.py does the same): centred on its
+## place, drifting 2% of the width to one side and on over its time (or still), a fade over 0.4 s at each end
 static func sub_state(it: Dictionary, t: float, vs: Vector2, sz: Vector2) -> Dictionary:
 	var dur := float(it.dur)
 	var p := clampf(t / dur, 0, 1)
-	var x := (vs.x - sz.x) / 2
-	match String(it.dir):
-		"ltr":
-			x = lerpf(-sz.x, vs.x, p)
-		"rtl":
-			x = lerpf(vs.x, -sz.x, p)
-	var a := clampf(minf(t / .35, (dur - t) / .35), 0, 1) if t >= 0 else 0.0
-	return {"pos": Vector2(x, float(it.y) * vs.y - sz.y / 2), "a": a}
+	var d := float(it.get("drift", 0)) * vs.x * .02 * (p * 2 - 1)
+	var a := clampf(minf(t / .4, (dur - t) / .4), 0, 1) if t >= 0 else 0.0
+	return {"pos": Vector2(float(it.get("x", .5)) * vs.x - sz.x / 2 + d, float(it.y) * vs.y - sz.y / 2), "a": a}
 
 
 # ====================================================================== keys
