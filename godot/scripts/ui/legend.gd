@@ -179,6 +179,13 @@ func _mark(n: Control, k: Dictionary) -> void:
 				n.draw_dashed_line(Vector2(0, c.y), Vector2(n.size.x, c.y), col, h, 4.0)
 			else:
 				n.draw_rect(Rect2(0, c.y - h / 2, n.size.x, h), col)
+			if k.has("hatch"):   # the toll motorways' stripes, slanted
+				var x := -h
+				while x < n.size.x:
+					var a := Vector2(maxf(0, x), c.y + h / 2)
+					var b := Vector2(minf(n.size.x, x + h), c.y - h / 2)
+					n.draw_line(a, b, k.hatch, 2.0)
+					x += 6.0
 		"cp":   # a border checkpoint: red and white stripes
 			var o := c - Vector2(5, 5)
 			n.draw_rect(Rect2(o, Vector2(10, 10)), Color.WHITE)
@@ -217,7 +224,7 @@ func _inc() -> Array:
 
 
 func _ways() -> Array:
-	return [[{"t": "line", "c": Color("#b8c0c8"), "h": 4.0, "b": Color(6 / 255.0, 12 / 255.0, 18 / 255.0, .6)}, "Платні швидкісні траси"],
+	return [[{"t": "line", "c": Color("#f6b94f"), "h": 4.0, "b": Color(6 / 255.0, 12 / 255.0, 18 / 255.0, .6), "hatch": Color("#f6b94f").darkened(.32)}, "Платні швидкісні траси"],
 		[{"t": "line", "c": Color("#f0625f"), "h": 3.0}, "Заборона для важкого транспорту"],
 		[{"t": "line", "c": Color("#6b3b1a"), "h": 4.0}, "Залізниця"], [{"t": "cp"}, "Пропускний пункт на кордоні"],
 		[{"t": "ico", "i": "anchor"}, "Морський порт"], [{"t": "ico", "i": "plane"}, "Аеропорт"], [{"t": "ico", "i": "train"}, "Залізнична станція"]]

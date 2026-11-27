@@ -127,7 +127,8 @@ func ppu() -> float:
 	return a.distance_to(b)
 
 
-## road rules (SimCore.road_mark_segs): toll motorways (light grey, the whole width of the motorway) and the stretches
+## road rules (SimCore.road_mark_segs): toll motorways (the motorway's yellow with wide dark yellow stripes, its
+## whole width; no round joins — a disc has no direction for the stripes) and the stretches
 ## closed to heavy vehicles (red); segs: [x1, z1, x2, z2, flags]
 func set_marks(segs: Array) -> void:
 	for nm in ["toll", "hban"]:
@@ -143,7 +144,7 @@ func set_marks(segs: Array) -> void:
 		if int(q[4]) & 2:
 			ban.append(pl)
 	if toll.size():
-		_layer("toll", 54, LineLayer.build_geometry(toll), Color("#b8c0c8"), 1)
+		_layer("toll", 54, LineLayer.build_geometry(toll, false), Color(ROAD_COL[clampi(road_style, 0, ROAD_COL.size() - 1)][2]), 1)
 	if ban.size():
 		_layer("hban", 55, LineLayer.build_geometry(ban), Color("#f0625f"), 2)
 	dirty()
@@ -225,6 +226,9 @@ func _process_t(_delta: float) -> void:
 	_layers.mway.set_alpha(1.0 if vis_mway else 0.0)
 	_layers.mway_case.set_alpha((1.0 if road_style == 4 else a_case) if vis_mway else 0.0)
 	if _layers.has("toll"):
-		_layers.toll.set_width(mw)   # the whole width of the motorway, inside its outline
+		_layers.toll.set_width(mw)
+		var tc := Color(ROAD_COL[clampi(road_style, 0, ROAD_COL.size() - 1)][2])
+		_layers.toll.set_style(tc, mw)
+		_layers.toll.set_hatch(14 * dpr, tc.darkened(.32))   # wide stripes
 	if _layers.has("hban"):
 		_layers.hban.set_width(rw * 1.5)
