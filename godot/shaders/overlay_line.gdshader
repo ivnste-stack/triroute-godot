@@ -11,13 +11,9 @@ uniform vec2 screen;
 uniform float width_px = 2.0;
 uniform vec3 color = vec3(1.0);
 uniform bool discs = false;
-uniform float hatch = 0.0;          // > 0: stripes across the line, this many pixels apart (toll motorways)
-uniform vec3 color2 = vec3(0.0);    // the stripes' colour
 
 varying vec2 v_d;       // the offset from the line (segments: x only) in pixels
 varying float v_w;
-varying vec2 v_p;       // the screen position in pixels (the stripes run on from one segment to the next)
-varying vec2 v_t;       // the segment's direction on the screen (zero for the discs)
 
 vec4 clip_of(vec2 p) {
 	return view_proj * vec4(p.x, 0.0, p.y, 1.0);
@@ -32,7 +28,6 @@ void vertex() {
 	const float EPS = 0.1;   // the camera's near plane: nothing behind it is projected
 	vec2 s = vec2(-1e5);
 	v_d = vec2(0.0);
-	v_t = vec2(0.0);
 	if (discs) {
 		vec4 pa = clip_of(INSTANCE_CUSTOM.xy);
 		if (pa.w >= EPS) {
@@ -51,10 +46,8 @@ void vertex() {
 			vec2 n = L > 1e-6 ? vec2(-d.y, d.x) / L : vec2(0.0, 1.0);
 			s = mix(sa, sb, VERTEX.x) + n * VERTEX.y * ext;
 			v_d = vec2(VERTEX.y * ext, 0.0);
-			v_t = L > 1e-6 ? d / L : vec2(1.0, 0.0);
 		}
 	}
-	v_p = s;
 	VERTEX = vec2(s.x + hs.x, hs.y - s.y);   // NDC → pixels, y down
 }
 
@@ -64,16 +57,5 @@ void fragment() {
 	// the edge fades over ~1.4 px (analytic anti-aliasing: smooth diagonals without a supersampled buffer)
 	float a = clamp((max(v_w, 1.0) * 0.5 + 0.7 - d) / 1.4, 0.0, 1.0) * min(v_w, 1.0);
 	if (a <= 0.0) discard;
-	vec3 c = color;
-	if (hatch > 0.0 && dot(v_t, v_t) > 0.25) {
-		// stripes slanted at 45° to the line, in screen pixels: as wide at every zoom, and continuous along a
-		// straight run made of many segments; the edges antialiased over a pixel
-		vec2 n = vec2(-v_t.y, v_t.x);
-		float u = (dot(v_p, v_t) + dot(v_p, n)) * 0.70710678;   // pixels across the stripes
-		float f = fract(u / hatch);
-		float edge = min(abs(f - 0.5), min(f, 1.0 - f)) * hatch;   // pixels to the nearest stripe edge
-		float on = f >= 0.5 ? 1.0 : 0.0;
-		c = mix(color, color2, mix(0.5, on, clamp(edge, 0.0, 1.0)));
-	}
-	COLOR = vec4(c, a);
+	COLOR = vec4(color, a);
 }

@@ -593,7 +593,7 @@ func _panel_build() -> void:
 			var P_: Variant = Lg.get("P")
 			var ri := sim.road_info(Lg.r)
 			if ri.toll > 0:
-				bits.append("[color=#f6b94f]платна траса %s%s[/color]" % [Ui.km(ri.toll), (" · " + Ui.usd(P_.get("toll", 0))) if P_ != null and P_.get("toll", 0) > 0 else ""])
+				bits.append("[color=#c98a1f]платна траса %s%s[/color]" % [Ui.km(ri.toll), (" · " + Ui.usd(P_.get("toll", 0))) if P_ != null and P_.get("toll", 0) > 0 else ""])
 			if ri.ban > 0:
 				if P_ != null and P_.get("banP", 0) > 0:
 					bits.append("[color=#f0625f]заборона для важких %s · ризик штрафу %d%% (%s)[/color]" % [Ui.km(ri.ban), int(round(P_.banP * 100)), Ui.usd(P_.banF)])

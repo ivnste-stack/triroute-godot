@@ -85,14 +85,6 @@ func set_width(width_px: float) -> void:
 			m.set_shader_parameter("width_px", width_px)
 
 
-## stripes across the line (period in pixels, 0 — none) in a second colour: the toll motorways
-func set_hatch(period_px: float, color2: Color) -> void:
-	for m in [_mat, _mat_d]:
-		if m != null:
-			m.set_shader_parameter("hatch", period_px)
-			m.set_shader_parameter("color2", Vector3(color2.r, color2.g, color2.b))
-
-
 ## alpha on top of the stroke's own (fading grid levels)
 func set_alpha(a: float) -> void:
 	_group.self_modulate = Color(1, 1, 1, _color.a * a)
