@@ -16,8 +16,8 @@ const DEF := [
 ]
 ## keys that cannot be given to an action: the camera, the menu and the panels use them
 const FIXED := [["Рух камери", "W A S D / стрілки"], ["Поворот камери", "Q / E"], ["Наближення", "колесо миші"],
-	["Закрити вікно, меню", "Esc"], ["Панель продуктивності", "F3"], ["Запис продуктивності", "F4"], ["Перевірки", "F9"], ["Скасувати крок маршруту", "Ctrl+Z"]]
-const BUSY := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_Q, KEY_E, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESCAPE, KEY_F3, KEY_F4, KEY_F9]
+	["Закрити вікно, меню", "Esc"], ["Панель продуктивності", "F3"], ["Запис продуктивності", "F4"], ["Перевірки", "F9"], ["Студія трейлера", "F8"], ["Скасувати крок маршруту", "Ctrl+Z"]]
+const BUSY := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_Q, KEY_E, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESCAPE, KEY_F3, KEY_F4, KEY_F8, KEY_F9]
 
 
 static func default_key(id: String) -> int:

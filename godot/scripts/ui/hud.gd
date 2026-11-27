@@ -35,6 +35,7 @@ var _grade: Control
 var _grade_box: Control
 var _grade_key := ""
 var _refresh_t := 0.0
+var studio := {}   # the trailer studio's numbers shown instead of the company's: cash, rating, del, lic
 var _badges := {}
 var _speed_btns: Array = []
 var mode_dd: Dropdown
@@ -397,7 +398,7 @@ func _process_t(delta: float) -> void:
 		_ticker_step(delta)
 	# the numbers: 8 times a second is enough, and nothing is touched that did not change
 	_refresh_t -= delta
-	if _refresh_t > 0:
+	if _refresh_t > 0 and studio.is_empty():   # the studio's counters run every frame
 		return
 	_refresh_t = .125
 	var sim := session.sim
@@ -422,13 +423,14 @@ func _process_t(delta: float) -> void:
 	for r in CO.staff:
 		staff += CO.staff[r]
 	staff += CO.founder
-	_put(_kpi_vals[0], [[Ui.usd(CO.cash)], ["▲" if CO.cash >= 0 else "▼", Ui.GOOD if CO.cash >= 0 else Ui.BAD, 11]])
+	var cash: float = studio.get("cash", CO.cash)
+	_put(_kpi_vals[0], [[Ui.usd(cash)], ["▲" if cash >= 0 else "▼", Ui.GOOD if cash >= 0 else Ui.BAD, 11]])
 	_put(_kpi_vals[1], [[Ui.usd(pr, true) if lm != null else "—", (Ui.GOOD if pr >= 0 else Ui.BAD) if lm != null else Ui.FG]])
-	_put(_kpi_vals[2], [["%.2f ★" % CO.rating]])
-	_put(_kpi_vals[3], [[Ui.grp(CO.get("cdel", 0))]])
+	_put(_kpi_vals[2], [["%.2f ★" % float(studio.get("rating", CO.rating))]])
+	_put(_kpi_vals[3], [[Ui.grp(int(studio.get("del", CO.get("cdel", 0))))]])
 	_put(_kpi_vals[4], [[str(CO.veh.size())], ["%d у рейсі" % busy, Ui.MUTED, 11]])
 	_put(_kpi_vals[5], [[str(staff)]])
-	_put(_kpi_vals[6], [["%d/%d" % [CO.tier, GameData.LIC.size() - 1]]])
+	_put(_kpi_vals[6], [["%d/%d" % [int(studio.get("lic", CO.tier)), GameData.LIC.size() - 1]]])
 	# the bottom bar
 	_speed_state()
 	var fr := session.fraction()

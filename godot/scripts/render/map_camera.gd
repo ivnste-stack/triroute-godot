@@ -22,6 +22,9 @@ var min_dist := 0.55
 
 ## the map editor's brushes take the left button: the map is then dragged with the right or middle one
 var left_locked := false
+var key_k := 1.0        # the trailer studio: the keys move, turn and zoom slower (smoother shots)
+var glide := .85        # how much of the way is left after a 60 Hz frame (higher — a softer, slower glide)
+var zoom_keys := false  # the trailer studio: Z / X zoom in and out smoothly
 var _down := false
 var _moved := false
 var _down_pos := Vector2.ZERO
@@ -75,7 +78,7 @@ func _process_t(delta: float) -> void:
 		_keys(minf(delta, .05))
 	# a long frame (a game starting, a world shown) moves the glide by at most two frames' worth: no jump
 	var dt := clampf(delta * 1000.0, 1.0, 34.0)
-	var k := 1.0 - pow(.85, dt / 16.7)
+	var k := 1.0 - pow(glide, dt / 16.7)
 	dist += (tdist - dist) * k
 	tx += (ttx - tx) * k
 	tz += (ttz - tz) * k
@@ -117,14 +120,22 @@ func _keys(dt: float) -> void:
 		rot -= 1
 	if Input.is_physical_key_pressed(KEY_E):
 		rot += 1
-	if mv == Vector2.ZERO and rot == 0:
+	var zm := 0.0
+	if zoom_keys:
+		if Input.is_physical_key_pressed(KEY_Z):
+			zm -= 1
+		if Input.is_physical_key_pressed(KEY_X):
+			zm += 1
+	if mv == Vector2.ZERO and rot == 0 and zm == 0:
 		return
 	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_ALT) or Input.is_key_pressed(KEY_META):
 		return
-	tyaw += rot * 1.4 * dt
+	tyaw += rot * 1.4 * dt * key_k
+	if zm != 0:
+		tdist = clampf(tdist * exp(zm * .9 * dt * key_k), min_dist, world_size.x * 1.25)
 	if mv != Vector2.ZERO:
 		# along the screen: "up" goes away from the camera whatever its turn
-		var s := dist * 1.5 * dt
+		var s := dist * 1.5 * dt * key_k
 		var fwd := Vector2(-sin(yaw), -cos(yaw))
 		var right := Vector2(cos(yaw), -sin(yaw))
 		var d := (right * mv.x - fwd * mv.y).normalized() * s

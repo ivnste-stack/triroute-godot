@@ -25,6 +25,7 @@ var perf_panel: PerfPanel
 var _bb: BackBufferCopy
 var planner: Planner
 var netp: NetPlanner
+var studio: TrailerStudio   # «Студія трейлера» (F8)
 var tutorial: Tutorial
 var course: Course
 var menu: StartMenu
@@ -994,6 +995,47 @@ func _on_world(w: Dictionary) -> void:
 		map.night_hour = float(_args.hour)
 	if _args.has("trailer"):   # a scene of the trailer (scripts/trailer.gd, tools/trailer.sh)
 		add_child(Trailer.new(self, String(_args.trailer)))
+	if _args.has("take"):   # a take of the trailer studio recorded by Movie Maker (with --load=trailer_<name>)
+		studio = TrailerStudio.new(self)
+		add_child(studio)
+		studio.render_take(String(_args.take))
+	if _args.has("studio"):   # test: the trailer studio open
+		studio = TrailerStudio.new(self)
+		add_child(studio)
+		if _args.has("subdemo"):   # test: a subtitle's preview, --subdemo=<seconds into it>
+			var it: Dictionary = studio.sub.duplicate()
+			it.dir = "center"
+			studio.preview_sub(it)
+			var it2: Dictionary = studio.sub.duplicate()
+			it2.text = "Вантажівки · потяги · кораблі · літаки"
+			it2.color = "#f1c453"
+			it2.size = 40
+			it2.font = "body"
+			it2.y = .2
+			studio.preview_sub(it2)
+		if _args.has("studiodemo"):   # test: a way recorded with some buttons, saved, played as a take
+			for i in 5:
+				await get_tree().process_frame
+			studio.take_name = "demo"
+			studio.toggle_rec()
+			for f in 120:
+				map.camera.ttx += .015
+				map.camera.tdist *= .997
+				map.camera.tyaw += .004
+				if f == 20:
+					studio.act("trips", {"n": 40, "kinds": studio.opts.kinds.duplicate()})
+				if f == 40:
+					studio.act("cnt", {"k": "cash", "to": -250000.0, "dur": 1.0})
+				if f == 60:
+					studio.act("storm", studio._here())
+				await get_tree().process_frame
+			studio.toggle_rec()
+			studio.save_take()
+			print("TEST studio: %d samples, %d buttons, %.2f s" % [studio.path.size(), studio.acts.size(), studio.path.back()[0]])
+			studio.play(true)
+			for i in int(_args.studiodemo):
+				await get_tree().process_frame
+			print("TEST studio take: panel %s, windows %s, hud cash %s" % [studio.panel.visible, map_ui.visible, str(hud.studio.get("cash"))])
 	if _args.has("noui"):   # test: the map alone (the main menu's backgrounds)
 		_ui.visible = false
 	if _args.has("mode"):   # test: a map layer
@@ -1758,6 +1800,10 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	match e.keycode:
 		KEY_F9:
 			_toggle_checks()
+		KEY_F8:   # the trailer studio (scripts/ui/trailer_studio.gd)
+			if session != null and session.sim != null and hud.visible and not is_instance_valid(studio):
+				studio = TrailerStudio.new(self)
+				add_child(studio)
 		KEY_F3:
 			perf_panel.toggle()
 		KEY_F4:
