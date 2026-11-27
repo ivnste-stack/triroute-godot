@@ -367,13 +367,32 @@ func test_pickup_only_goes_to_a_hub() -> String:
 	if wt.is_empty():
 		return "no cargo waiting away from the headquarters"
 	var c: Dictionary = wt[0]
-	var sp := sim.net_auto_multi(hq, [c.at], "road", sim.CO.veh[0].id)
+	var only := {}   # this one consignment only: the first leg goes empty to pick it up
+	for x in sim.CO.net.cs:
+		if x.id != c.id:
+			only[x.id] = true
+	var sp := sim.net_auto_multi(hq, [c.at], "road", sim.CO.veh[0].id, false, only)
 	if sp.get("auto_end", -1) < 0:
 		return "no hub added after a pick-up-only route"
 	var C := sim.net_calc(sp)
 	if not C.ok or not C.rows.any(func(r): return r.c.id == c.id and sp.stops[r.off] == sp.auto_end):
 		return "the cargo does not go to the hub: %s" % C.why
 	sim.net_go(sp)
+	var j: Variant = null   # the first leg goes to load: nothing on board, an empty run
+	for f in 64:
+		for x in sim.CO.jobs:
+			if x.get("net") != null:
+				j = x
+		if j != null:
+			break
+		sim.co_frame(minf(.99, sim.co_now() - sim.day + 1 / 32.0))
+		if f % 32 == 31:
+			sim.co_day()
+	if j == null:
+		return "the run never left"
+	var ph: String = sim.co_job_state(j, j.tot * .5).ph
+	if not ph.begins_with("Порожній перегін"):
+		return "the way to the load reads «%s» (%d on board)" % [ph, j.net.n]
 	_days(sim, 12, false)
 	if c.at != sp.auto_end or not (c.st == "ready" or c.st == "proc" or c.st == "done"):
 		return "the cargo is at %s (%s), not in the hub" % [sim.PL[c.at].name, c.st]

@@ -1094,7 +1094,8 @@ func _job_row(j: Dictionary) -> PanelContainer:
 	var left := maxf(0, j.tot - e)
 	var late_by: float = sim.day + left - j.dl
 	var head := Ui.hbox(8, [_place(j.k.from, 14, true, false), Ui.label("→", 14), _place(j.k.to, 14, true, false), Ui.spacer(),
-		Ui.label("%s%s · %s · %s т" % [T.n, (" ×%d" % j.n) if j.get("n", 1) > 1 else "", cg_n, j.k.tons], 13, Ui.FG2)])
+		Ui.label("%s%s · %s · %s т" % [T.n, (" ×%d" % j.n) if j.get("n", 1) > 1 else "", cg_n, j.k.tons] if not (j.get("net") != null and int(j.net.n) == 0) \
+			else "%s · без вантажу, по %s" % [T.n, cg_n], 13, Ui.FG2)])   # an empty leg of a run: on its way to load
 	var bad: bool = j.get("hold", 0) > 0 or j.get("lost", false)
 	var mt := _meter(prog, Ui.BAD if bad else Ui.ACCENT, 0, j.get("hold", 0) <= 0 and (stt.seg < 0 or stt.get("inc") != null))
 	var parts := []

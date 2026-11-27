@@ -1527,6 +1527,15 @@ func _lines_day() -> void:
 
 
 # ====================================================================== the day, the frame, the month
+## a leg of a run with nothing on board (on its way to where it loads) is an empty run, not «з вантажем»
+func co_job_state(j: Dictionary, e: float) -> Dictionary:
+	var st := super(j, e)
+	if j.get("net") != null and int(j.net.get("n", 1)) == 0 and not j.get("ret", false) and st.get("inc") == null \
+			and (st.ph == "У дорозі з вантажем" or st.ph == "Завантаження" or st.ph == "Розвантаження"):
+		st.ph = "Порожній перегін до %s" % PL[j.k.to].name
+	return st
+
+
 func co_frame(fr: float) -> void:
 	super.co_frame(fr)
 	if alt():

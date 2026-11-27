@@ -33,21 +33,30 @@ static func _left_col(d: float) -> Color:
 
 
 ## the steps of a way as a row: a town, the icon of how it goes on, the next town…
+## the way of a consignment in short: where from → the kinds of transport in turn → where to (the towns between
+## them in each kind's tooltip): «Армир → 🚚 → ✈ → Марськ»
 func _way(legs: Array, size: int = 13) -> HFlowContainer:
 	var h := HFlowContainer.new()
 	h.add_theme_constant_override("h_separation", 5)
 	h.add_theme_constant_override("v_separation", 4)
-	for i in legs.size():
-		var L: Dictionary = legs[i]
-		if i == 0:
-			h.add_child(Ui.label(_pl(L.a), size, Ui.FG2))
-		var ic := Ui.icon(MODE_IC[L.m], size + 1, Ui.ACCENT)
+	if legs.is_empty():
+		return h
+	h.add_child(Ui.label(_pl(legs[0].a), size, Ui.FG2))
+	var runs := []   # [mode, [towns]] — consecutive legs of one kind together
+	for L in legs:
+		if runs.size() and runs.back()[0] == L.m:
+			runs.back()[1].append(L.b)
+		else:
+			runs.append([L.m, [L.a, L.b]])
+	for r in runs:
+		var ic := Ui.icon(MODE_IC[r[0]], size + 1, Ui.ACCENT)
 		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		ic.tooltip_text = MODE_N[L.m]
+		ic.mouse_filter = Control.MOUSE_FILTER_PASS
+		ic.tooltip_text = "%s: %s" % [MODE_N[r[0]], " → ".join(PackedStringArray(r[1].map(func(p): return _pl(p))))]
 		h.add_child(Ui.label("→", size, Ui.MUTED))
 		h.add_child(ic)
-		h.add_child(Ui.label("→", size, Ui.MUTED))
-		h.add_child(Ui.label(_pl(L.b), size, Ui.FG2))
+	h.add_child(Ui.label("→", size, Ui.MUTED))
+	h.add_child(Ui.label(_pl(legs.back().b), size, Ui.FG2))
 	return h
 
 
