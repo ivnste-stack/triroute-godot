@@ -83,10 +83,10 @@ func build(lines: Array, board: Dictionary, size: Vector2, own: PackedByteArray,
 	for h in board.get("roads", []):
 		(mways if h.lv >= 3 else roads).append(h.p)
 	var road_m := LineLayer.build_geometry(roads)
-	_layer("road_case", 50, road_m, _c(6, 12, 18, .6), 3)
+	_layer("road_case", 50, road_m, _c(6, 12, 18, .7), 3)   # the outline of a planned route: 1 px each side
 	_layer("road", 51, road_m, Color("#f4b453"), 1.5)
 	var mw_m := LineLayer.build_geometry(mways)
-	_layer("mway_case", 52, mw_m, _c(6, 12, 18, .55), 3)
+	_layer("mway_case", 52, mw_m, _c(6, 12, 18, .7), 3)
 	_layer("mway", 53, mw_m, Color("#f6b94f"), 2)
 	_built = true
 	_key = ""
@@ -168,9 +168,9 @@ func _process_t(_delta: float) -> void:
 	var rw := 1.15 * zl
 	_layers.rail_case.set_width(rw * 2.6)
 	_layers.rail.set_width(rw * 1.85)
-	_layers.road_case.set_width(rw + 1.6 * dpr)
+	_layers.road_case.set_width(rw + 2 * dpr)
 	_layers.road.set_width(rw)
-	_layers.mway_case.set_width(rw * 2.6)
+	_layers.mway_case.set_width(rw * 1.85 + 2 * dpr)
 	_layers.mway.set_width(rw * 1.85)
 	if _layers.has("toll"):
 		_layers.toll.set_width(rw * .7)
