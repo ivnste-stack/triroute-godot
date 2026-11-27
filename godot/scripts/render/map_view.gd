@@ -497,10 +497,10 @@ const DEM_COL := [Color(.78, .9, .97), Color(.47, .73, .9), Color(.22, .5, .78),
 func apply_vis() -> void:
 	if overlay != null and overlay._layers.size():
 		var L: Dictionary = overlay._layers
-		for k in ["road", "road_case"]:
-			L[k].visible = MapVis.vis("r2")
-		for k in ["mway", "mway_case"]:
-			L[k].visible = MapVis.vis("r3")
+		L.road.visible = MapVis.vis("r2")
+		L.mway.visible = MapVis.vis("r3")
+		for k in ["road_case", "mway_case"]:   # roads without a dark outline
+			L[k].visible = false
 		for k in ["rail", "rail_case"]:
 			L[k].visible = MapVis.vis("rail")
 		L.borders.visible = not (mode == "pol" and not MapVis.vis("pol_b"))
