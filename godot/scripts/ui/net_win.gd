@@ -559,8 +559,12 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 						off += 1
 					if c.at == pid:
 						on += 1
+		if i == 0 and on == 0 and way.size():   # nothing loaded at the start: the vehicle drives empty to its first stop
+			var pg := Ui.label("перегін", 12, Ui.MUTED)
+			pg.tooltip_text = "Машина їде з %s порожньою до першої зупинки, де забирає вантаж." % _pl(pid)
+			h.add_child(pg)
 		for e in [[off, "вивантаження"], [on, "завантаження"]]:
-			if e[0] > 0 or (i == 0 and e[1] == "завантаження"):
+			if e[0] > 0:
 				h.add_child(Ui.label(e[1], 12, Ui.MUTED))
 				if e[0] > 1:   # several in one town: a count, like a fleet's ×N
 					h.add_child(Ui.pill("×%d" % e[0]))
@@ -584,6 +588,11 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 			way.remove_at(k)
 			redraw.call(), true, "Прибрати зупинку")
 		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(pid), 13), tags.call(i + 1, pid), up, dn, rm]))
+	if st.get("auto_end", -1) >= 0 and way.size():   # the nearest hub, added for the cargo picked up on the way
+		var ae: int = st.auto_end
+		var hint := Ui.label("до найближчого хабу · автоматично", 12, Ui.MUTED)
+		hint.tooltip_text = "Маршрут закінчується містом, де вантаж не вивантажується: машина відвезе його в найближчий хаб і залишить на складі. Клікніть інший хаб останнім, щоб везти туди."
+		v.add_child(Ui.hbox(8, [Ui.icon("building", 14, Ui.MUTED), Ui.label(_pl(ae), 13, Ui.FG2), tags.call(way.size() + 1, ae), hint]))
 	if st.get("back", false) and way.size():
 		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
 	# a town picked from the list goes to the end of the route, as a click on the map does

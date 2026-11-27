@@ -1214,6 +1214,17 @@ func net_auto_trunk(a: int, b: int, m: String, vid: int, back: bool = false, ski
 func net_auto_multi(a: int, way: Array, m: String, vid: int, back: bool = false, skip: Dictionary = {}) -> Dictionary:
 	var stops: Array = [a] + way + ([a] if back and way.size() else [])
 	var spec := {"vid": vid, "m": m, "stops": stops, "picks": {}, "offs": {}}
+	# a route that ends at a town where the cargo picked up on the way is not for: the run goes on to the
+	# nearest hub and leaves it there (the player may put a hub last instead)
+	if way.size() and not back and n_kind(stops.back()) == "":
+		var last: int = stops.back()
+		var lose: bool = CO.net.cs.any(func(c): return c.run < 0 and c.st == "wait" and way.has(c.at) and not skip.has(c.id) \
+			and not way.slice(way.find(c.at) + 1).has(c.k.to))
+		if lose:
+			var hb := net_near_hub(last, m)
+			if hb >= 0 and hb != last:
+				stops.append(hb)
+				spec.auto_end = hb
 	var cap := 1e9
 	var cv := 1e9
 	if vid >= 0:
@@ -1248,7 +1259,9 @@ func net_auto_multi(a: int, way: Array, m: String, vid: int, back: bool = false,
 						if stops[j] == nx.b and n_kind(stops[j]) != "":
 							off = j
 							break
-			if off < 0 and stops[n - 1] != here and n_kind(stops[n - 1]) != "" and _goes(c, stops[n - 1], m):
+			# the run ends at a hub or a terminal: cargo picked up at a shipper's on the way is taken there whatever
+			# its way (that is where the player chose to bring it); cargo already in a warehouse only if it gets nearer
+			if off < 0 and stops[n - 1] != here and n_kind(stops[n - 1]) != "" and (c.st == "wait" or _goes(c, stops[n - 1], m)):
 				off = n - 1
 			if off < 0:
 				continue
@@ -1268,6 +1281,22 @@ func net_auto_multi(a: int, way: Array, m: String, vid: int, back: bool = false,
 			spec.picks[i].append(c.id)
 			spec.offs[c.id] = off
 	return spec
+
+
+## the own hub nearest to a place that this kind of transport reaches from it
+func net_near_hub(pid: int, m: String) -> int:
+	var P: Dictionary = PL[pid]
+	var best := -1
+	var bd := 1e9
+	for h in CO.hubs:
+		var q: Dictionary = PL[h.pid]
+		if not node_ok(m, q) or ((m == "road" or m == "rail") and q.land != P.land):
+			continue
+		var d := JS.hypot(q.x - P.x, q.z - P.z)
+		if d < bd and (h.pid == pid or co_route(m, pid, h.pid) != null):
+			bd = d
+			best = h.pid
+	return best
 
 
 ## where a haul from `a` could also stop on the way: the towns and next steps of the cargo waiting at the start

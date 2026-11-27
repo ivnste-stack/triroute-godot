@@ -132,6 +132,7 @@ func _panel_build() -> void:
 	st.cnt = {}
 	if st.way.size():
 		_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, st.skip)
+		st.auto_end = _spec.get("auto_end", -1)
 		_C = sim.net_calc(_spec)
 		for row in _C.rows:
 			for e in [[row.on, 0], [row.off, 1]]:
@@ -271,7 +272,7 @@ func _draw_route() -> void:
 		return
 	var n := _draw_node
 	var m: String = st.m
-	var pts: Array = [st.a] + st.way
+	var pts: Array = [st.a] + st.way + ([st.auto_end] if st.get("auto_end", -1) >= 0 and st.way.size() else [])
 	for i in range(1, pts.size()):
 		var r: Variant = sim.co_route(m, pts[i - 1], pts[i])
 		if r != null:

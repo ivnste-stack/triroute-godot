@@ -350,3 +350,28 @@ func test_refineries_and_shiploads() -> String:
 	print("       %s: %s → %s, %s t, pay %d, own ship %.1f d for %d (road: «%s», partner: «%s»); %s %s → %s" % [sim.cargo_i[sea.cg].n, sim.PL[sea.from].name, sim.PL[sea.to].name, sea.tons, sea.pay, own.t, own.c,
 		road.why, ship.why, refy.fs, sim.PL[refy.from].name, sim.PL[refy.to].name])
 	return ""
+
+
+## a route that only picks up: the cargo goes to the nearest hub and waits in its warehouse
+func test_pickup_only_goes_to_a_hub() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game(777)
+	var hq: int = sim.CO.hq
+	for k in sim.CO.board.duplicate():
+		sim.net_accept(k)
+	var wt: Array = sim.CO.net.cs.filter(func(c): return c.st == "wait" and c.at != hq and c.k.to != hq and sim.PL[c.at].land == sim.PL[hq].land)
+	if wt.is_empty():
+		return "no cargo waiting away from the headquarters"
+	var c: Dictionary = wt[0]
+	var sp := sim.net_auto_multi(hq, [c.at], "road", sim.CO.veh[0].id)
+	if sp.get("auto_end", -1) < 0:
+		return "no hub added after a pick-up-only route"
+	var C := sim.net_calc(sp)
+	if not C.ok or not C.rows.any(func(r): return r.c.id == c.id and sp.stops[r.off] == sp.auto_end):
+		return "the cargo does not go to the hub: %s" % C.why
+	sim.net_go(sp)
+	_days(sim, 12, false)
+	if c.at != sp.auto_end or not (c.st == "ready" or c.st == "proc" or c.st == "done"):
+		return "the cargo is at %s (%s), not in the hub" % [sim.PL[c.at].name, c.st]
+	return _consistent(sim)

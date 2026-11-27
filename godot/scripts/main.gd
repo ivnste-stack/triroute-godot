@@ -835,6 +835,14 @@ func _on_world(w: Dictionary) -> void:
 					_net_dialog("manage", {"a": sm.CO.hq})
 				"trunk", "route":
 					var ta := {"a": sm.CO.hq}
+					if _args.has("netempty"):   # test: a route from the headquarters that only picks up on the way
+						for c in sm.CO.net.cs:
+							c.at = c.k.from
+							c.st = "wait"
+						sm.CO.net.cs = sm.CO.net.cs.filter(func(c): return c.at != sm.CO.hq)
+						var wt: Array = sm.CO.net.cs.filter(func(c): return c.st == "wait")
+						if wt.size():   # --netempty=pick: only where it is picked up
+							ta.way = [wt[0].at] if String(_args.netempty) == "pick" else [wt[0].at, wt[0].k.to]
 					if _args.has("netway"):   # --netway=N: a truck and N stops the player put in
 						sm.CO.veh.push_front({"id": sm.CO.uid, "t": "truck", "loc": sm.CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})
 						sm.CO.uid += 1
