@@ -72,7 +72,6 @@ func board(body: VBoxContainer) -> void:
 			Windows._tip("Вантажі в мережі", "Чекають у відправника, лежать на складах терміналів, їдуть у рейсах.")),
 		Windows._stat("Рейсів", str(CO.net.runs.size()), "ліній за розкладом: %d" % CO.net.lines.size())]))
 	body.add_child(Ui.hint("[b]Альтернативний баланс: мережа терміналів.[/b] «Взяти в роботу» — і вантаж чекає у відправника. Забирайте його кільцевими рейсами з хабів, збирайте на складах, везіть магістралями (своєю технікою або партнерами) і розвозьте по містах. Чим більше вантажів в одному рейсі, тим дешевше кожен: це і є прибуток. Вікна «Прийняті вантажі» й «Термінали» — ваші склади, рейси й лінії.", "layers"))
-	contracts(body)
 	body.add_child(Windows._sect("Біржа вантажів"))
 	if CO.board.is_empty():
 		body.add_child(Windows._note("Нових замовлень поки немає — вони з'являються щодня."))
@@ -140,6 +139,10 @@ func card(k: Dictionary) -> PanelContainer:
 		pills.add_child(tp)
 	elif k.tons >= 25:
 		pills.add_child(Ui.pill("Масовий вантаж", "acc", "layers"))
+	if P != null and P.legs.map(func(L): return L.m).reduce(func(acc, m): return acc if acc.has(m) else acc + [m], []).size() > 1:
+		var mp := Ui.pill("Мультимодальний вантаж", "acc", "layers")   # the way takes more than one kind of transport
+		mp.tooltip_text = Windows._tip("Мультимодальний вантаж", "Шлях до замовника поєднує кілька видів транспорту: %s. Між ними — перевантаження в терміналі." % ", ".join(PackedStringArray(P.legs.map(func(L): return MODE_N[L.m]).reduce(func(acc, m): return acc if acc.has(m) else acc + [m], []))))
+		pills.add_child(mp)
 	for id in sim.perm_need(cg, "sea" if k.get("sea") else "road"):
 		pills.add_child(Ui.pill(sim.perm_i[id].n.split(":")[0], "good" if sim.perm_ok(id) else "bad", sim.perm_i[id].ic))
 	if P == null:
@@ -147,22 +150,32 @@ func card(k: Dictionary) -> PanelContainer:
 	pills.add_child(Ui.pill("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info"))
 	if k.get("taken"):   # taken: the card stays, the button greyed, «Вантаж прийнято»
 		var tb := Windows._btn("Вантаж прийнято", "sm", "check", func(): pass, false)
-		var card := Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), Ui.hbox(8, [w._show_btn(k), tb])]))
+		var card := Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), Ui.hbox(8, [w._show_btn(k), _ask_btn(k), tb])]))
 		card.modulate.a = .7
 		return card
-	var bs := Ui.hbox(8, [w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
+	var bs := Ui.hbox(8, [w._show_btn(k), _ask_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
 		Windows._tip("Взяти в роботу", "Замовник чекає, що ви заберете вантаж у місті %s і доставите в %s за %s. Далі — у вікні «Прийняті вантажі»." % [A.name, B.name, Ui.days(k.dlDays)]))])
 	return Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), bs]))
 
 
+## «Запропонувати контракт» on a board card: to the shipper of the order; it accepts or refuses on its own terms
+func _ask_btn(k: Dictionary) -> Button:
+	var fs: String = k.get("fs", "")
+	var key := SimNet.firm_key(k.from, fs)
+	var has: bool = fs != "" and sim.ctr_has(key)
+	var b := Windows._btn("Запропонувати контракт", "sm", "handshake", func(): w._do(sim.act_ctr_ask(k.from, fs)), fs != "" and not has,
+		("Контракт із %s уже є або чекає вашої відповіді" % fs) if has else Windows._tip("Запропонувати контракт", "Постійні поставки від %s за графіком, без біржі, за сталу ціну. Чи погодиться — вирішує підприємство: воно дивиться на вашу з ним історію й на рейтинг компанії." % fs))
+	return b
+
+
 # ====================================================================== contracts
-## «Контракти» on the board: the offers of businesses, the contracts under way (with a route made for one), the
+## «Контракти» in «Прийняті вантажі»: the offers of businesses, the contracts under way (with a route made for one), the
 ## regular clients and how far each is from a contract
 func contracts(body: VBoxContainer) -> void:
 	var N: Dictionary = sim._nets()
 	body.add_child(Windows._sect("Контракти"))
 	if N.coff.is_empty() and N.ctr.is_empty() and N.firms.is_empty():
-		body.add_child(Windows._note("Доставляйте вчасно вантажі одних і тих самих підприємств — і вони запропонують контракт: поставки за графіком, без біржі, за сталу ціну. З %d вчасних доставок контракт можна запропонувати й самому." % SimNet.CTR_ASK, Ui.MUTED))
+		body.add_child(Windows._note("Доставляйте вантажі одних і тих самих підприємств вчасно й цілими — і вони запропонують контракт: поставки за графіком, без біржі, за сталу ціну. Запропонувати контракт можна й самому: кнопкою на картці замовлення на біржі.", Ui.MUTED))
 		return
 	for O in N.coff:
 		body.add_child(_ctr_card(O, true))
@@ -175,15 +188,10 @@ func contracts(body: VBoxContainer) -> void:
 		var rows := Ui.vbox(4, [Ui.lbl("Постійні клієнти")])
 		for key in fs.slice(0, 5):
 			var F: Dictionary = N.firms[key]
-			var k_: String = key
-			var can: bool = F.ok >= SimNet.CTR_ASK
-			var sub := "%s · вчасно %d · із запізненням %d" % [_pl(F.at), F.ok, F.late]
-			if F.ok < SimNet.CTR_MIN:
-				sub = "%s · вчасно %d · із запізненням %d · до пропозиції ще %d вчасних" % [_pl(F.at), F.ok, F.late, SimNet.CTR_MIN - F.ok]
+			var sub := "%s · вчасно %d · із запізненням %d · пошкоджено %d" % [_pl(F.at), F.ok, F.late, F.get("dmg", 0)]
 			var nm := Ui.vbox(1, [Windows._b(F.n, 13), Windows._note(sub, Ui.FG2, 12)])
 			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			rows.add_child(Ui.hbox(10, [Ui.icon("building", 16, Ui.FG2), nm, Windows._btn("Запропонувати контракт", "sm", "handshake", func(): w._do(sim.act_ctr_ask(k_)), can,
-				Windows._tip("Запропонувати контракт", "Підприємство погодиться, якщо з ним було щонайменше %d вчасних доставок і мало запізнень. Ціна трохи нижча, ніж коли контракт пропонує воно саме." % SimNet.CTR_ASK))]))
+			rows.add_child(Ui.hbox(10, [Ui.icon("building", 16, Ui.FG2), nm]))
 		body.add_child(Windows._blk(rows))
 
 
@@ -228,6 +236,8 @@ func _ctr_card(C: Dictionary, offer: bool) -> PanelContainer:
 # ====================================================================== «Вантажі»
 func cargo(body: VBoxContainer) -> void:
 	var CO := sim.CO
+	contracts(body)   # the contracts with shippers: offers, the ones under way, the regular clients
+	body.add_child(Windows._sect("Вантажі"))
 	var cs: Array = CO.net.cs.duplicate()
 	if cs.is_empty():
 		body.add_child(Ui.hint("Прийнятих вантажів поки немає. Беріть замовлення на «Біржі вантажів» кнопкою «Взяти в роботу».", "box"))

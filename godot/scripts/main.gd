@@ -823,11 +823,12 @@ func _on_world(w: Dictionary) -> void:
 			for i in mini(2, ks.size()):
 				var k: Dictionary = ks[i]
 				var key := SimNet.firm_key(k.from, k.fs)
-				sm._nets().firms[key] = {"n": k.fs, "at": k.from, "ok": 7, "late": 0, "off": -999.0, "lanes": {str(k.to): {"n": 7, "pay": k.pay * 7, "tons": k.tons * 7, "cg": {k.cg: 7}}}}
+				sm._nets().firms[key] = {"n": k.fs, "at": k.from, "ok": 15, "late": 0, "off": -999.0, "lanes": {str(k.to): {"n": 15, "pay": k.pay * 15, "tons": k.tons * 15, "cg": {k.cg: 15}}},
+					"need": 7, "rmin": 1.0, "good": 15, "dmg": 0}
 				if i == 0:
 					sm._offer(sm.ctr_terms(key))
 				else:
-					sm.act_ctr_ask(key)
+					sm.act_ctr_ask(k.from, k.fs)
 			if win.visible:
 				_win_tick(true)
 		if _args.has("netdlg"):   # test: a run dialog of the network (round / trunk / pick)

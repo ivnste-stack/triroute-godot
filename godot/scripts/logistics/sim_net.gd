@@ -1811,14 +1811,17 @@ func _board1(st: Dictionary) -> bool:
 
 # ====================================================================== contracts with shippers
 ## Every consignment delivered for a business is remembered (CO.net.firms: by its town and name, its lanes —
-## where to, how many, tons, pay, cargo). A business served well (CTR_MIN on time, few late) offers a contract,
-## or the player proposes one (CTR_ASK on time): for a few months it ships on a schedule — every few days a
+## where to, how many, tons, pay, cargo). Each business has its own terms, hidden from the player: so many good
+## deliveries (on time, undamaged — 7 to 15, drawn once), none damaged, and the company's rating above its own bar
+## (3 to 5). The player may propose a contract from the first day — the business accepts once its terms are met
+## and refuses otherwise, saying no more; a business whose terms are met may offer one itself now and then.
+## A contract: for a few months it ships on a schedule — every few days a
 ## consignment appears at its town on its own, at a fixed pay, a little above the board's. Lines whose stops it
 ## lies on carry it like any other cargo. A missed or late shipment counts against the contract; three and the
 ## business ends it. A clean contract is offered again when it ends.
 
-const CTR_MIN := 6     # on-time deliveries before a business offers a contract itself
-const CTR_ASK := 3     # on-time deliveries before the player may propose one
+const CTR_NEED := [7, 15]   # the good deliveries a business wants before a contract (its own number in between)
+const CTR_RATE := [3.0, 5.0]   # the company's rating it wants (its own bar in between)
 
 
 static func firm_key(pid: int, name: String) -> String:
@@ -1847,15 +1850,15 @@ func _firm_note(c: Dictionary, ok: bool, pay: float) -> void:
 		return
 	if not k.get("fs"):
 		return
-	var key := firm_key(k.from, k.fs)
-	var F: Dictionary = N.firms.get(key, {})
-	if F.is_empty():
-		F = {"n": k.fs, "at": k.from, "ok": 0, "late": 0, "lanes": {}, "off": -999.0}
-		N.firms[key] = F
+	var F := _firm(k.from, k.fs)
 	if ok:
 		F.ok += 1
 	else:
 		F.late += 1
+	if pay > 0 and c.get("dmg", 0.0) > .05:
+		F.dmg = F.get("dmg", 0) + 1
+	elif ok:
+		F.good = F.get("good", 0) + 1
 	var lk := str(k.to)
 	var L: Dictionary = F.lanes.get(lk, {"n": 0, "pay": 0.0, "tons": 0.0, "cg": {}})
 	L.n += 1
@@ -1863,6 +1866,30 @@ func _firm_note(c: Dictionary, ok: bool, pay: float) -> void:
 	L.tons += k.tons
 	L.cg[k.cg] = L.cg.get(k.cg, 0) + 1
 	F.lanes[lk] = L
+
+
+## a business's record (made on its first delivery or proposal), with its own hidden terms for a contract
+func _firm(pid: int, name: String) -> Dictionary:
+	var N := _nets()
+	var key := firm_key(pid, name)
+	var F: Dictionary = N.firms.get(key, {})
+	if F.is_empty():
+		F = {"n": name, "at": pid, "ok": 0, "late": 0, "lanes": {}, "off": -999.0}
+		N.firms[key] = F
+	if not F.has("need"):   # drawn once (a record from an older save gets its terms now)
+		F.need = CTR_NEED[0] + int(RX.next() * (CTR_NEED[1] - CTR_NEED[0] + 1))
+		F.rmin = JS.fixed1(CTR_RATE[0] + RX.next() * (CTR_RATE[1] - CTR_RATE[0]))
+		F.good = F.get("good", F.ok)
+		F.dmg = F.get("dmg", 0)
+	return F
+
+
+## whether a business would sign: its good deliveries, none damaged, the company's rating (its hidden terms)
+func ctr_ready(key: String) -> bool:
+	var F: Variant = _nets().firms.get(key)
+	if F == null or not F.has("need"):
+		return false
+	return F.good >= F.need and F.dmg == 0 and CO.rating >= F.rmin
 
 
 ## the terms a business would sign: its busiest lane, its usual cargo and load, every few days (the more it
@@ -1897,20 +1924,17 @@ func ctr_has(key: String) -> bool:
 	return N.ctr.any(func(C): return C.key == key) or N.coff.any(func(O): return O.key == key)
 
 
-## «Запропонувати контракт»: a business with CTR_ASK on-time deliveries and few late ones agrees, at a pay a
-## little lower than its own offer would be
-func act_ctr_ask(key: String) -> Dictionary:
-	var F: Variant = _nets().firms.get(key)
-	if F == null or ctr_has(key):
+## «Запропонувати контракт» (on a board card, from the first day): the business accepts once its hidden terms are
+## met, at a pay a little lower than its own offer would be, and refuses otherwise — without saying why
+func act_ctr_ask(pid: int, name: String) -> Dictionary:
+	var key := firm_key(pid, name)
+	if name == "" or ctr_has(key):
 		return {}
-	if F.ok < CTR_ASK:
-		return _toast("warn", "Замало спільної історії", "%s: потрібно %d вчасних доставок, зараз %d" % [F.n, CTR_ASK, F.ok])
-	if F.late > F.ok * .25:
-		return _toast("warn", "Відмова", "%s: забагато запізнень — спершу покращте надійність" % F.n)
-	var T: Variant = ctr_terms(key, 1.0)
+	var F := _firm(pid, name)
+	var T: Variant = ctr_terms(key, 1.0) if ctr_ready(key) else null
 	if T == null:
-		return _toast("warn", "Відмова", "%s: зараз немає шляху для постійних поставок" % F.n)
-	return _ctr_start(T)
+		return _toast("warn", "Партнер відхилив вашу пропозицію контракту", F.n)
+	return _ctr_start(T, "Партнер прийняв вашу пропозицію")
 
 
 func act_ctr_take(oid: int) -> Dictionary:
@@ -1936,7 +1960,7 @@ func act_ctr_end(cid: int) -> Dictionary:
 	return {}
 
 
-func _ctr_start(T: Dictionary) -> Dictionary:
+func _ctr_start(T: Dictionary, title: String = "Контракт укладено") -> Dictionary:
 	var C := T.duplicate()
 	C.id = CO.net.uid
 	CO.net.uid += 1
@@ -1947,7 +1971,7 @@ func _ctr_start(T: Dictionary) -> Dictionary:
 	C.sent = 0
 	_nets().ctr.append(C)
 	co_news("good", "handshake", "%s уклала контракт із %s: %s → %s, кожні %d дн." % [CO.name, C.firm, PL[C.from].name, PL[C.to].name, C.every])
-	return _toast("good", "Контракт укладено", "%s: %s → %s · кожні %d дн. · %s за поставку" % [C.firm, PL[C.from].name, PL[C.to].name, C.every, usd_s(C.pay)])
+	return _toast("good", title, "%s: %s → %s · кожні %d дн. · %s за поставку" % [C.firm, PL[C.from].name, PL[C.to].name, C.every, usd_s(C.pay)])
 
 
 func _ctr_end(C: Dictionary, why: String) -> void:
@@ -1978,10 +2002,10 @@ func _contracts_day() -> void:
 			_take(k)
 			C.sent += 1
 			C.next = day + C.every
-	# a business served well offers a contract (now and then, not twice at once)
+	# a business whose terms are met offers a contract itself (now and then, not twice at once)
 	for key in N.firms:
 		var F: Dictionary = N.firms[key]
-		if F.ok >= CTR_MIN and F.late <= F.ok * .15 and day - F.off > 30 and not ctr_has(key) and RX.next() < .2:
+		if day - F.off > 30 and not ctr_has(key) and ctr_ready(key) and RX.next() < .2:
 			var T: Variant = ctr_terms(key)
 			if T != null:
 				_offer(T)
@@ -1994,7 +2018,7 @@ func _offer(T: Dictionary) -> void:
 	O.exp = day + 7
 	_nets().coff.append(O)
 	co_news("good", "handshake", "%s пропонує контракт: %s → %s, кожні %d дн." % [O.firm, PL[O.from].name, PL[O.to].name, O.every])
-	_nt({"tone": "good", "t": "Пропозиція контракту", "d": "%s: %s → %s · кожні %d дн. · %s за поставку. Біржа вантажів → Контракти" % [O.firm, PL[O.from].name, PL[O.to].name, O.every, usd_s(O.pay)]})
+	_nt({"tone": "good", "t": "Пропозиція контракту", "d": "%s: %s → %s · кожні %d дн. · %s за поставку. Прийняті вантажі → Контракти" % [O.firm, PL[O.from].name, PL[O.to].name, O.every, usd_s(O.pay)]})
 
 
 

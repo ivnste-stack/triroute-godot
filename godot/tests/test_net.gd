@@ -272,16 +272,33 @@ func test_contracts_with_shippers() -> String:
 	var N: Dictionary = sim._nets()
 	if N.firms.is_empty():
 		return "no business remembered after 20 days of deliveries"
-	# a business served on time four times (as a punctual player would have)
+	# every business has its own hidden terms, drawn in the ranges
+	for key in N.firms:
+		var F0: Dictionary = N.firms[key]
+		if F0.need < SimNet.CTR_NEED[0] or F0.need > SimNet.CTR_NEED[1] or F0.rmin < SimNet.CTR_RATE[0] or F0.rmin > SimNet.CTR_RATE[1]:
+			return "terms out of range: %d deliveries, rating %.1f" % [F0.need, F0.rmin]
 	var k: Dictionary = sim.CO.board.filter(func(x): return x.get("fs"))[0]
 	var key := SimNet.firm_key(k.from, k.fs)
-	N.firms[key] = {"n": k.fs, "at": k.from, "ok": 4, "late": 0, "off": -999.0,
-		"lanes": {str(k.to): {"n": 4, "pay": k.pay * 4, "tons": k.tons * 4, "cg": {k.cg: 4}}}}
-	if sim.act_ctr_ask("0|nobody").get("tone", "") == "good":
+	if sim.act_ctr_ask(0, "nobody").get("t", "") != "Партнер відхилив вашу пропозицію контракту":
 		return "a stranger signed a contract"
-	var r := sim.act_ctr_ask(key)
-	if r.get("tone", "") != "good" and not sim.ctr_has(key):
-		return "the proposal was refused: %s" % r.get("d", "")
+	# served well, but short of its own number of good deliveries: it refuses
+	N.firms[key] = {"n": k.fs, "at": k.from, "ok": 6, "late": 0, "off": -999.0, "need": 9, "rmin": 3.0, "good": 6, "dmg": 0,
+		"lanes": {str(k.to): {"n": 6, "pay": k.pay * 6, "tons": k.tons * 6, "cg": {k.cg: 6}}}}
+	sim.CO.rating = 4.5
+	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
+		return "a business signed before its terms were met"
+	N.firms[key].good = 9
+	N.firms[key].dmg = 1   # one damaged delivery: still no
+	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
+		return "a business signed after a damaged delivery"
+	N.firms[key].dmg = 0
+	sim.CO.rating = 2.9   # the company's rating below its bar: no
+	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
+		return "a business signed with the rating below its bar"
+	sim.CO.rating = 4.5
+	var r := sim.act_ctr_ask(k.from, k.fs)
+	if r.get("t", "") != "Партнер прийняв вашу пропозицію" or not sim.ctr_has(key):
+		return "the proposal was refused: %s" % r.get("t", "")
 	if N.ctr.is_empty():
 		return "no contract under way"
 	var C: Dictionary = N.ctr[0]
