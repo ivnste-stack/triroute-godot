@@ -239,19 +239,20 @@ func _panel_build() -> void:
 	B.add_child(_sect("Рейс"))
 	var own: bool = st.vid >= 0
 	var fs := W._stat("Заповнення", ("%d%%" % int(C.fill * 100)) if own else "%s т" % Ui.loc(C.tons), "%s т" % Ui.loc(C.tons) if own else "партнер бере будь-яку вагу", "", "bad" if C.get("over") else "")
-	if own:   # a bar in the row of the percent, right after it (room kept for «100%»), filled from the left
+	if own:   # the whole width of the tile a bar, filled from the left, the percent in its middle
 		var txt: VBoxContainer = fs.get_child(0)
 		var num: Label = txt.get_child(1)
 		txt.remove_child(num)
-		var probe := Ui.num("100%", 19)
-		num.custom_minimum_size.x = probe.get_combined_minimum_size().x
-		probe.free()
 		var bar := FillBar.new()
 		bar.f = C.fill
 		bar.col = Ui.BAD if C.fill > 1 else Ui.ACCENT
-		var nr := Ui.hbox(8, [num, bar])
-		txt.add_child(nr)
-		txt.move_child(nr, 1)
+		num.custom_minimum_size = Vector2.ZERO
+		num.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		bar.add_child(num)
+		txt.add_child(Ui.margin(bar, 0, 4, 0, 4))
+		txt.move_child(txt.get_child(txt.get_child_count() - 1), 1)
 	var g := W._grid(2, [
 		fs,
 		W._stat("Час", Ui.days(C.t), "з обробкою на складах"),
@@ -344,9 +345,8 @@ class FillBar extends Control:
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(40, 18)
+		custom_minimum_size = Vector2(40, 28)
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		size_flags_vertical = Control.SIZE_SHRINK_END   # level with the figures, which sit at the bottom of their row
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
