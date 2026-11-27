@@ -23,7 +23,7 @@ var vis_mway := true
 ## the look of the roads and motorways: 0 — yellow with a thin dark outline; 1 — clean amber, the small roads
 ## fading from afar, no outline; 2 — as 0, the outline only close up; 3 — light roads, amber motorways, the
 ## outline close up; 4 — muted roads, amber motorways with a soft glow
-static var road_style := 0
+static var road_style := 2   # the outline only close up: from afar it doubled every road into a ladder
 const ROAD_COL := [
 	["#f4b453", [6, 12, 18, .7], "#f6b94f", [6, 12, 18, .7]],
 	["#d9a04a", [0, 0, 0, 0], "#f2b450", [0, 0, 0, 0]],
