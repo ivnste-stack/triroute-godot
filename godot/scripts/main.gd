@@ -794,8 +794,12 @@ func _on_world(w: Dictionary) -> void:
 			if _args.has("countryhubs"):   # test: the cities of a country, from «Відкрити хаб у країні»
 				wins.country_hubs.emit(session.sim.PL[session.sim.CO.hq].cid)
 		if _args.has("netwait"):   # test: orders taken, their cargo waiting at the shippers' (the boxes on the map)
-			for k in session.sim.CO.board.slice(0, int(_args.netwait)):
+			var nb: Array = session.sim.CO.board.duplicate()
+			nb.sort_custom(func(a, b): return a.id > b.id)   # the newest: the top of the board
+			for k in nb.slice(0, int(_args.netwait)):
 				session.sim.net_accept(k)
+			if win.visible:
+				_win_tick(true)
 		if _args.has("netind"):   # test: the sea licence and permits, a board with refineries and shiploads
 			var sm := session.sim
 			sm.CO.tier = 6
@@ -1294,7 +1298,7 @@ func _decision(spec: Dictionary) -> Dictionary:
 # ---------- windows ----------
 const WIN_HEAD := {"coHome": ["briefcase", "Компанія"], "coJobs": ["box", "Біржа вантажів"], "coTrips": ["road", "Рейси в дорозі"], "coFleet": ["truck", "Автопарк"],
 	"coNet": ["globe", "Мережа хабів"], "coStaff": ["users", "Персонал і менеджмент"], "coFin": ["coins", "Фінанси"], "news": ["news", "Стрічка новин"],
-	"coCargo": ["layers", "Прийняті вантажі"]}
+	"coCargo": ["check", "Прийняті вантажі"]}
 
 
 func _toggle_window(id: String) -> void:

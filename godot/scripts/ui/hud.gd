@@ -11,10 +11,10 @@ signal mode_changed(mode: String)
 
 const RAIL := [["coHome", "briefcase", "Компанія", "Огляд, рейтинг, ліцензії, досягнення і поради."],
 	["coJobs", "box", "Біржа вантажів", "Замовлення від підприємств, прокладання маршрутів, автодиспетчеризація, тендери."],
+	["coCargo", "check", "Прийняті вантажі", "Альтернативний баланс: де кожен прийнятий вантаж і куди йому далі — забрати, відправити.", "alt"],
 	["coTrips", "road", "Рейси в дорозі", "Техніка в рейсах, ділянки маршрутів, повернення в хаби, останні доставки."],
 	["coFleet", "truck", "Автопарк", "Купівля, продаж і ремонт техніки."],
 	["coNet", "globe", "Мережа хабів", "Ваші хаби та їхні рівні, країни й міста для нових хабів."],
-	["coCargo", "layers", "Прийняті вантажі", "Альтернативний баланс: де кожен прийнятий вантаж і куди йому далі — забрати, відправити.", "alt"],
 	["coStaff", "users", "Персонал і менеджмент", "Водії, машиністи, моряки й пілоти з кандидатів, зарплати, моральний дух, менеджери."],
 	["coFin", "coins", "Фінанси", "Прибутки й витрати, кредити, рейтинг компаній світу."],
 	["|"],
@@ -435,7 +435,7 @@ func _process_t(delta: float) -> void:
 	var h := int(fr * 24)
 	var mm := int((fr * 24 - h) * 6) * 10
 	_put(_cells.date, [[Ui.date_str(sim.date), Ui.FG, 16], ["%02d:%02d" % [h, mm], Ui.MUTED, 12]])
-	_put(_cells.trips, [[str(CO.jobs.size() + sim.net_loading().size()), Ui.FG, 16], [("%d на біржі" % CO.board.size()) if CO.tier >= 1 else "з ліцензією 2", Ui.MUTED, 11]])
+	_put(_cells.trips, [[str(CO.jobs.size() + sim.net_loading().size()), Ui.FG, 16], [("%d на біржі" % (sim.net_board_n() if sim.alt() else CO.board.size())) if CO.tier >= 1 else "з ліцензією 2", Ui.MUTED, 11]])
 	_put(_cells.fuel, [[Ui.usd(CO.fuel * 80), Ui.BAD if CO.fuel > 1.15 else (Ui.GOOD if CO.fuel < .9 else Ui.FG), 16]])
 	var pk: float = CO.get("parts", 1.0)
 	var rk := sim.rep_k()
@@ -453,7 +453,7 @@ func _process_t(delta: float) -> void:
 	_put(_cells.rev, rparts)
 	# rail: the open window, the badges
 	_rail_state()
-	_badge("coJobs", CO.board.size() if CO.tier >= 1 else 0)
+	_badge("coJobs", (sim.net_board_n() if sim.alt() else CO.board.size()) if CO.tier >= 1 else 0)
 	var trips := 0
 	for j in CO.jobs:
 		if not j.get("ret"):

@@ -58,7 +58,7 @@ func board(body: VBoxContainer) -> void:
 	for c in CO.net.cs:
 		st[c.st] = st.get(c.st, 0) + 1
 	body.add_child(Windows._grid(3, [
-		Windows._stat("На біржі", str(CO.board.size()), "до %d одночасно" % sim.co_board_max(), Windows._tip("Біржа", "Відправники ближче до ваших хабів замовляють більше. Кожен рівень хабу, модуль терміналу й комерційний директор додають місць на біржі.")),
+		Windows._stat("На біржі", str(sim.net_board_n()), "до %d одночасно" % sim.co_board_max(), Windows._tip("Біржа", "Відправники ближче до ваших хабів замовляють більше. Кожен рівень хабу, модуль терміналу й комерційний директор додають місць на біржі.")),
 		Windows._stat("Вантажів у мережі", str(CO.net.cs.size()), "чекають %d · на складах %d · у дорозі %d" % [st.get("wait", 0), st.get("ready", 0) + st.get("proc", 0), st.get("move", 0)]),
 		Windows._stat("Рейсів", str(CO.net.runs.size()), "ліній за розкладом: %d" % CO.net.lines.size())]))
 	body.add_child(Ui.hint("[b]Альтернативний баланс: мережа терміналів.[/b] «Взяти в роботу» — і вантаж чекає у відправника. Забирайте його кільцевими рейсами з хабів, збирайте на складах, везіть магістралями (своєю технікою або партнерами) і розвозьте по містах. Чим більше вантажів в одному рейсі, тим дешевше кожен: це і є прибуток. Вікна «Прийняті вантажі» й «Термінали» — ваші склади, рейси й лінії.", "layers"))
@@ -133,6 +133,13 @@ func card(k: Dictionary) -> PanelContainer:
 	if P == null:
 		pills.add_child(Ui.pill("Шляху немає", "bad", "alert"))
 	pills.add_child(Ui.pill("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info"))
+	if k.get("taken"):   # taken: the card stays, the button greyed, «Вантаж прийнято»
+		var tb := Windows._btn("Взяти в роботу", "sm", "box", func(): pass, false)
+		var ok := Windows._icl("check", "Вантаж прийнято", Ui.GOOD, 13)
+		ok.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var card := Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), Ui.hbox(8, [w._show_btn(k), tb, ok])]))
+		card.modulate.a = .7
+		return card
 	var bs := Ui.hbox(8, [w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,
 		Windows._tip("Взяти в роботу", "Замовник чекає, що ви заберете вантаж у місті %s і доставите в %s за %s. Далі — у вікні «Прийняті вантажі»." % [A.name, B.name, Ui.days(k.dlDays)]))])
 	return Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), bs]))

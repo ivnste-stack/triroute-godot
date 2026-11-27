@@ -218,6 +218,15 @@ func _co_gen() -> Variant:
 	return net_gen()
 
 
+## the orders on the board still open (the ones taken stay shown, marked, but take no place)
+func net_board_n() -> int:
+	var n := 0
+	for k in CO.board:
+		if not k.get("taken"):
+			n += 1
+	return n
+
+
 func co_board_max() -> int:
 	if not alt():
 		return super.co_board_max()
@@ -403,14 +412,14 @@ func net_gen() -> Variant:
 
 ## «Взяти в роботу»: the order becomes a consignment waiting where it is
 func net_accept(k: Dictionary) -> Dictionary:
-	if not CO.board.has(k):
+	if not CO.board.has(k) or k.get("taken"):
 		return {}
 	if k.get("minR", 0) and CO.rating < k.minR:
 		return _toast("warn", "Замовник хоче рейтинг %.1f+" % k.minR, "Ваш рейтинг %.2f" % CO.rating)
 	var nd := perm_need(cargo_i.get(k.cg), "sea" if k.get("sea") else "road").filter(func(x): return not perm_ok(x))
 	if nd.size():
 		return _toast("warn", "Потрібен дозвіл", perm_i[nd[0]].n)
-	_drop(CO.board, k)
+	k.taken = 1   # the card stays on the board, marked «Вантаж прийнято», until the offer would have expired
 	_take(k)
 	co_news("good", "box", "%s прийняла вантаж «%s»: %s → %s" % [CO.name, cargo_i[k.cg].n.to_lower(), PL[k.from].name, PL[k.to].name])
 	return _toast("good", "Вантаж прийнято", "%s → %s · до %s" % [PL[k.from].name, PL[k.to].name, _days(k.dlDays)])
@@ -1740,7 +1749,7 @@ func _board1(st: Dictionary) -> bool:
 		return super._board1(st)
 	if st.a < 0:
 		var mx: int = st.mx
-		if not (st.i < maxi(4, int(ceil(mx / 3.0))) and CO.board.size() < mx):
+		if not (st.i < maxi(4, int(ceil(mx / 3.0))) and net_board_n() < mx):
 			_gen_pre = {}
 			return false
 		st.i += 1
