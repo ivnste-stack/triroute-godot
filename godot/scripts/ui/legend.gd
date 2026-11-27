@@ -217,7 +217,7 @@ func _inc() -> Array:
 
 
 func _ways() -> Array:
-	return [[{"t": "line", "c": Color("#8fe3ff"), "h": 2.0, "b": Color("#d29634")}, "Платні швидкісні траси"],
+	return [[{"t": "line", "c": Color("#8fe3ff"), "h": 2.0, "b": Color("#f6b94f")}, "Платні швидкісні траси"],
 		[{"t": "line", "c": Color("#f0625f"), "h": 3.0}, "Заборона для важкого транспорту"],
 		[{"t": "line", "c": Color("#6b3b1a"), "h": 4.0}, "Залізниця"], [{"t": "cp"}, "Пропускний пункт на кордоні"],
 		[{"t": "ico", "i": "anchor"}, "Морський порт"], [{"t": "ico", "i": "plane"}, "Аеропорт"], [{"t": "ico", "i": "train"}, "Залізнична станція"]]
@@ -252,7 +252,7 @@ func _entries() -> Array:
 			var cell := _sq(Color.TRANSPARENT, Color("#7d8894"), Vector2(8, 8), 1.0)
 			cell.dash = true
 			out.append([cell, "Клітинка ≈ %d км (трикутники суші й води)" % km.call(.125)])
-			out.append([{"t": "line", "c": Color("#cf9338"), "h": 2.0}, "Автомагістралі й дороги"])
+			out.append([{"t": "line", "c": Color("#f4b453"), "h": 2.0}, "Автомагістралі й дороги"])
 			out.append_array(_ways())
 			out.append_array(_inc())
 			out.append([_sq(HUB), "Хаби"])
@@ -268,8 +268,8 @@ func _entries() -> Array:
 			out.append_array(_inc())
 			out.append([_sq(Color("#7d8a96")), "Доступно за ліцензією"])
 			out.append([_sq(Color("#2b333c")), "Поки недоступно"])
-			out.append([{"t": "line", "c": Color("#d29634"), "h": 4.0}, "Автомагістралі"])
-			out.append([{"t": "line", "c": Color("#cf9338"), "h": 2.0}, "Дороги"])
+			out.append([{"t": "line", "c": Color("#f6b94f"), "h": 4.0, "b": Color(6 / 255.0, 12 / 255.0, 18 / 255.0, .6)}, "Автомагістралі"])
+			out.append([{"t": "line", "c": Color("#f4b453"), "h": 2.0}, "Дороги"])
 			out.append_array(_ways())
 			out.append(["note", "Хабів: %d · рейсів у дорозі: %d" % [sim.CO.get("hubs", []).size(), sim.CO.get("jobs", []).size()]])
 	return out
