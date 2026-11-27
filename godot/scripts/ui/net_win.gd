@@ -556,12 +556,6 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	# a stop: ↓ where cargo is loaded, ↑ where it is unloaded (a count when several), the town's name
 	var planned: bool = st.get("planned", false)   # the route panel: what the plan does, no guesses
 	var marks_all := []   # the squares of the timeline, joined by a line from the first stop to the last
-	var arrow := func(t: String, tip: String) -> Label:
-		var l := Ui.label(t, 14, Ui.FG2, Ui.font("body", 700))
-		l.tooltip_text = tip
-		l.mouse_filter = Control.MOUSE_FILTER_STOP
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		return l
 	var row := func(i: int, pid: int, note: String) -> Control:
 		var h := Ui.hbox(6)
 		var on := 0
@@ -578,16 +572,15 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 						on += 1
 		# ↓ loading, ↑ unloading, ← the start of an empty run, in a square on the timeline; a tooltip on each
 		var tl := TLMark.new()
-		var marks: HBoxContainer = tl.inner
 		marks_all.append(tl)
 		if i == 0 and on == 0 and way.size():
-			marks.add_child(arrow.call("←", "Перегін: машина їде з %s порожньою до першої зупинки" % _pl(pid)))
+			tl.add("left", "Перегін: машина їде з %s порожньою до першої зупинки" % _pl(pid))
 		if on > 0:
-			marks.add_child(arrow.call("↓", "Завантаження" + ((" · %d" % on) if on > 1 else "")))
+			tl.add("down", "Завантаження" + ((" · %d" % on) if on > 1 else ""))
 		if off > 0:
-			marks.add_child(arrow.call("↑", "Вивантаження" + ((" · %d" % off) if off > 1 else "")))
-		if marks.get_child_count() == 0:
-			marks.add_child(Ui.icon(MODE_IC[st.m] if i > 0 else ("building" if sim.hub_at(pid) != null else "pin"), 12, Ui.MUTED))
+			tl.add("up", "Вивантаження" + ((" · %d" % off) if off > 1 else ""))
+		if tl.marks.is_empty():
+			tl.add(MODE_IC[st.m] if i > 0 else ("building" if sim.hub_at(pid) != null else "pin"), "", Ui.MUTED)
 		h.add_child(tl)
 		h.add_child(Windows._b(_pl(pid), 13))
 		for e in [on, off]:
@@ -606,7 +599,7 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		v.add_child(r)
 	if st.get("back", false) and way.size():
 		var tb := TLMark.new()
-		tb.inner.add_child(Ui.icon(MODE_IC[st.m], 12, Ui.ACCENT))
+		tb.add(MODE_IC[st.m], "", Ui.ACCENT)
 		marks_all.append(tb)
 		v.add_child(Ui.hbox(6, [tb, Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
 	for k in marks_all.size():
@@ -845,39 +838,56 @@ func _dialog_fill(box: VBoxContainer, st: Dictionary, done: Callable, redraw: Ca
 	box.add_child(bs)
 
 
-## a stop on the route's timeline: its marks in a square, a vertical line to the stops before and after it (drawn
-## across the gap between the rows)
+## a stop on the route's timeline: its marks (↓ loading, ↑ unloading, ← an empty run, or an icon) in a square and
+## a vertical line to the stops before and after it, across the gap between the rows. All drawn from one centre,
+## on whole pixels: a font's arrows sit off the middle of their box.
 class TLMark extends Control:
 	const GAP := 6.0   # the rows' separation the line crosses
+	const CX := 21     # the column of the line and the squares' middle (a pixel; the line is 1 px wide)
 	var up := false
 	var down := false
-	var inner := HBoxContainer.new()
-	var _sq := PanelContainer.new()
+	var marks := []    # [kind, colour]: "down", "up", "left" or an icon's name
 
 	func _init() -> void:
-		custom_minimum_size = Vector2(34, 36)
-		mouse_filter = Control.MOUSE_FILTER_PASS
-		inner.add_theme_constant_override("separation", 1)
-		inner.alignment = BoxContainer.ALIGNMENT_CENTER
-		_sq.add_theme_stylebox_override("panel", Ui.box(Ui.GLASS_LO, Ui.LINE_HI, 1, Vector4(4, 0, 4, 0)))
-		_sq.custom_minimum_size = Vector2(24, 24)
-		_sq.add_child(inner)
-		var cc := CenterContainer.new()
-		cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		cc.mouse_filter = Control.MOUSE_FILTER_PASS
-		cc.add_child(_sq)
-		add_child(cc)
-		_sq.resized.connect(queue_redraw)
-		resized.connect(queue_redraw)
+		custom_minimum_size = Vector2(CX * 2 + 1, 36)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func add(kind: String, tip: String, col: Color = Ui.FG2) -> void:
+		marks.append([kind, col])
+		if tip != "":
+			tooltip_text = (tooltip_text + "\n" if tooltip_text != "" else "") + tip
+		queue_redraw()
 
 	func _draw() -> void:
-		# the square as the CenterContainer places it (its own size, centred, floored), not as it was on the
-		# screen at some earlier layout
-		var sq := _sq.get_combined_minimum_size().max(_sq.size)
-		var top := floorf((size.y - sq.y) / 2)
-		var x := floorf((size.x - sq.x) / 2) + floorf(sq.x / 2) + .5
-		var col := Ui.LINE_HI
+		var n := maxi(1, marks.size())
+		var w := 25 + 16 * (n - 1)   # odd: a middle pixel for the line
+		var h := 25
+		var r := Rect2(CX - (w - 1) / 2, floorf((size.y - h) / 2), w, h)
+		var x := CX + .5
+		var line := Ui.LINE_HI
 		if up:   # from the middle of the gap above, where the line from the stop before ends
-			draw_line(Vector2(x, -GAP / 2), Vector2(x, top), col, 1.0)
+			draw_line(Vector2(x, -GAP / 2), Vector2(x, r.position.y), line, 1.0)
 		if down:
-			draw_line(Vector2(x, top + sq.y), Vector2(x, size.y + GAP / 2), col, 1.0)
+			draw_line(Vector2(x, r.end.y), Vector2(x, size.y + GAP / 2), line, 1.0)
+		draw_rect(r, Ui.GLASS_LO)
+		draw_rect(r.grow(-.5), line, false, 1.0)
+		var cy := r.position.y + (h - 1) / 2 + .5
+		for k in marks.size():
+			var c := Vector2(CX + .5 + 16 * (k - (n - 1) / 2.0), cy)
+			var col: Color = marks[k][1]
+			match marks[k][0]:
+				"down":
+					_arrow(c, Vector2(0, 1), col)
+				"up":
+					_arrow(c, Vector2(0, -1), col)
+				"left":
+					_arrow(c, Vector2(-1, 0), col)
+				_:
+					Icons.draw(self, marks[k][0], c.x - 6, c.y, 12, col)
+
+	## an arrow 11 px long through c, pointing along d
+	func _arrow(c: Vector2, d: Vector2, col: Color) -> void:
+		var tip := c + d * 5
+		var side := Vector2(-d.y, d.x) * 4
+		draw_line(c - d * 5, tip, col, 1.6, true)
+		draw_polyline(PackedVector2Array([tip - d * 4 + side, tip, tip - d * 4 - side]), col, 1.6, true)
