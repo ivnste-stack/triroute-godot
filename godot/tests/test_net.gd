@@ -375,3 +375,77 @@ func test_pickup_only_goes_to_a_hub() -> String:
 	if c.at != sp.auto_end or not (c.st == "ready" or c.st == "proc" or c.st == "done"):
 		return "the cargo is at %s (%s), not in the hub" % [sim.PL[c.at].name, c.st]
 	return _consistent(sim)
+
+
+## the player's own roads: a point put on a road aside of the shortest way — the plan, the time and the
+## truck itself go through it, and the cargo still gets there
+func test_run_takes_the_players_roads() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var sim := _game(777)
+	var hq: int = sim.CO.hq
+	sim.CO.veh.append({"id": sim.CO.uid, "t": "truck", "loc": hq, "st": "idle", "cond": 100.0, "km": 0.0})
+	var vid: int = sim.CO.uid
+	sim.CO.uid += 1
+	sim.CO.staff.driver += 1
+	for i in 3:
+		sim.co_board_day()
+	for k in sim.CO.board.duplicate():
+		sim.net_accept(k)
+	for c in sim.CO.net.cs:
+		c.at = hq
+		c.st = "ready"
+	var way := sim.net_way_auto(hq, [], "road", false).filter(func(p): return p != hq)
+	if way.is_empty():
+		return "no stops on the way"
+	way = [way[0]]
+	var A: Dictionary = sim.PL[hq]
+	var B: Dictionary = sim.PL[way[0]]
+	var mx: float = (A.x + B.x) / 2 - (B.z - A.z) * .8
+	var mz: float = (A.z + B.z) / 2 + (B.x - A.x) * .8
+	var Bd: Dictionary = sim.board
+	var best := -1
+	var bd := 1e9
+	for v in Bd.bits.size():
+		if Bd.bits[v] != 0:
+			var d := Vector2(-Bd.wx / 2 + (v % Bd.nx) * Bd.st - mx, -Bd.wz / 2 + (v / Bd.nx) * Bd.st - mz).length()
+			if d < bd:
+				bd = d
+				best = v
+	var w := {"v": best, "x": -Bd.wx / 2 + (best % Bd.nx) * Bd.st, "z": -Bd.wz / 2 + (best / Bd.nx) * Bd.st}
+	var plain: Variant = sim.co_route("road", hq, way[0])
+	var rv: Variant = sim.net_leg_route("road", hq, way[0], [w])
+	if plain == null or rv == null:
+		return "no route"
+	if rv.len < plain.len * 1.1:
+		return "the point does not lengthen the way: %.3f vs %.3f" % [rv.len, plain.len]
+	var sp := sim.net_auto_multi(hq, way, "road", vid)
+	var C0 := sim.net_calc(sp)
+	sp.via = {0: [w]}
+	var C := sim.net_calc(sp)
+	if not (C.ok and C0.ok):
+		return "the haul: %s" % C.why
+	if C.legs[0].len < C0.legs[0].len * 1.1 or C.t <= C0.t:
+		return "the plan ignores the point: %.3f, %.2f d vs %.3f, %.2f d" % [C.legs[0].len, C.t, C0.legs[0].len, C0.t]
+	var n: int = C.rows.size()
+	var d0: int = sim.CO.net.stat.done
+	sim.net_go(sp)
+	var j: Variant = null
+	for f in 64:
+		for x in sim.CO.jobs:
+			if x.get("net") != null:
+				j = x
+		if j != null:
+			break
+		sim.co_frame(minf(.99, sim.co_now() - sim.day + 1 / 32.0))
+		if f % 32 == 31:
+			sim.co_day()
+	if j == null:
+		return "the run never left"
+	if absf(j.len - rv.len) > rv.len * .01:
+		return "the truck drives %.3f, the player's way is %.3f" % [j.len, rv.len]
+	_days(sim, 10, false)
+	if sim.CO.net.stat.done - d0 < n:
+		return "%d of %d delivered" % [sim.CO.net.stat.done - d0, n]
+	print("       through the player's point: %.0f%% longer than the shortest way" % ((rv.len / plain.len - 1) * 100))
+	return _consistent(sim)

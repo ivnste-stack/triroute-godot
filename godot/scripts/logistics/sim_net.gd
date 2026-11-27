@@ -631,6 +631,29 @@ static func _drop_at(stops: Array, i: int, to: int) -> int:
 
 
 ## what a run would do: legs, times, costs, the load on every leg, when each consignment arrives
+## a leg's route: through the road or rail points the player put on it (via), or the usual one; on the road,
+## around the toll motorways and/or the heavy-vehicle bans when the player asked (av: "toll", "ban", "toll,ban")
+func net_leg_route(m: String, a: int, b: int, via: Array, av: String = "") -> Variant:
+	if via.is_empty():
+		if m != "road" or av == "" or not road_rules:
+			return co_route(m, a, b)
+		var av0 := road_av
+		road_av = av
+		var r: Variant = co_route(m, a, b)
+		road_av = av0
+		return r
+	var f := PackedFloat32Array()
+	var len_ := 0.0
+	var pts: Array = [a] + via + [b]
+	for k in range(1, pts.size()):
+		var r: Variant = call("lp_seg", m, pts[k - 1], pts[k])   # Sim's (the planner's own path between points)
+		if r == null:
+			return null
+		f.append_array(r.p.slice(0 if k == 1 else 2))
+		len_ += r.len
+	return {"p": f, "len": len_}
+
+
 func net_calc(spec: Dictionary) -> Dictionary:
 	var stops: Array = spec.stops
 	var res := {"ok": false, "why": "", "legs": [], "rows": [], "t": 0.0, "c": 0.0, "rev": 0.0, "fill": 0.0, "tons": 0.0}
@@ -723,7 +746,7 @@ func net_calc(spec: Dictionary) -> Dictionary:
 		if i > 0:
 			var a: int = stops[i - 1]
 			var b: int = stops[i]
-			var r: Variant = co_route(m, a, b)
+			var r: Variant = net_leg_route(m, a, b, spec.get("via", {}).get(i - 1, []), spec.get("av", ""))
 			if r == null:
 				res.why = "Немає маршруту %s → %s" % [PL[a].name, PL[b].name]
 				return res
@@ -812,7 +835,7 @@ func net_go(spec: Dictionary, by_line: bool = false) -> Dictionary:
 	var own: bool = spec.get("vid", -1) >= 0
 	var m: String = D.VT[_veh(spec.vid).t].mode if own else spec.m
 	var r := {"id": rid, "vid": spec.get("vid", -1), "m": m, "stops": stops, "picks": {}, "i": 0, "st": "load", "t_dep": 0.0, "line": spec.get("line", -1), "cost": 0.0, "rev": 0.0, "job": -1,
-		"offn": {}}
+		"offn": {}, "via": spec.get("via", {}).duplicate(true), "av": spec.get("av", "")}
 	for row in C.rows:   # what each stop unloads (kept for the trip card, the cargo itself leaves the run there)
 		r.offn[row.off] = r.offn.get(row.off, 0) + 1
 	for row in C.rows:
@@ -896,12 +919,16 @@ func _run_leg(r: Dictionary) -> bool:
 			return false
 		v.idle0 = co_now()
 		kk._veh = [r.vid]   # the kept vehicle itself: the plan takes it
-		P = co_plan1(kk)
+		var rv: Variant = net_leg_route(r.m, a, b, r.get("via", {}).get(i, []), r.get("av", ""))
+		if rv == null:
+			r.why = "Маршрут перекрито"
+			return false
+		P = lp_with(r.m + str(a) + ":" + str(b), rv, func(): return co_plan1(kk))   # the roads the player chose
 		if not P.ok:
 			r.why = P.why
 			return false
 	else:
-		var rr: Variant = co_route(r.m, a, b)
+		var rr: Variant = net_leg_route(r.m, a, b, r.get("via", {}).get(i, []), r.get("av", ""))
 		if rr == null:
 			r.why = "Маршрут перекрито"
 			return false
@@ -1471,6 +1498,8 @@ func _lines_day() -> void:
 				continue
 		var spec: Dictionary = net_auto_round(L.a, vid) if L.kind == "round" else net_auto_multi(L.a, L.get("way", [L.b]), L.m, vid, L.get("back", false))
 		spec.line = L.id
+		spec.via = L.get("via", {})
+		spec.av = L.get("av", "")
 		var C := net_calc(spec)
 		var urgent := false
 		for row in C.rows:

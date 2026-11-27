@@ -17,7 +17,9 @@ var _C := {}
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
 	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
-		"focus": int(args.get("focus", -1)), "foci": []}
+		"focus": int(args.get("focus", -1)), "foci": [], "av": ""}
+	st.seq = st.way.duplicate()   # what the player clicked, in order: towns and road (rail) points
+	_sync()
 	if st.focus >= 0:
 		st.foci.append(st.focus)
 	LP = {"k": {}, "pts": [a], "modes": []}   # what the planner's own parts read
@@ -38,15 +40,33 @@ func cancel() -> void:
 
 
 func undo() -> void:
-	if st.way.size():
-		st.way.pop_back()
+	if st.seq.size():
+		st.seq.pop_back()
+		_sync()
 		_panel_build()
+
+
+## the clicks into the route: the towns (the stops), the points on the road before each of them (via, by the
+## leg: 0 — from the start to the first stop) and the points after the last town (tail, not driven yet)
+func _sync() -> void:
+	st.way = []
+	st.via = {}
+	st.tail = []
+	for q in st.seq:
+		if Sim.lp_is_w(q):
+			st.tail.append(q)
+		else:
+			if st.tail.size():
+				st.via[st.way.size()] = st.tail
+			st.tail = []
+			st.way.append(q)
 
 
 ## the route, the cargo switched on or off and the orders marked since: all gone; the order the panel was opened
 ## for stays marked
 func clear_route() -> void:
-	st.way = []
+	st.seq = []
+	_sync()
 	st.foci = [st.focus] if st.focus >= 0 and sim._cs(st.focus) != null else []
 	_panel_build()
 
@@ -125,20 +145,27 @@ func _cargo_list(B: VBoxContainer) -> void:
 	B.add_child(Ui.margin(lv, 0, 6, 0, 0))
 
 
+## a click on the map: a town is the next stop; a point on a road (a railway) between the towns is a point the
+## run goes through — the player's own way, not the shortest one
 func click(mp: Vector2) -> void:
-	var pid := city_at(mp, 18)
-	if pid < 0:
+	var q: Variant = city_at(mp, 18)
+	if q < 0:
+		q = pick_w(mp, st.m)
+		if q == null:
+			if st.m == "sea" or st.m == "air":
+				acted.emit({"tone": "", "t": "Проміжні точки — лише для авто і потяга", "d": "%s іде від міста до міста" % MODE_N[st.m]})
+			return
+	var last: Variant = st.seq.back() if st.seq.size() else st.a
+	if (not Sim.lp_is_w(q) and not Sim.lp_is_w(last) and q == last) or (Sim.lp_is_w(q) and Sim.lp_is_w(last) and q.v == last.v):
 		return
-	var last: int = st.way.back() if st.way.size() else st.a
-	if pid == last:
+	if not Sim.lp_is_w(q) and not sim.node_ok(st.m, sim.PL[q]):
+		acted.emit({"tone": "warn", "t": "%s: немає %s" % [MODE_N[st.m], {"rail": "станції", "sea": "порту", "air": "аеропорту"}.get(st.m, "дороги")], "d": sim.PL[q].name})
 		return
-	if not sim.node_ok(st.m, sim.PL[pid]):
-		acted.emit({"tone": "warn", "t": "%s: немає %s" % [MODE_N[st.m], {"rail": "станції", "sea": "порту", "air": "аеропорту"}.get(st.m, "дороги")], "d": sim.PL[pid].name})
+	if sim.lp_seg(st.m, last, q) == null:
+		acted.emit({"tone": "warn", "t": "Маршрут недоступний", "d": "%s не пройде між %s і %s" % [MODE_N[st.m], sim.lp_name(last), sim.lp_name(q)]})
 		return
-	if sim.co_route(st.m, last, pid) == null:
-		acted.emit({"tone": "warn", "t": "Маршрут недоступний", "d": "%s не пройде між %s і %s" % [MODE_N[st.m], sim.PL[last].name, sim.PL[pid].name]})
-		return
-	st.way.append(pid)
+	st.seq.append(q)
+	_sync()
 	_panel_build()
 
 
@@ -168,10 +195,10 @@ func _panel_build() -> void:
 	var B := _body
 	var CO := sim.CO
 	var A: Dictionary = sim.PL[st.a]
-	LP.pts = [st.a] + st.way
+	LP.pts = [st.a] + st.seq
 	# head
 	B.add_child(_row(Ui.hbox(8, [Ui.icon("road", 18, Ui.FG), W._b("Новий маршрут", 15)]), MapUi._xbtn(cancel)))
-	B.add_child(Ui.margin(W._note("Старт — %s. Клікайте на мапі міста по черзі: куди доставити й де забрати вантаж. Останнім — хаб чи термінал, куди машина повезе решту. Ctrl+Z прибирає останню зупинку." % A.name), 0, 4, 0, 0))
+	B.add_child(Ui.margin(W._note("Старт — %s. Клікайте на мапі міста по черзі: куди доставити й де забрати вантаж. Останнім — хаб чи термінал, куди машина повезе решту. Клік на дорозі між містами — точка, через яку поїде рейс: так обирається своя дорога. Ctrl+Z прибирає останню точку." % A.name), 0, 4, 0, 0))
 	# the kind of transport
 	B.add_child(_sect("Вид транспорту"))
 	var ms := ["road", "rail", "sea", "air"]
@@ -179,7 +206,8 @@ func _panel_build() -> void:
 		st.m = "road"
 	var mseg := _seg_eq(ms.map(func(m): return [m, MODE_N[m]]), st.m, func(x):
 		st.m = x
-		st.way = []
+		st.seq = []
+		_sync()
 		st.vid = -2
 		_panel_build())
 	var mb: Array = mseg.get_child(0).get_children()
@@ -212,6 +240,10 @@ func _panel_build() -> void:
 	if st.way.size():
 		_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, _skip_eff())
 		st.auto_end = _spec.get("auto_end", -1)
+		_spec.via = st.via.duplicate(true)   # the roads the player chose; points after the last town lead to the hub added
+		if st.auto_end >= 0 and st.tail.size():
+			_spec.via[st.way.size()] = st.tail.duplicate()
+		_spec.av = st.av
 		_C = sim.net_calc(_spec)
 		for row in _C.rows:
 			for e in [[row.on, 0], [row.off, 1]]:
@@ -220,6 +252,14 @@ func _panel_build() -> void:
 				st.cnt[e[0]][e[1]] += 1
 	B.add_child(_sect("Маршрут"))
 	B.add_child(NetWin.new(_wins()).way_editor(st, _panel_build))
+	if st.tail.size() and st.get("auto_end", -1) < 0:
+		B.add_child(Ui.margin(W._note("Останні точки на дорозі: доведіть маршрут до міста.", Ui.WARN, 12), 0, 4, 0, 0))
+	if st.m == "road" and sim.road_rules and st.seq.size():   # the roads: as in the route planner
+		var row := Ui.hbox(8, [Ui.lbl("Дороги"), Ui.seg([["", "Найкоротші"], ["toll", "Без платних"], ["ban", "Без заборон"], ["toll,ban", "Без обох"]], st.av, func(v):
+			st.av = v
+			_panel_build())])
+		row.tooltip_text = "Вибір доріг\nПлатні швидкісні траси: на третину швидше, але проїзд платний. Ділянки із забороною для важкого транспорту (від 18 т): проїхати можна, але поліція може оштрафувати. Об'їзд довший, зате без плати й ризику. Ділянки, де ви поставили точки на дорозі, їдуть через них."
+		B.add_child(Ui.margin(row, 0, 8, 0, 0))
 	if st.way.is_empty():
 		B.add_child(Ui.margin(W._note("Клікніть на мапі перше місто маршруту.", Ui.MUTED), 0, 6, 0, 0))
 		_cargo_list(B)
@@ -362,7 +402,8 @@ func _go() -> void:
 
 
 func _make_line() -> void:
-	var L := {"kind": "trunk", "a": st.a, "b": st.way.back(), "way": st.way.duplicate(), "m": st.m, "vid": st.vid, "back": false, "every": st.every, "fill": st.fill, "next": sim.day}
+	var L := {"kind": "trunk", "a": st.a, "b": st.way.back(), "way": st.way.duplicate(), "m": st.m, "vid": st.vid, "back": false, "every": st.every, "fill": st.fill, "next": sim.day,
+		"via": _spec.get("via", {}).duplicate(true), "av": st.av}
 	var res := sim.net_line_add(L)
 	var full: bool = (_C.fill if st.vid >= 0 else _C.tons / 40.0) + 1e-6 >= st.fill
 	if _C.get("ok", false) and full:   # the first run now
@@ -383,21 +424,47 @@ func _draw_route() -> void:
 		return
 	var n := _draw_node
 	var m: String = st.m
-	var pts: Array = [st.a] + st.way + ([st.auto_end] if st.get("auto_end", -1) >= 0 and st.way.size() else [])
-	for i in range(1, pts.size()):
-		var r: Variant = sim.co_route(m, pts[i - 1], pts[i])
+	var stops: Array = [st.a] + st.way + ([st.auto_end] if st.get("auto_end", -1) >= 0 and st.way.size() else [])
+	var vias: Dictionary = _spec.get("via", st.via)
+	for i in range(1, stops.size()):   # each leg along the roads it takes: through the player's points
+		var r: Variant = sim.net_leg_route(m, stops[i - 1], stops[i], vias.get(i - 1, []), st.av)
 		if r != null:
 			var pp := _path(r, m)
 			_poly(n, pp, Color(6 / 255.0, 12 / 255.0, 18 / 255.0, .7), 5)
 			_poly(n, pp, LP_C[m], 3)
+	var last: Variant = st.seq.back() if st.seq.size() else st.a
+	if st.tail.size() and st.get("auto_end", -1) < 0:   # points after the last town: drawn, not driven yet
+		var prev: Variant = st.way.back() if st.way.size() else st.a
+		for q in st.tail:
+			var r: Variant = sim.lp_seg(m, prev, q)
+			if r != null:
+				_poly(n, _path(r, m), Color(LP_C[m], .7), 3)
+			prev = q
 	var mp := get_viewport().get_mouse_position()
-	if get_viewport().gui_get_hovered_control() == null:
-		var t := city_at(mp, 22)
-		var last: int = pts.back()
-		if t >= 0 and t != last and sim.node_ok(m, sim.PL[t]):
-			var r: Variant = sim.co_route(m, last, t)
+	if get_viewport().gui_get_hovered_control() == null:   # the way to what is under the pointer: a town or a road point
+		var t: Variant = city_at(mp, 22)
+		if t == -1:
+			var key := "%d,%d%s%d" % [mp.x, mp.y, m, st.seq.size()]
+			if _hover_k != key:
+				_hover_k = key
+				_hover_w = pick_w(mp, m)
+			t = _hover_w
+		if t != null and not (not Sim.lp_is_w(t) and not Sim.lp_is_w(last) and t == last) and (Sim.lp_is_w(t) or sim.node_ok(m, sim.PL[t])):
+			var r: Variant = sim.lp_seg(m, last, t)
 			if r != null:
 				map.vehicles._wdash_on(n, _path(r, m), Color(LP_C[m], .85), 2.4)
+			if Sim.lp_is_w(t):
+				var q: Variant = _scr(t.x, 0, t.z)
+				if q != null:
+					n.draw_circle(q, 6.25, LP_C[m], true, -1.0, true)
+					n.draw_circle(q, 3.75, Color.WHITE, true, -1.0, true)
+	for q in st.seq:   # the player's road points
+		if Sim.lp_is_w(q):
+			var s2: Variant = _scr(q.x, 0, q.z)
+			if s2 != null:
+				n.draw_circle(s2, 5.25, LP_C[m], true, -1.0, true)
+				n.draw_circle(s2, 2.75, Color.WHITE, true, -1.0, true)
+	var pts: Array = stops
 	for fid in st.get("foci", []):
 		var fc: Variant = sim._cs(fid)
 		if fc != null:

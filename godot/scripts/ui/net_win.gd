@@ -589,9 +589,20 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		if note != "":
 			h.add_child(Ui.label(note, 12, Ui.MUTED))
 		return h
+	# the points on the road the player put between two stops: small, on the line
+	var via_rows := func(pts: Array) -> void:
+		for q in pts:
+			var tm := TLMark.new()
+			tm.small = true
+			marks_all.append(tm)
+			v.add_child(Ui.hbox(6, [tm, Ui.label("через: " + sim.lp_name(q), 12, Ui.MUTED)]))
+	var vias: Dictionary = st.get("via", {})
 	v.add_child(row.call(0, st.a, ""))
+	via_rows.call(vias.get(0, []))
 	for i in way.size():
 		v.add_child(row.call(i + 1, way[i], ""))
+		via_rows.call(vias.get(i + 1, []))
+	via_rows.call(st.get("tail", []))
 	if st.get("auto_end", -1) >= 0 and way.size():   # the nearest hub, added for the cargo picked up on the way
 		var r: Control = row.call(way.size() + 1, st.auto_end, "")
 		r.tooltip_text = "Маршрут закінчується містом, де вантаж не вивантажується: машина відвезе його в найближчий хаб і залишить на складі. Клікніть інший хаб останнім, щоб везти туди."
@@ -827,6 +838,10 @@ class TLMark extends Control:
 	const CX := 21     # the column of the line and the squares' middle (a pixel; the line is 1 px wide)
 	var up := false
 	var down := false
+	var small := false:   # a point on the road: a dot on the line, no square
+		set(x):
+			small = x
+			custom_minimum_size.y = 18 if x else 36
 	var marks := []    # [kind, colour]: "down", "up", "left" or an icon's name
 
 	func _init() -> void:
@@ -840,6 +855,11 @@ class TLMark extends Control:
 		queue_redraw()
 
 	func _draw() -> void:
+		if small:
+			var xs := CX + .5
+			draw_line(Vector2(xs, -GAP / 2 if up else size.y / 2), Vector2(xs, size.y + GAP / 2 if down else size.y / 2), Ui.LINE_HI, 1.0)
+			draw_circle(Vector2(xs, size.y / 2), 3.5, Ui.FG2, true, -1.0, true)
+			return
 		var n := maxi(1, marks.size())
 		var w := 25 + 16 * (n - 1)   # odd: a middle pixel for the line
 		var h := 25

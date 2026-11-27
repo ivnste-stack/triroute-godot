@@ -867,6 +867,24 @@ func _on_world(w: Dictionary) -> void:
 								break
 							way = cs[0].way
 						ta.way = way
+						if _args.has("netvia") and way.size():   # --netvia: a road point aside of the first leg
+							var A_: Dictionary = sm.PL[sm.CO.hq]
+							var B_: Dictionary = sm.PL[way[0]]
+							var k_ := float(_args.netvia) if _args.netvia != "true" else .35
+							var mx: float = (A_.x + B_.x) / 2 + (B_.z - A_.z) * k_
+							var mz: float = (A_.z + B_.z) / 2 - (B_.x - A_.x) * k_
+							var Bd: Dictionary = sm.board
+							var best := -1
+							var bd := 1e9
+							for v in Bd.bits.size():
+								if Bd.bits[v] != 0:
+									var px: float = -Bd.wx / 2 + (v % Bd.nx) * Bd.st
+									var pz: float = -Bd.wz / 2 + (v / Bd.nx) * Bd.st
+									var d := Vector2(px - mx, pz - mz).length()
+									if d < bd:
+										bd = d
+										best = v
+							ta.way = [{"v": best, "x": -Bd.wx / 2 + (best % Bd.nx) * Bd.st, "z": -Bd.wz / 2 + (best / Bd.nx) * Bd.st}] + way
 						for c in sm.CO.net.cs:   # the order the panel was opened for, as from «Прийняті вантажі»
 							if c.at == sm.CO.hq and c.run < 0 and way.has(c.k.to):
 								ta.focus = c.id
