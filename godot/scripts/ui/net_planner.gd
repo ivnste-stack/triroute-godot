@@ -16,7 +16,7 @@ var _C := {}
 
 ## opens at a terminal; args: m (the kind of transport), way (stops already chosen)
 func open_net(a: int, args: Dictionary = {}) -> void:
-	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
+	st = {"a": a, "m": args.get("m", "road"), "vid": -2, "way": args.get("way", []).duplicate(), "skip": {}, "incl": {}, "every": int(args.get("every", 0)), "fill": 0.0, "back": false,
 		"focus": int(args.get("focus", -1)), "foci": []}
 	if st.focus >= 0:
 		st.foci.append(st.focus)
@@ -43,10 +43,26 @@ func undo() -> void:
 		_panel_build()
 
 
+## the route, the cargo switched on or off and the orders marked since: all gone; the order the panel was opened
+## for stays marked
 func clear_route() -> void:
 	st.way = []
 	st.skip = {}
+	st.incl = {}
+	st.foci = [st.focus] if st.focus >= 0 and sim._cs(st.focus) != null else []
 	_panel_build()
+
+
+## what the route does not load: everything but the orders marked and the cargo switched on by hand (no cargo
+## joins on its own because it happens to wait on the way), and what was switched off
+func _skip_eff() -> Dictionary:
+	var sk := {}
+	for c in sim.CO.net.cs:
+		if c.run >= 0 or c.st == "move" or c.st == "done":
+			continue
+		if st.skip.has(c.id) or not (st.foci.has(c.id) or st.incl.has(c.id)):
+			sk[c.id] = true
+	return sk
 
 
 func click(mp: Vector2) -> void:
@@ -131,7 +147,7 @@ func _panel_build() -> void:
 			st.foci.erase(fid)
 			continue
 		var f_: int = fid
-		var ln := W._icl("box", "%s: забрати в %s → доставити в %s" % [sim.cargo_i[fc.k.cg].n, sim.PL[fc.at].name, sim.PL[fc.k.to].name], Ui.ACCENT, 12)
+		var ln := W._icl("box", "%s: %s → %s" % [sim.cargo_i[fc.k.cg].n, sim.PL[fc.at].name, sim.PL[fc.k.to].name], Ui.ACCENT, 12)
 		ln.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var x := MapUi._xbtn(func():
 			st.foci.erase(f_)
@@ -146,7 +162,7 @@ func _panel_build() -> void:
 	st.cnt = {}
 	st.planned = st.way.size() > 0
 	if st.way.size():
-		_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, st.skip)
+		_spec = sim.net_auto_multi(st.a, st.way, st.m, st.vid, false, _skip_eff())
 		st.auto_end = _spec.get("auto_end", -1)
 		_C = sim.net_calc(_spec)
 		for row in _C.rows:
@@ -165,22 +181,20 @@ func _panel_build() -> void:
 	var listed := []
 	for row in C.rows:
 		listed.append(row.c)
-	for id in st.skip:
-		var c: Variant = sim._cs(id)
-		if c != null:
-			listed.append(c)
-	# cargo the route could take but the vehicle has no room for: shown, not loaded
+	# the rest of the cargo along the route: off until switched on, or no room for it in the vehicle
 	var on_route := {}
 	for row in C.rows:
 		on_route[row.c.id] = true
+	var sk := _skip_eff()
 	var full := []
 	var all_st: Array = _spec.stops
 	for c in sim.CO.net.cs:
-		if on_route.has(c.id) or st.skip.has(c.id) or c.run >= 0 or not (c.st == "ready" or c.st == "wait" or c.st == "proc"):
+		if on_route.has(c.id) or c.run >= 0 or not (c.st == "ready" or c.st == "wait" or c.st == "proc"):
 			continue
 		var i0: int = all_st.find(c.at)
-		if i0 >= 0 and i0 < all_st.size() - 1 and all_st.slice(i0 + 1).has(c.k.to):
-			full.append(c)
+		if (i0 >= 0 and i0 < all_st.size() - 1 and all_st.slice(i0 + 1).has(c.k.to)) or st.skip.has(c.id):
+			if not sk.has(c.id):
+				full.append(c)
 			listed.append(c)
 	B.add_child(_sect("Вантажі в рейсі"))
 	if listed.is_empty():
@@ -204,16 +218,19 @@ func _panel_build() -> void:
 			tag = Ui.pill("вчасно", "good", "check")
 		else:
 			tag = Ui.pill("затримка %s" % Ui.days(row.late), "bad", "alert")
-		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.k.from].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)
+		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.at].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)   # from where it is now
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var tg := W._toggle(row != null, func():
 			if full.has(c):   # no room: nothing to switch on
 				return
-			if st.skip.has(cid):
-				st.skip.erase(cid)
-			else:
+			if row != null:   # off: the order stays marked on the map, it just does not go on this run
+				st.incl.erase(cid)
 				st.skip[cid] = true
+			else:
+				st.skip.erase(cid)
+				if not st.foci.has(cid):
+					st.incl[cid] = true
 			_panel_build())
 		if full.has(c):
 			tg.disabled = true
@@ -222,14 +239,13 @@ func _panel_build() -> void:
 	B.add_child(_sect("Рейс"))
 	var own: bool = st.vid >= 0
 	var fs := W._stat("Заповнення", ("%d%%" % int(C.fill * 100)) if own else "%s т" % Ui.loc(C.tons), "%s т" % Ui.loc(C.tons) if own else "партнер бере будь-яку вагу", "", "bad" if C.get("over") else "")
-	if own:   # a square at the right that fills from the bottom up to the load
+	if own:   # a bar to the right of the numbers, filled from the left up to the load
 		var txt: Control = fs.get_child(0)
 		fs.remove_child(txt)
-		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var sq := FillSq.new()
-		sq.f = C.fill
-		sq.col = Ui.BAD if C.fill > 1 else Ui.ACCENT
-		fs.add_child(Ui.hbox(10, [txt, sq]))
+		var bar := FillBar.new()
+		bar.f = C.fill
+		bar.col = Ui.BAD if C.fill > 1 else Ui.ACCENT
+		fs.add_child(Ui.hbox(12, [txt, bar]))
 	var g := W._grid(2, [
 		fs,
 		W._stat("Час", Ui.days(C.t), "з обробкою на складах"),
@@ -316,23 +332,24 @@ func _size_to_body() -> void:
 	_panel.reset_size()
 
 
-class FillSq extends Control:
+class FillBar extends Control:
 	var f := 0.0
 	var col := Color.WHITE
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(44, 44)
+		custom_minimum_size = Vector2(40, 26)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
 		draw_rect(r, Color(1, 1, 1, .04))
-		var h := (size.y - 4) * clampf(f, 0, 1)
-		if h > 0:
-			draw_rect(Rect2(2, size.y - 2 - h, size.x - 4, h), Color(col, .45))
-			draw_rect(Rect2(2, size.y - 2 - h, size.x - 4, minf(2, h)), col)
-		draw_rect(r, Ui.LINE_HI, false, 1.0)
+		var w := (size.x - 4) * clampf(f, 0, 1)
+		if w > 0:
+			draw_rect(Rect2(2, 2, w, size.y - 4), Color(col, .45))
+			draw_rect(Rect2(2 + w - minf(2, w), 2, minf(2, w), size.y - 4), col)
+		draw_rect(r.grow(-.5), Ui.LINE_HI, false, 1.0)
 
 
 func _wins() -> Windows:

@@ -867,6 +867,10 @@ func _on_world(w: Dictionary) -> void:
 								break
 							way = cs[0].way
 						ta.way = way
+						for c in sm.CO.net.cs:   # the order the panel was opened for, as from «Прийняті вантажі»
+							if c.at == sm.CO.hq and c.run < 0 and way.has(c.k.to):
+								ta.focus = c.id
+								break
 					_net_dialog(String(_args.netdlg), ta)
 				_:
 					_net_dialog("round", {"a": sm.CO.hq})

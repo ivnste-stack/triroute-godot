@@ -194,7 +194,6 @@
 "%s: вантаж «%s» повернено відправнику в %s": "%s: the cargo «%s» was returned to the sender in %s",
 "%s: до %s через %s%s": "%s: to %s in %s%s",
 "%s: забагато запізнень — спершу покращте надійність": "%s: too many late deliveries — improve your reliability first",
-"%s: забрати в %s → доставити в %s": "%s: pick up in %s → deliver to %s",
 "%s: зараз немає шляху для постійних поставок": "%s: no way for regular shipments now",
 "%s: затримка %s": "%s: delay %s",
 "%s: збірний рейс — %s т доставлено в %s": "%s: consolidated trip — %s t delivered to %s",
