@@ -536,7 +536,7 @@ func company_colors() -> void:
 			return
 		"grid":
 			for c in world.states:
-				cols.append(Color(.72, .75, .78) if MapVis.vis("land") else Color(.3, .33, .36))
+				cols.append(Color(.6, .63, .67) if MapVis.vis("land") else Color(.3, .33, .36))
 			set_colors(cols)
 			return
 		"risk":

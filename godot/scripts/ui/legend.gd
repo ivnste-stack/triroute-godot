@@ -245,7 +245,7 @@ func _entries() -> Array:
 			out.append(["note", "Рівень відносно інших держав: повільна митниця, нестабільність, конфлікти"])
 		"grid":
 			var km := func(d: float) -> int: return int(round(d * sim.CO_DU * GameData.KM))
-			out.append([_sq(Color("#b8bfc7")), "Суходіл (усі держави)"])
+			out.append([_sq(Color("#99a1ab")), "Суходіл (усі держави)"])
 			out.append_array(_lg_set())
 			out.append([_sq(Color.TRANSPARENT, Color("#e6edf3"), Vector2(8, 8), 2.0), "Сектор ≈ %d км" % km.call(MapOverlay.SECTOR)])
 			out.append([_sq(Color.TRANSPARENT, Color("#aab6c2"), Vector2(8, 8), 1.0), "Квартал ≈ %d км" % km.call(MapOverlay.SECTOR / 3)])
