@@ -793,6 +793,9 @@ func _on_world(w: Dictionary) -> void:
 			_toggle_window(_args.win)
 			if _args.has("countryhubs"):   # test: the cities of a country, from «Відкрити хаб у країні»
 				wins.country_hubs.emit(session.sim.PL[session.sim.CO.hq].cid)
+		if _args.has("netwait"):   # test: orders taken, their cargo waiting at the shippers' (the boxes on the map)
+			for k in session.sim.CO.board.slice(0, int(_args.netwait)):
+				session.sim.net_accept(k)
 		if _args.has("netind"):   # test: the sea licence and permits, a board with refineries and shiploads
 			var sm := session.sim
 			sm.CO.tier = 6

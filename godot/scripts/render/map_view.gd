@@ -101,6 +101,7 @@ func _ready() -> void:
 	cl.add_child(inc_top)
 	net = NetLayer.new()
 	net.camera = camera
+	net.towns = towns
 	cl.add_child(net)
 	vehicles = VehicleLayer.new()
 	vehicles.camera = camera
