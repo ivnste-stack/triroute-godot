@@ -156,7 +156,7 @@ func _draw_base() -> void:
 			draw_colored_polygon(pts, _c(e[1], .1))
 			draw_polyline(pts, _c(e[1], .75), 1.5 * dpr, true)
 			var c: Variant = _P(z.x, z.z)
-			if c != null and camera.dist < 26:
+			if c != null:   # at any zoom: the danger is seen from afar too
 				_badge(c, "skull", _c(e[1]))
 	# weather zones: drawn like the bandit zones (a faint disc, a thin rim, the badge), in the colour of the weather
 	for w in (CO.get("wx", []) if MapVis.vis("wx") else []):
@@ -168,7 +168,7 @@ func _draw_base() -> void:
 		draw_colored_polygon(pts, Color(col, .1))
 		draw_polyline(pts, Color(col, .75), 1.5 * dpr, true)
 		var c: Variant = _P(w.x, w.z)
-		if c != null and camera.dist < 26:
+		if c != null:
 			_badge(c, K.ic, Color(col, .55) if w.t0 > sim.co_now() else col)   # a forecast: the same colour, faded
 	# closed borders: red lines along the border — a GPU line layer (_closed_lines), not drawn here: a closed
 	# country's whole border projected point by point and stroked on the CPU at every camera move cost 15–25 ms
