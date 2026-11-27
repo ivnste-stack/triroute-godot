@@ -871,10 +871,13 @@ class TLMark extends Control:
 		resized.connect(queue_redraw)
 
 	func _draw() -> void:
-		var r := Rect2(_sq.global_position - global_position, _sq.size)
-		var x := roundf(r.get_center().x) + .5
+		# the square as the CenterContainer places it (its own size, centred, floored), not as it was on the
+		# screen at some earlier layout
+		var sq := _sq.get_combined_minimum_size().max(_sq.size)
+		var top := floorf((size.y - sq.y) / 2)
+		var x := floorf((size.x - sq.x) / 2) + floorf(sq.x / 2) + .5
 		var col := Ui.LINE_HI
-		if up:
-			draw_line(Vector2(x, -GAP / 2 - 1), Vector2(x, r.position.y), col, 1.0)
+		if up:   # from the middle of the gap above, where the line from the stop before ends
+			draw_line(Vector2(x, -GAP / 2), Vector2(x, top), col, 1.0)
 		if down:
-			draw_line(Vector2(x, r.end.y), Vector2(x, size.y + GAP / 2 + 1), col, 1.0)
+			draw_line(Vector2(x, top + sq.y), Vector2(x, size.y + GAP / 2), col, 1.0)
