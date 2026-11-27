@@ -134,10 +134,8 @@ func card(k: Dictionary) -> PanelContainer:
 		pills.add_child(Ui.pill("Шляху немає", "bad", "alert"))
 	pills.add_child(Ui.pill("%d дн. на біржі" % maxi(0, int(k.exp - sim.day)), "", "info"))
 	if k.get("taken"):   # taken: the card stays, the button greyed, «Вантаж прийнято»
-		var tb := Windows._btn("Взяти в роботу", "sm", "box", func(): pass, false)
-		var ok := Windows._icl("check", "Вантаж прийнято", Ui.GOOD, 13)
-		ok.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var card := Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), Ui.hbox(8, [w._show_btn(k), tb, ok])]))
+		var tb := Windows._btn("Вантаж прийнято", "sm", "check", func(): pass, false)
+		var card := Windows._blk(Ui.vbox(8, [Ui.hbox(10, [mi, info, Ui.vbox(2, [pay, dl])]), pills, Windows._card_rule(), Ui.hbox(8, [w._show_btn(k), tb])]))
 		card.modulate.a = .7
 		return card
 	var bs := Ui.hbox(8, [w._show_btn(k), Windows._btn("Взяти в роботу", "pri sm", "box", func(): w._do(sim.net_accept(k)), P != null,

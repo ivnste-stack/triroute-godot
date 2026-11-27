@@ -306,8 +306,8 @@ func _build_bar() -> void:
 	var mc := PanelContainer.new()
 	mc.add_theme_stylebox_override("panel", _cell_box(true, Vector4(16, 7, 16, 7)))
 	mc.tooltip_text = "Шар мапи\nМережа компанії — ваші хаби, техніка й рейси, перекриті дороги й кордони. Логістичні шляхи — дороги, залізниці, порти, аеропорти й пункти пропуску. Ризики перевезень — наскільки небезпечно возити вантажі в кожній країні. Політична — держави та їхні кордони. Світовий попит — де найбільше замовлень на доставку."
-	mode_dd = Dropdown.make([["co", "Мережа компанії", "truck"], ["grid", "Логістичні шляхи", "road"],
-			["risk", "Ризики перевезень", "alert"], ["pol", "Політична", "mapIc"], ["dem", "Світовий попит", "chart"]],
+	mode_dd = Dropdown.make([["pol", "Політична", "mapIc"], ["grid", "Логістичні шляхи", "road"],
+			["risk", "Ризики перевезень", "alert"], ["co", "Мережа компанії", "truck"], ["dem", "Світовий попит", "chart"]],
 			"pol", func(v): mode_changed.emit(v), 30)
 	mc.add_child(Ui.vbox(4, [Ui.lbl("Шар мапи"), mode_dd]))
 	row.add_child(mc)
