@@ -82,8 +82,7 @@ func _sect(t: String) -> Control:
 func _panel_build() -> void:
 	var vs := get_viewport_rect().size
 	_panel.position = Vector2(14, 84)
-	_panel.size = Vector2(minf(380, vs.x - 32), minf(vs.y - 84 - 86, maxf(_panel.size.y, 200)))
-	_scroll.custom_minimum_size = _panel.size
+	_panel.size.x = minf(380, vs.x - 32)   # the height follows the content (_size_to_body)
 	var keep := _scroll.scroll_vertical
 	for c in _body.get_children():
 		_body.remove_child(c)
@@ -94,13 +93,13 @@ func _panel_build() -> void:
 	LP.pts = [st.a] + st.way
 	# head
 	B.add_child(_row(Ui.hbox(8, [Ui.icon("road", 18, Ui.FG), W._b("Новий маршрут", 15)]), MapUi._xbtn(cancel)))
-	B.add_child(Ui.margin(W._note("Старт — %s. Клікайте на мапі міста по черзі: куди доставити й де забрати вантаж. Останнім — хаб чи термінал, куди машина повезе решту." % A.name), 0, 4, 0, 0))
+	B.add_child(Ui.margin(W._note("Старт — %s. Клікайте на мапі міста по черзі: куди доставити й де забрати вантаж. Останнім — хаб чи термінал, куди машина повезе решту. Ctrl+Z прибирає останню зупинку." % A.name), 0, 4, 0, 0))
 	# the kind of transport
 	B.add_child(_sect("Вид транспорту"))
 	var ms := ["road", "rail", "sea", "air"].filter(func(m): return sim.node_ok(m, A))
 	if not ms.has(st.m):
 		st.m = "road"
-	B.add_child(Ui.seg(ms.map(func(m): return [m, MODE_N[m]]), st.m, func(x):
+	B.add_child(_seg_eq(ms.map(func(m): return [m, MODE_N[m]]), st.m, func(x):
 		st.m = x
 		st.way = []
 		st.vid = -2
@@ -163,47 +162,52 @@ func _panel_build() -> void:
 	for c in listed:
 		var row: Variant = rows.get(c.id)
 		var cid: int = c.id
-		var tail := "[color=#8a96a3]не їде[/color]"
-		if row != null:
-			var off: String = sim.PL[_spec.stops[row.off]].name
-			if not row.dest:
-				tail = "на склад у %s" % off
-			elif row.late <= 0:
-				tail = "до %s вчасно" % off
-			else:
-				tail = "до %s [color=#f0625f]із запізненням %s[/color]" % [off, Ui.days(row.late)]
-			if row.on > 0:   # picked up on the way
-				tail = "забрати в %s · %s" % [sim.PL[_spec.stops[row.on]].name, tail]
-		var r := Ui.rich("[b]%s → %s[/b] · %s т · %s" % [sim.PL[c.k.from].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons), tail], 12)
-		r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# the cargo, its weight, and how it ends as a tag: on time, late by…, to a warehouse, not going
+		var tag: Control
+		if row == null:
+			tag = Ui.pill("не їде", "")
+		elif not row.dest:
+			tag = Ui.pill("на склад · %s" % sim.PL[_spec.stops[row.off]].name, "acc", "building")
+		elif row.late <= 0:
+			tag = Ui.pill("вчасно", "good", "check")
+		else:
+			tag = Ui.pill("затримка %s" % Ui.days(row.late), "bad", "alert")
+		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.k.from].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		B.add_child(Ui.margin(Ui.hbox(8, [W._toggle(row != null, func():
 			if st.skip.has(cid):
 				st.skip.erase(cid)
 			else:
 				st.skip[cid] = true
-			_panel_build()), r]), 0, 2, 0, 2))
+			_panel_build()), nm, tag]), 0, 2, 0, 2))
 	# the sums
 	B.add_child(_sect("Рейс"))
 	var own: bool = st.vid >= 0
+	var fs := W._stat("Заповнення", ("%d%%" % int(C.fill * 100)) if own else "%s т" % Ui.loc(C.tons), "%s т" % Ui.loc(C.tons) if own else "партнер бере будь-яку вагу", "", "bad" if C.get("over") else "")
+	if own:   # the card fills up to the load
+		var fb := FillBg.new()
+		fb.f = C.fill
+		fb.col = Ui.BAD if C.fill > 1 else Ui.ACCENT
+		fs.add_child(fb)
+		fs.move_child(fb, 0)
 	var g := W._grid(2, [
-		W._stat("Заповнення", ("%d%%" % int(C.fill * 100)) if own else "%s т" % Ui.loc(C.tons), "%s т" % Ui.loc(C.tons) if own else "партнер бере будь-яку вагу", "", "bad" if C.get("over") else ""),
+		fs,
 		W._stat("Час", Ui.days(C.t), "з обробкою на складах"),
 		W._stat("Витрати", Ui.usd(C.c), "пальне, екіпаж, збори" if own else "тариф і збори партнера"),
 		W._stat("Оплата в рейсі", Ui.usd(C.rev), "за доставлені цим рейсом", "", "good" if C.rev > C.c else "")], 8)
 	B.add_child(g)
-	if own:
-		B.add_child(Ui.margin(W._meter(C.fill, Ui.BAD if C.fill > 1 else Ui.ACCENT), 0, 8, 0, 0))
 	if not C.ok:
 		B.add_child(Ui.margin(W._icl("alert", C.why, Ui.WARN, 12), 0, 8, 0, 0))
 	# how often
 	B.add_child(_sect("Повторювати"))
-	B.add_child(Ui.seg([[0, "раз"], [1, "щодня"], [2, "2 дн."], [3, "3 дн."], [5, "5 дн."], [7, "тиждень"]], st.every, func(x):
+	B.add_child(_seg_eq([[0, "раз"], [1, "щодня"], [2, "2 дн."], [3, "3 дн."], [5, "5 дн."], [7, "тиждень"]], st.every, func(x):
 		st.every = x
 		_panel_build()))
 	# how full the vehicle must be to leave
 	var own_fill: float = C.fill if own else C.tons / 40.0
 	B.add_child(_sect("Рушати, коли заповнено від"))
-	B.add_child(Ui.seg([[0.0, "одразу"], [.3, "30%"], [.5, "50%"], [.7, "70%"], [.9, "90%"]], st.fill, func(x):
+	B.add_child(_seg_eq([[0.0, "одразу"], [.3, "30%"], [.5, "50%"], [.7, "70%"], [.9, "90%"]], st.fill, func(x):
 		st.fill = x
 		_panel_build()))
 	var wait: bool = st.fill > 0 and own_fill + 1e-6 < st.fill
@@ -222,7 +226,7 @@ func _panel_build() -> void:
 		B.add_child(Ui.margin(W._note("Рейс повторюватиметься сам — щоразу з тим, що на той момент чекає на цих зупинках.", Ui.MUTED, 12), 0, 4, 0, 0))
 	# the buttons
 	var bs := Ui.hbox(8)
-	bs.add_child(W._btn("", "sm", "trash", clear_route, true, "Очистити маршрут"))
+	bs.add_child(W._btn("Очистити маршрут", "sm", "trash", clear_route, true))
 	bs.add_child(Ui.spacer())
 	if st.every > 0:
 		bs.add_child(W._btn("Створити лінію", "pri", "refresh", _make_line, C.ok or C.rows.is_empty(), W._tip("Лінія за розкладом", "Перший рейс — зараз, якщо вантаж уже є й заповнення досягнуто, далі кожні %d дн." % st.every)))
@@ -237,6 +241,55 @@ func _panel_build() -> void:
 func _end(_B: VBoxContainer, keep: int) -> void:
 	_restore(keep)
 	_fit()
+
+
+## the options of a segmented control in equal parts across the panel, the text centred
+func _seg_eq(options: Array, sel: Variant, cb: Callable) -> Control:
+	var p := Ui.seg(options, sel, cb)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var h: HBoxContainer = p.get_child(0)
+	h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for b in h.get_children():
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.size_flags_stretch_ratio = 1.0
+		b.custom_minimum_size.x = 1
+		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return p
+
+
+## the panel as tall as its content (to «Відправити»), never more than the screen: set whenever the content's
+## height changes — at once, without waiting a frame (no growing for a moment and shrinking back)
+func _fit() -> void:
+	if not _body.minimum_size_changed.is_connected(_size_to_body):
+		_body.minimum_size_changed.connect(_size_to_body)
+	_size_to_body()
+
+
+func _size_to_body() -> void:
+	if not on or not is_inside_tree():
+		return
+	var vs := get_viewport_rect().size
+	var w := minf(380, vs.x - 32)
+	var h := minf(vs.y - 84 - 86, _body.get_combined_minimum_size().y + 28)
+	_scroll.custom_minimum_size = Vector2(w, h)
+	_panel.custom_minimum_size = Vector2(w, h)
+	_panel.size = Vector2(w, h)
+	_panel.reset_size()
+
+
+class FillBg extends Control:
+	var f := 0.0
+	var col := Color.WHITE
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		show_behind_parent = true
+
+	func _draw() -> void:
+		var w := size.x * clampf(f, 0, 1)
+		draw_rect(Rect2(0, 0, w, size.y), Color(col, .22))
+		if w > 1:
+			draw_rect(Rect2(w - 2, 0, 2, size.y), Color(col, .8))
 
 
 func _wins() -> Windows:

@@ -550,7 +550,8 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 	var v := Ui.vbox(6)
 	var way: Array = st.way
 	var cnt: Dictionary = st.get("cnt", {})   # stop index (0 — the start) → [loaded, unloaded] on this run
-	var tags := func(i: int, pid: int) -> Control:
+	# a stop: ↓ where cargo is loaded, ↑ where it is unloaded (a count when several), the town's name
+	var row := func(i: int, pid: int, note: String) -> Control:
 		var h := Ui.hbox(6)
 		var on := 0
 		var off := 0
@@ -564,40 +565,35 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 						off += 1
 					if c.at == pid:
 						on += 1
+		var marks := Ui.hbox(2)
+		marks.custom_minimum_size.x = 30
+		for e in [[on, "down", Planner.DEP, "Завантаження"], [off, "up", Planner.ARR, "Вивантаження"]]:
+			if e[0] > 0:
+				var ic := Ui.icon(e[1], 15, e[2], 2.2)
+				ic.tooltip_text = e[3] + ((" · %d" % e[0]) if e[0] > 1 else "")
+				marks.add_child(ic)
+		if marks.get_child_count() == 0:
+			marks.add_child(Ui.icon(MODE_IC[st.m] if i > 0 else ("building" if sim.hub_at(pid) != null else "pin"), 14, Ui.MUTED))
+		h.add_child(marks)
+		h.add_child(Windows._b(_pl(pid), 13))
+		for e in [on, off]:
+			if e > 1:   # several in one town: a count, like a fleet's ×N
+				h.add_child(Ui.pill("×%d" % e))
 		if i == 0 and on == 0 and way.size():   # nothing loaded at the start: the vehicle drives empty to its first stop
 			var pg := Ui.label("перегін", 12, Ui.MUTED)
 			pg.tooltip_text = "Машина їде з %s порожньою до першої зупинки, де забирає вантаж." % _pl(pid)
 			h.add_child(pg)
-		for e in [[off, "вивантаження"], [on, "завантаження"]]:
-			if e[0] > 0:
-				h.add_child(Ui.label(e[1], 12, Ui.MUTED))
-				if e[0] > 1:   # several in one town: a count, like a fleet's ×N
-					h.add_child(Ui.pill("×%d" % e[0]))
-		if h.get_child_count() == 0 and sim.hub_at(pid) != null:
-			h.add_child(Ui.label("хаб", 12, Ui.MUTED))
-		h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if note != "":
+			h.add_child(Ui.label(note, 12, Ui.MUTED))
 		return h
-	v.add_child(Ui.hbox(8, [Ui.icon("building" if sim.hub_at(st.a) != null else "pin", 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), tags.call(0, st.a)]))
+	v.add_child(row.call(0, st.a, ""))
 	for i in way.size():
-		var pid: int = way[i]
-		var k := i
-		var up := Windows._btn("", "sm", "up", func():
-			way.remove_at(k)
-			way.insert(k - 1, pid)
-			redraw.call(), k > 0, "Раніше")
-		var dn := Windows._btn("", "sm", "down", func():
-			way.remove_at(k)
-			way.insert(k + 1, pid)
-			redraw.call(), k < way.size() - 1, "Пізніше")
-		var rm := Windows._btn("", "sm", "close", func():
-			way.remove_at(k)
-			redraw.call(), true, "Прибрати зупинку")
-		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(pid), 13), tags.call(i + 1, pid), up, dn, rm]))
+		v.add_child(row.call(i + 1, way[i], ""))
 	if st.get("auto_end", -1) >= 0 and way.size():   # the nearest hub, added for the cargo picked up on the way
-		var ae: int = st.auto_end
-		var hint := Ui.label("до найближчого хабу · автоматично", 12, Ui.MUTED)
-		hint.tooltip_text = "Маршрут закінчується містом, де вантаж не вивантажується: машина відвезе його в найближчий хаб і залишить на складі. Клікніть інший хаб останнім, щоб везти туди."
-		v.add_child(Ui.hbox(8, [Ui.icon("building", 14, Ui.MUTED), Ui.label(_pl(ae), 13, Ui.FG2), tags.call(way.size() + 1, ae), hint]))
+		var r: Control = row.call(way.size() + 1, st.auto_end, "автоматично")
+		r.tooltip_text = "Маршрут закінчується містом, де вантаж не вивантажується: машина відвезе його в найближчий хаб і залишить на складі. Клікніть інший хаб останнім, щоб везти туди."
+		r.modulate.a = .75
+		v.add_child(r)
 	if st.get("back", false) and way.size():
 		v.add_child(Ui.hbox(8, [Ui.icon(MODE_IC[st.m], 14, Ui.ACCENT), Windows._b(_pl(st.a), 13), Ui.label("назад", 12, Ui.MUTED)]))
 	# a town picked from the list goes to the end of the route, as a click on the map does
@@ -618,9 +614,9 @@ func way_editor(st: Dictionary, redraw: Callable) -> Control:
 		var dd := Dropdown.make(opts, null, func(pid):
 			way.append(pid)
 			redraw.call())
-		dd.placeholder = "Додати зупинку"
-		dd.custom_minimum_size.x = 240
-		v.add_child(Ui.hbox(8, [dd]))
+		dd.placeholder = "Додати замовлення"
+		dd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(Ui.margin(dd, 0, 4, 0, 0))
 	return v
 
 

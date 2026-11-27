@@ -441,7 +441,6 @@ func co_set_hq(pid: int) -> void:
 		i += 1
 	CO.ms = []
 	news = []
-	co_news("good", "truck", "%s: перша вантажна машина виїхала з гаража в місті %s" % [CO.name, PL[pid].name])
 	for t in 6:
 		co_mgr_cand("")
 
