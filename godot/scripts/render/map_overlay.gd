@@ -101,7 +101,7 @@ func ppu() -> float:
 	return a.distance_to(b)
 
 
-## road rules (SimCore.road_mark_segs): toll motorways (a light stripe along the motorway) and the stretches
+## road rules (SimCore.road_mark_segs): toll motorways (light blue, the whole width of the motorway) and the stretches
 ## closed to heavy vehicles (red); segs: [x1, z1, x2, z2, flags]
 func set_marks(segs: Array) -> void:
 	for nm in ["toll", "hban"]:
@@ -173,6 +173,6 @@ func _process_t(_delta: float) -> void:
 	_layers.mway_case.set_width(rw * 1.85 + 2 * dpr)
 	_layers.mway.set_width(rw * 1.85)
 	if _layers.has("toll"):
-		_layers.toll.set_width(rw * .7)
+		_layers.toll.set_width(rw * 1.85)   # the whole width of the motorway, inside its outline
 	if _layers.has("hban"):
 		_layers.hban.set_width(rw * 1.5)
