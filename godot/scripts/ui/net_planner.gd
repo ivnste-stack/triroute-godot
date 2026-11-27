@@ -121,13 +121,17 @@ func _cargo_list(B: VBoxContainer) -> void:
 			else:
 				tag = Ui.pill("затримка %s" % Ui.days(row.late), "bad", "alert")
 		elif on and stops.size():
+			# no room only when the route does take it there; otherwise the route misses where it waits or where it goes
 			var i0: int = stops.find(c.at)
-			if i0 >= 0 and i0 < stops.size() - 1:
+			if i0 >= 0 and i0 < stops.size() - 1 and stops.slice(i0 + 1).has(c.k.to):
 				tag = Ui.pill("не вміщується", "bad", "alert")
 				tag.tooltip_text = W._tip("Не вміщується", "%s т не влазять у машину разом з іншими: оберіть більшу техніку або вимкніть інший вантаж." % Ui.loc(c.k.tons))
-			else:
+			elif i0 < 0 or i0 == stops.size() - 1:
 				tag = Ui.pill("поза маршрутом", "warn")
 				tag.tooltip_text = W._tip("Поза маршрутом", "Маршрут не проходить через %s, де чекає вантаж: клікніть це місто на мапі." % sim.PL[c.at].name)
+			else:
+				tag = Ui.pill("поза маршрутом", "warn")
+				tag.tooltip_text = W._tip("Поза маршрутом", "Маршрут не веде в %s, куди їде вантаж: клікніть це місто на мапі." % sim.PL[c.k.to].name)
 		var nm := Ui.rich("[b]%s → %s[/b] · %s т" % [sim.PL[c.at].name, sim.PL[c.k.to].name, Ui.loc(c.k.tons)], 12)   # from where it is now
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.tooltip_text = "%s · до дедлайну %s" % [sim.cargo_i[c.k.cg].n, Ui.days(maxf(0, c.dl - sim.co_now()))]
