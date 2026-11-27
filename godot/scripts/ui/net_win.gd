@@ -188,7 +188,7 @@ func contracts(body: VBoxContainer) -> void:
 		var rows := Ui.vbox(4, [Ui.lbl("Постійні клієнти")])
 		for key in fs.slice(0, 5):
 			var F: Dictionary = N.firms[key]
-			var sub := "%s · вчасно %d · із запізненням %d · пошкоджено %d" % [_pl(F.at), F.ok, F.late, F.get("dmg", 0)]
+			var sub := "%s · вчасно %d · із запізненням %d" % [_pl(F.at), F.ok, F.late]
 			var nm := Ui.vbox(1, [Windows._b(F.n, 13), Windows._note(sub, Ui.FG2, 12)])
 			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			rows.add_child(Ui.hbox(10, [Ui.icon("building", 16, Ui.FG2), nm]))

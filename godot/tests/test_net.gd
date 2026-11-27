@@ -279,19 +279,24 @@ func test_contracts_with_shippers() -> String:
 			return "terms out of range: %d deliveries, rating %.1f" % [F0.need, F0.rmin]
 	var k: Dictionary = sim.CO.board.filter(func(x): return x.get("fs"))[0]
 	var key := SimNet.firm_key(k.from, k.fs)
-	if sim.act_ctr_ask(0, "nobody").get("t", "") != "Партнер відхилив вашу пропозицію контракту":
+	if sim.act_ctr_ask(0, "nobody").get("t", "") != "Партнер відхилив вашу пропозицію":
 		return "a stranger signed a contract"
 	# served well, but short of its own number of good deliveries: it refuses
-	N.firms[key] = {"n": k.fs, "at": k.from, "ok": 6, "late": 0, "off": -999.0, "need": 9, "rmin": 3.0, "good": 6, "dmg": 0,
+	N.firms[key] = {"n": k.fs, "at": k.from, "ok": 6, "late": 0, "off": -999.0, "need": 9, "rmin": 3.0, "good": 6, "dmg": 0, "dlim": 2,
 		"lanes": {str(k.to): {"n": 6, "pay": k.pay * 6, "tons": k.tons * 6, "cg": {k.cg: 6}}}}
 	sim.CO.rating = 4.5
 	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
 		return "a business signed before its terms were met"
+	# one damaged delivery is forgiven; the second (its limit here) and the good ones count from zero again
 	N.firms[key].good = 9
-	N.firms[key].dmg = 1   # one damaged delivery: still no
-	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
-		return "a business signed after a damaged delivery"
-	N.firms[key].dmg = 0
+	var dk := {"from": k.from, "to": k.to, "fs": k.fs, "pay": k.pay, "tons": k.tons, "cg": k.cg}
+	sim._firm_note({"k": dk, "dmg": .3}, true, k.pay)
+	if N.firms[key].good != 9:
+		return "one damaged delivery undid the good ones"
+	sim._firm_note({"k": dk, "dmg": .3}, true, k.pay)
+	if N.firms[key].good != 0 or sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
+		return "a business signed after too many damaged deliveries"
+	N.firms[key].good = 9
 	sim.CO.rating = 2.9   # the company's rating below its bar: no
 	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") == "good":
 		return "a business signed with the rating below its bar"
@@ -299,6 +304,19 @@ func test_contracts_with_shippers() -> String:
 	var r := sim.act_ctr_ask(k.from, k.fs)
 	if r.get("t", "") != "Партнер прийняв вашу пропозицію" or not sim.ctr_has(key):
 		return "the proposal was refused: %s" % r.get("t", "")
+	# damaged shipments of a contract: one forgiven, the second ends it and the business starts over
+	var Ck: Dictionary = N.ctr.filter(func(x): return x.key == key)[0]
+	var sk := {"from": k.from, "to": k.to, "fs": k.fs, "pay": k.pay, "tons": k.tons, "cg": k.cg, "ctr": Ck.id}
+	sim._firm_note({"k": sk, "dmg": .3}, true, k.pay)
+	if not N.ctr.has(Ck):
+		return "one damaged shipment ended the contract"
+	sim._firm_note({"k": sk, "dmg": .3}, true, k.pay)
+	if N.ctr.has(Ck) or N.firms[key].good != 0:
+		return "two damaged shipments did not end the contract (or the count did not start over)"
+	N.firms[key].good = 9   # earned again: it signs again
+	N.firms[key].off = -999.0
+	if sim.act_ctr_ask(k.from, k.fs).get("tone", "") != "good":
+		return "the business did not sign again after the good deliveries were earned back"
 	if N.ctr.is_empty():
 		return "no contract under way"
 	var C: Dictionary = N.ctr[0]

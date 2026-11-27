@@ -1812,8 +1812,9 @@ func _board1(st: Dictionary) -> bool:
 # ====================================================================== contracts with shippers
 ## Every consignment delivered for a business is remembered (CO.net.firms: by its town and name, its lanes —
 ## where to, how many, tons, pay, cargo). Each business has its own terms, hidden from the player: so many good
-## deliveries (on time, undamaged — 7 to 15, drawn once), none damaged, and the company's rating above its own bar
-## (3 to 5). The player may propose a contract from the first day — the business accepts once its terms are met
+## deliveries (on time, undamaged — 7 to 15, drawn once) and the company's rating above its own bar (3 to 5). One
+## damaged delivery is forgiven; 2 or 3 of them (its own number) and the business starts counting the good ones
+## again from zero — and a contract under way ends. The player may propose a contract from the first day — the business accepts once its terms are met
 ## and refuses otherwise, saying no more; a business whose terms are met may offer one itself now and then.
 ## A contract: for a few months it ships on a schedule — every few days a
 ## consignment appears at its town on its own, at a fixed pay, a little above the board's. Lines whose stops it
@@ -1822,6 +1823,7 @@ func _board1(st: Dictionary) -> bool:
 
 const CTR_NEED := [7, 15]   # the good deliveries a business wants before a contract (its own number in between)
 const CTR_RATE := [3.0, 5.0]   # the company's rating it wants (its own bar in between)
+const CTR_DMG := [2, 3]        # damaged deliveries it puts up with before it starts over (its own number)
 
 
 static func firm_key(pid: int, name: String) -> String:
@@ -1838,6 +1840,7 @@ func _nets() -> Dictionary:
 func _firm_note(c: Dictionary, ok: bool, pay: float) -> void:
 	var k: Dictionary = c.k
 	var N := _nets()
+	var damaged: bool = pay > 0 and c.get("dmg", 0.0) > .05   # delivered, but not whole
 	if k.get("ctr") != null:   # a shipment of a contract
 		for C in N.ctr:
 			if C.id == k.ctr:
@@ -1847,6 +1850,14 @@ func _firm_note(c: Dictionary, ok: bool, pay: float) -> void:
 					C.miss += 1
 					if C.miss >= 3:
 						_ctr_end(C, "три зриви поставок")
+						break
+				if damaged:
+					C.dmg = C.get("dmg", 0) + 1
+					var Fc: Variant = N.firms.get(C.key)
+					if Fc != null and C.dmg >= Fc.get("dlim", CTR_DMG[0]):   # too many damaged: the contract ends
+						_ctr_end(C, "пошкоджені поставки")
+						Fc.good = 0   # good deliveries count again from zero before the next contract
+						Fc.dmg = 0
 		return
 	if not k.get("fs"):
 		return
@@ -1855,8 +1866,11 @@ func _firm_note(c: Dictionary, ok: bool, pay: float) -> void:
 		F.ok += 1
 	else:
 		F.late += 1
-	if pay > 0 and c.get("dmg", 0.0) > .05:
+	if damaged:
 		F.dmg = F.get("dmg", 0) + 1
+		if F.dmg >= F.dlim:   # 2 or 3 damaged: the business starts counting the good ones over
+			F.good = 0
+			F.dmg = 0
 	elif ok:
 		F.good = F.get("good", 0) + 1
 	var lk := str(k.to)
@@ -1881,15 +1895,18 @@ func _firm(pid: int, name: String) -> Dictionary:
 		F.rmin = JS.fixed1(CTR_RATE[0] + RX.next() * (CTR_RATE[1] - CTR_RATE[0]))
 		F.good = F.get("good", F.ok)
 		F.dmg = F.get("dmg", 0)
+	if not F.has("dlim"):
+		F.dlim = CTR_DMG[0] + int(RX.next() * (CTR_DMG[1] - CTR_DMG[0] + 1))
 	return F
 
 
-## whether a business would sign: its good deliveries, none damaged, the company's rating (its hidden terms)
+## whether a business would sign: its good deliveries since it last started over, the company's rating (its
+## hidden terms)
 func ctr_ready(key: String) -> bool:
 	var F: Variant = _nets().firms.get(key)
 	if F == null or not F.has("need"):
 		return false
-	return F.good >= F.need and F.dmg == 0 and CO.rating >= F.rmin
+	return F.good >= F.need and CO.rating >= F.rmin
 
 
 ## the terms a business would sign: its busiest lane, its usual cargo and load, every few days (the more it
@@ -1933,7 +1950,7 @@ func act_ctr_ask(pid: int, name: String) -> Dictionary:
 	var F := _firm(pid, name)
 	var T: Variant = ctr_terms(key, 1.0) if ctr_ready(key) else null
 	if T == null:
-		return _toast("warn", "Партнер відхилив вашу пропозицію контракту", F.n)
+		return _toast("warn", "Партнер відхилив вашу пропозицію", F.n)
 	return _ctr_start(T, "Партнер прийняв вашу пропозицію")
 
 
@@ -1968,6 +1985,7 @@ func _ctr_start(T: Dictionary, title: String = "Контракт укладен�
 	C.until = day + T.months * 30
 	C.ok = 0
 	C.miss = 0
+	C.dmg = 0
 	C.sent = 0
 	_nets().ctr.append(C)
 	co_news("good", "handshake", "%s уклала контракт із %s: %s → %s, кожні %d дн." % [CO.name, C.firm, PL[C.from].name, PL[C.to].name, C.every])
