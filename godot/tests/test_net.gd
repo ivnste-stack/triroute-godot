@@ -377,23 +377,7 @@ func test_pickup_only_goes_to_a_hub() -> String:
 	_days(sim, 12, false)
 	if c.at != sp.auto_end or not (c.st == "ready" or c.st == "proc" or c.st == "done"):
 		return "the cargo is at %s (%s), not in the hub" % [sim.PL[c.at].name, c.st]
-	var w := _consistent(sim)
-	if w != "":
-		return w
-	# by air: a partner's plane picks up at an airport and brings it to the nearest hub with one
-	var ap: Array = sim.PL.filter(func(p): return p.air and hub_free(sim, p.id))
-	if not sim.PL[hq].air or ap.is_empty():
-		return ""
-	var c2: Dictionary = sim.CO.net.cs.filter(func(x): return x.run < 0 and x.st == "wait")[0] if sim.CO.net.cs.any(func(x): return x.run < 0 and x.st == "wait") else {}
-	if c2.is_empty():
-		return ""
-	c2.at = ap[0].id
-	var sa := sim.net_auto_multi(hq, [ap[0].id], "air", -1)
-	if sa.get("auto_end", -1) < 0:
-		return "a pick-up at an airport has no hub to go to"
-	if not sim.net_calc(sa).rows.any(func(r): return r.c.id == c2.id):
-		return "the plane does not take the cargo from the airport"
-	return ""
+	return _consistent(sim)
 
 
 ## the player's own roads: a point put on a road aside of the shortest way — the plan, the time and the
@@ -468,8 +452,3 @@ func test_run_takes_the_players_roads() -> String:
 		return "%d of %d delivered" % [sim.CO.net.stat.done - d0, n]
 	print("       through the player's point: %.0f%% longer than the shortest way" % ((rv.len / plain.len - 1) * 100))
 	return _consistent(sim)
-
-
-
-static func hub_free(sim: Sim, pid: int) -> bool:
-	return sim.hub_at(pid) == null

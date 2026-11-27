@@ -1256,7 +1256,7 @@ func net_auto_multi(a: int, way: Array, m: String, vid: int, back: bool = false,
 	var spec := {"vid": vid, "m": m, "stops": stops, "picks": {}, "offs": {}}
 	# a route that ends at a town where the cargo picked up on the way is not for: the run goes on to the
 	# nearest hub and leaves it there (the player may put a hub last instead)
-	if way.size() and not back and n_kind(stops.back()) != "hub":   # a town, or a partner's port, station, airport
+	if way.size() and not back and n_kind(stops.back()) == "":
 		var last: int = stops.back()
 		var lose: bool = CO.net.cs.any(func(c): return c.run < 0 and c.st == "wait" and way.has(c.at) and not skip.has(c.id) \
 			and not way.slice(way.find(c.at) + 1).has(c.k.to))
