@@ -169,9 +169,9 @@ func _process_t(_delta: float) -> void:
 	_layers.rail_case.set_width(rw * 2.6)
 	_layers.rail.set_width(rw * 1.85)
 	_layers.road_case.set_width(rw + 2 * dpr)
-	_layers.road.set_width(rw)
+	_layers.road.set_width(maxf(rw, 1.4 * dpr))   # never thinner than a crisp line: thinner ones fade out
 	_layers.mway_case.set_width(rw * 1.85 + 2 * dpr)
-	_layers.mway.set_width(rw * 1.85)
+	_layers.mway.set_width(maxf(rw * 1.85, 2 * dpr))
 	if _layers.has("toll"):
 		_layers.toll.set_width(rw * .7)
 	if _layers.has("hban"):

@@ -54,8 +54,9 @@ void vertex() {
 void fragment() {
 	// a line thinner than a pixel is drawn one pixel wide with its width as the alpha (like the browser)
 	float d = length(v_d);
-	// the edge fades over ~1.4 px (analytic anti-aliasing: smooth diagonals without a supersampled buffer)
-	float a = clamp((max(v_w, 1.0) * 0.5 + 0.7 - d) / 1.4, 0.0, 1.0) * min(v_w, 1.0);
+	// the edge fades over ~1 px (analytic anti-aliasing: smooth diagonals without a supersampled buffer, and
+	// crisp: a wider fade blurs thin roads into a haze from afar)
+	float a = clamp((max(v_w, 1.0) * 0.5 + 0.5 - d), 0.0, 1.0) * min(v_w, 1.0);
 	if (a <= 0.0) discard;
 	COLOR = vec4(color, a);
 }
