@@ -19,6 +19,9 @@ const W = preload("res://scripts/ui/windows.gd")
 const KEY := KEY_QUOTELEFT   # by its place: ` on the English layout, ' on the Ukrainian
 const DIR := "user://trailer"
 const KINDS := [["road", "Авто", "truck"], ["rail", "Залізниця", "train"], ["sea", "Море", "ship"], ["air", "Авіа", "plane"]]
+const ANIMS := [["fade", "Поява", "Плавно проявляється й зникає"], ["up", "Знизу", "Виїжджає знизу вгору"],
+	["side", "Збоку", "Виїжджає збоку (з того боку, звідки рух)"], ["pop", "Збільшення", "З’являється, трохи збільшуючись"],
+	["wipe", "Шторка", "Відкривається зліва направо"], ["type", "Друк", "Літери з’являються одна за одною"]]
 const WARM := 30   # frames before a rendered take starts: the map and the trips settle
 
 var main: Node
@@ -27,7 +30,7 @@ var _body: VBoxContainer
 var _status: Label
 var _sub_layer: CanvasLayer   # the subtitles' preview, over everything
 
-var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true,
+var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true, "reset_take": true,
 	"kinds": {"road": true, "rail": true, "sea": true, "air": true}}
 var take_name := "take1"
 
@@ -84,6 +87,7 @@ func _ready() -> void:
 	add_child(_sub_layer)
 	_build()
 	_cam_opts(true)
+	_snap0 = _snapshot()   # «Скинути все» brings the world back to this
 
 
 func sim() -> Sim:
@@ -160,7 +164,7 @@ func _build() -> void:
 		B.add_child(W._note("Збережені: %s" % ", ".join(PackedStringArray(tk)), Ui.MUTED, 12))
 	B.add_child(Ui.hbox(8, [W._toggle(opts.snap, func():
 		opts.snap = not opts.snap
-		_build()), Ui.label("Знімок світу на початку запису (для рендеру)", 12, Ui.FG2)]))
+		_build()), _wrap("Знімок світу на початку запису (для рендеру)")]))
 
 	# ---- the take
 	B.add_child(W._sect("Дубль"))
@@ -171,9 +175,18 @@ func _build() -> void:
 		"Ховає панель (і інтерфейс, як обрано вище) та програє шлях камери й усі натиснуті під час запису кнопки. Записуйте екран у цей час. ` — зупинити."),
 		W._btn("Команда рендеру", "sm", "doc", copy_render, path.size() > 1,
 		"Копіює команду: Godot сам запише дубль у відео 1920×1080, рівно 60 кадрів/с, зі знімка світу на початку запису.")]))
+	B.add_child(Ui.hbox(8, [W._toggle(opts.reset_take, func():
+		opts.reset_take = not opts.reset_take
+		_build()), _wrap("Перед дублем повертати світ, яким він був на початку запису")]))
 
 	# ---- the scene
 	B.add_child(W._sect("Сцена"))
+	B.add_child(_fill([W._btn("Скинути все", "sm", "refresh", reset_all, true,
+		"Повертає світ, яким він був, коли відкрили студію (або з «Новий початок»): хаби, рейси, події, гроші, лічильники, видимість транспорту — усі дії сцени скасовано"),
+		W._btn("Новий початок", "sm", "", func():
+			_snap0 = _snapshot()
+			main.toasts.push("good", "Новий початок", "«Скинути все» повертатиме світ до цього стану"), true,
+		"Запам'ятати світ, як він зараз, як той, до якого повертає «Скинути все»")]))
 	var kr := HFlowContainer.new()
 	kr.add_theme_constant_override("h_separation", 6)
 	kr.add_theme_constant_override("v_separation", 6)
@@ -222,6 +235,15 @@ func _build() -> void:
 	# ---- the subtitles
 	B.add_child(W._sect("Субтитри"))
 	B.add_child(_sub_editor())
+
+
+## a note beside a switch: as wide as there is room, wrapped
+func _wrap(t: String) -> Label:
+	var l := Ui.label(t, 12, Ui.FG2)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.custom_minimum_size.x = 200
+	return l
 
 
 func _row(a: Control, b: Control) -> HBoxContainer:
@@ -314,6 +336,7 @@ func toggle_rec() -> void:
 	if opts.snap:   # the world as the way starts: the render replays the take from it
 		var sd: Dictionary = main._save_data()
 		SaveSystem.write("trailer_" + take_name, sd.data, sd.meta)
+	_snap_rec = _snapshot()   # a take starts again from here («Перед дублем повертати світ…»)
 	rec = true
 	_rec_t = 0.0
 	path = []
@@ -323,6 +346,47 @@ func toggle_rec() -> void:
 
 
 var _meta := {}
+var _snap0 := {}      # the world when the studio opened (or «Новий початок»)
+var _snap_rec := {}   # the world when the way's recording started
+
+
+## the world as it is: the simulation's whole state, the time of day, what the map shows
+func _snapshot() -> Dictionary:
+	var S := sim()
+	if S == null:
+		return {}
+	return {"sim": S.save_state(), "acc": main.session.acc, "pfr": main.session.paused_fr, "hid": MapVis.hid.duplicate(), "kinds": opts.kinds.duplicate()}
+
+
+func _restore(sn: Dictionary) -> void:
+	var S := sim()
+	if sn.is_empty() or S == null:
+		return
+	S.load_state(sn.sim)
+	main.session.acc = sn.acc
+	main.session.paused_fr = sn.pfr
+	MapVis.hid = sn.hid.duplicate()
+	MapVis.ver += 1
+	opts.kinds = sn.kinds.duplicate()
+	_cnt = {}
+	_hubq = []
+	_ret = {}
+	main.hud.studio = {}
+	main.map.vehicles.selected = null
+	main.map_ui.close_card()
+	S.inc_changed()
+	main.map.apply_vis()
+	main.map.company_colors()
+
+
+## «Скинути все»: every action of the scene undone — the world as it was
+func reset_all() -> void:
+	if playing:
+		_play_t = INF
+		_stop_play()
+	_restore(_snap0)
+	_build()
+	main.toasts.push("good", "Усе скинуто", "Світ — як на початку")
 
 
 ## a button of the scene: done now and, while recording, kept with its second
@@ -343,6 +407,8 @@ func play(take: bool) -> void:
 	playing = true
 	_cnt = {}
 	if take:
+		if opts.reset_take and not _snap_rec.is_empty():
+			_restore(_snap_rec)
 		_take = "live"
 		_hide_ui(true)
 	_cam_opts(true)
@@ -896,6 +962,21 @@ func _sub_editor() -> Control:
 	v.add_child(Ui.hbox(8, [Ui.lbl("Текст на картці"), Ui.seg([["left", "Ліворуч"], ["center", "По центру"], ["right", "Праворуч"]], String(sub.get("align", "left")), func(x):
 		sub.align = x
 		_build())]))
+	var an := GridContainer.new()
+	an.columns = 3
+	an.add_theme_constant_override("h_separation", 6)
+	an.add_theme_constant_override("v_separation", 6)
+	for A in ANIMS:
+		var a_: String = A[0]
+		var b := W._btn(A[1], "pri sm" if String(sub.get("anim", "fade")) == a_ else "sm", "", func():
+			sub.anim = a_
+			_build()
+			preview_sub(sub.duplicate()))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.tooltip_text = A[2]
+		an.add_child(b)
+	v.add_child(Ui.lbl("Анімація появи"))
+	v.add_child(an)
 	v.add_child(Ui.hbox(8, [Ui.lbl("Рух"), Ui.seg([[-1, "← трохи вліво"], [0, "на місці"], [1, "трохи вправо →"]], int(sub.drift), func(x):
 		sub.drift = x
 		_build())]))
@@ -968,15 +1049,20 @@ func preview_sub(it: Dictionary, delay: float = 0.0) -> void:
 		col.add_child(x)
 	h.add_child(Ui.margin(col, z.pad, z.padv, z.pad, z.padv))
 	card.add_child(h)
-	card.modulate.a = 0
-	_sub_layer.add_child(card)
-	_subs_live.append({"lbl": card, "t": -delay, "it": it})
+	var root := Control.new()   # the card inside: clipped for the wipe, scaled for the pop
+	root.clip_contents = true
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(card)
+	root.modulate.a = 0
+	_sub_layer.add_child(root)
+	_subs_live.append({"lbl": root, "card": card, "t": -delay, "it": it, "labels": col.get_children()})
 
 
 static func _sub_label(text: String, f: Font, size: int, c: Color, shadow: bool) -> Label:
 	var l := Label.new()
 	l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # the player's own words
 	l.text = text
+	l.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING   # typing: the card keeps its size
 	l.add_theme_font_override("font", f)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", c)
@@ -995,24 +1081,68 @@ func _tick_sub(dt: float) -> void:
 	for e in _subs_live.duplicate():
 		e.t += dt
 		var c: Control = e.lbl
+		var card: Control = e.card
 		var it: Dictionary = e.it
-		c.size = c.get_combined_minimum_size()
-		var st := sub_state(it, e.t, vs, c.size)
+		card.size = card.get_combined_minimum_size()
+		var sz := card.size
+		var st := sub_state(it, e.t, vs, sz)
 		c.position = st.pos
+		c.size = Vector2(sz.x * st.reveal, sz.y)
+		c.pivot_offset = sz / 2
+		c.scale = Vector2.ONE * st.scale
 		c.modulate.a = st.a
+		# typing: the title's letters first, then the line's
+		var L: Array = e.labels
+		var n0: int = L[0].text.length()
+		var n1: int = L[1].text.length() if L.size() > 1 else 0
+		var shown := int(floor(st.chars * (n0 + n1)))
+		L[0].visible_characters = mini(n0, shown) if st.chars < 1 else -1
+		if L.size() > 1:
+			L[1].visible_characters = maxi(0, shown - n0) if st.chars < 1 else -1
 		if e.t > float(it.dur):
 			c.queue_free()
 			_subs_live.erase(e)
 
 
-## where a subtitle is and how visible, t seconds into it (tools/subtitles.py does the same): centred on its
-## place, drifting 2% of the width to one side and on over its time (or still), a fade over 0.4 s at each end
+## where a subtitle is and how it shows, t seconds into it (tools/subtitles.py does the same): centred on its
+## place, drifting 2% of the width to one side and on over its time (or still), fading out over the last 0.4 s;
+## it comes in by its animation over 0.6 s (eased out): fade — a fade; up — from 4% of the height below;
+## side — from 6% of the width on the side it drifts from; pop — growing from 85%; wipe — opened left to right;
+## type — its letters one after another (about 28 a second). → pos, a (alpha), scale, reveal (the part of the
+## width shown), chars (the part of the letters shown)
 static func sub_state(it: Dictionary, t: float, vs: Vector2, sz: Vector2) -> Dictionary:
 	var dur := float(it.dur)
 	var p := clampf(t / dur, 0, 1)
-	var d := float(it.get("drift", 0)) * vs.x * .02 * (p * 2 - 1)
-	var a := clampf(minf(t / .4, (dur - t) / .4), 0, 1) if t >= 0 else 0.0
-	return {"pos": Vector2(float(it.get("x", .5)) * vs.x - sz.x / 2 + d, float(it.y) * vs.y - sz.y / 2), "a": a}
+	var dr := float(it.get("drift", 0))
+	var d := dr * vs.x * .02 * (p * 2 - 1)
+	var e := clampf(t / .6, 0, 1)
+	var ein := 1.0 - pow(1.0 - e, 3)
+	var out := clampf((dur - t) / .4, 0, 1)
+	var a := clampf(minf(t / .4, out), 0, 1)
+	var pos := Vector2(float(it.get("x", .5)) * vs.x - sz.x / 2 + d, float(it.y) * vs.y - sz.y / 2)
+	var sc := 1.0
+	var rv := 1.0
+	var ch := 1.0
+	match String(it.get("anim", "fade")):
+		"up":
+			pos.y += (1 - ein) * vs.y * .04
+			a = minf(clampf(t / .35, 0, 1), out)
+		"side":
+			pos.x -= (1 - ein) * vs.x * .06 * (1.0 if dr >= 0 else -1.0)
+			a = minf(clampf(t / .35, 0, 1), out)
+		"pop":
+			sc = .85 + .15 * ein
+			a = minf(clampf(t / .25, 0, 1), out)
+		"wipe":
+			rv = ein
+			a = out
+		"type":
+			var n := String(it.get("title", "")).length() + String(it.get("text", "")).length()
+			ch = clampf(t / maxf(.2, n / 28.0), 0, 1)
+			a = minf(clampf(t / .15, 0, 1), out)
+	if t < 0:
+		a = 0.0
+	return {"pos": pos, "a": a, "scale": sc, "reveal": rv, "chars": ch}
 
 
 # ====================================================================== keys

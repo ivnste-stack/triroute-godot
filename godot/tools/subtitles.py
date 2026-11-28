@@ -2,12 +2,14 @@
 """Subtitles of the trailer studio over recorded frames.
 
 The studio (the key left of 1 → «Субтитри» → «Копіювати код») copies a list like
-    {"subtitles": [{"title": "…", "text": "…", "t0": 1.5, "dur": 5, "color": "#ffffff", "size": 44, "font": "display", "x": 0.5, "y": 0.8, "drift": 1, "box": true, "align": "left"}, …]}
+    {"subtitles": [{"title": "…", "text": "…", "t0": 1.5, "dur": 5, "color": "#ffffff", "size": 44, "font": "display", "x": 0.5, "y": 0.8, "drift": 1, "box": true, "align": "left",
+                    "anim": "up"}, …]}
 and this draws it over a video (or a folder of frames) the way the studio's preview shows it
 (TrailerStudio.sub_sizes / sub_state): a card of dark glass with a thin border (or bare text with a shadow:
 "box": false), the title in the game's display (Unbounded) or body (Onest) font at
 weight 600, the line under it in Onest 500; sizes in pixels at 1080p (scaled to the video); centred on x, y (parts
-of the width and the height), the lines aligned on the card ("align": left / center / right), drifting 2% of the width to one side and on (drift -1 / 1) or still (0); a fade
+of the width and the height), the lines aligned on the card ("align": left / center / right), coming in by an animation ("anim": fade, up,
+side, pop, wipe, type), drifting 2% of the width to one side and on (drift -1 / 1) or still (0); a fade
 over 0.4 s at each end.
 
     python3 tools/subtitles.py IN OUT SPEC.json            IN, OUT: video files, or folders of frames
@@ -66,12 +68,74 @@ def sizes(it, H):
 
 
 def state(it, t, W, H, w, h):
-    """where a subtitle is and how visible, t seconds into it — TrailerStudio.sub_state"""
+    """where a subtitle is and how it shows, t seconds into it — TrailerStudio.sub_state: x, y, alpha, scale,
+    reveal (the part of the width shown: the wipe), chars (the part of the letters shown: the typing)"""
     dur = float(it.get("dur", 5))
-    p = min(max(t / dur, 0.0), 1.0)
-    d = float(it.get("drift", 0)) * W * .02 * (p * 2 - 1)
-    a = min(max(min(t / 0.4, (dur - t) / 0.4), 0.0), 1.0) if t >= 0 else 0.0
-    return float(it.get("x", .5)) * W - w / 2 + d, float(it.get("y", .8)) * H - h / 2, a
+    clamp = lambda v: min(max(v, 0.0), 1.0)
+    p = clamp(t / dur)
+    dr = float(it.get("drift", 0))
+    d = dr * W * .02 * (p * 2 - 1)
+    ein = 1 - (1 - clamp(t / .6)) ** 3
+    out = clamp((dur - t) / .4)
+    a = min(clamp(t / .4), out)
+    x = float(it.get("x", .5)) * W - w / 2 + d
+    y = float(it.get("y", .8)) * H - h / 2
+    sc, rv, ch = 1.0, 1.0, 1.0
+    an = it.get("anim", "fade")
+    if an == "up":
+        y += (1 - ein) * H * .04
+        a = min(clamp(t / .35), out)
+    elif an == "side":
+        x -= (1 - ein) * W * .06 * (1.0 if dr >= 0 else -1.0)
+        a = min(clamp(t / .35), out)
+    elif an == "pop":
+        sc = .85 + .15 * ein
+        a = min(clamp(t / .25), out)
+    elif an == "wipe":
+        rv = ein
+        a = out
+    elif an == "type":
+        n = len(str(it.get("title", ""))) + len(str(it.get("text", "")))
+        ch = clamp(t / max(.2, n / 28.0))
+        a = min(clamp(t / .15), out)
+    if t < 0:
+        a = 0.0
+    return x, y, a, sc, rv, ch
+
+
+def card(it, H, chars):
+    """the card alone (RGBA, its own size): glass and border, the title and the line, aligned; with chars < 1
+    only that part of the letters (the title's first) — the card keeps its full size"""
+    z = sizes(it, H)
+    box = it.get("box", True)
+    ft = font(it.get("font", "display"), z["ts"], 600)
+    title, text = str(it.get("title", "")), str(it.get("text", ""))
+    a1, d1 = ft.getmetrics()
+    tw, th = ft.getlength(title), a1 + d1
+    fx = font("body", z["xs"], 500)
+    a2, d2 = fx.getmetrics()
+    xw, xh = (fx.getlength(text), a2 + d2) if text else (0, 0)
+    w = int(round(z["bar"] + z["pad"] * 2 + max(tw, xw)))
+    h = int(round(z["padv"] * 2 + th + ((z["gap"] + xh) if text else 0)))
+    im = Image.new("RGBA", (w + 4, h + 4), (0, 0, 0, 0))   # room for the shadow
+    d = ImageDraw.Draw(im)
+    if box:
+        d.rectangle([0, 0, w - 1, h - 1], fill=(8, 18, 28, 219), outline=(255, 255, 255, 36), width=1)
+    n0, n1 = len(title), len(text)
+    shown = int(chars * (n0 + n1)) if chars < 1 else n0 + n1
+    cw = max(tw, xw)   # the lines on the card: left, centred or right ("align")
+    al = {"center": .5, "right": 1.0}.get(it.get("align", "left"), 0.0)
+    tx = z["bar"] + z["pad"]
+    rows = [(title[:min(n0, shown)], ft, hex_rgb(it.get("color", "#ffffff")), z["padv"], z["ts"], tw)]
+    if text:
+        rows.append((text[:max(0, shown - n0)], fx, (201, 212, 222), z["padv"] + th + z["gap"], z["xs"], xw))
+    for s_, f_, c_, yy, px, lw in rows:
+        lx = tx + (cw - lw) * al   # placed by the whole line's width: typing does not move it
+        if not box:
+            o = max(1, px // 18)
+            d.text((lx + o, yy + o), s_, font=f_, fill=(0, 0, 0, 140))
+        d.text((lx, yy), s_, font=f_, fill=c_ + (255,))
+    return im, w, h
 
 
 def draw(img, subs, T):
@@ -83,43 +147,25 @@ def draw(img, subs, T):
         t = T - float(it.get("t0", 0))
         if t < 0 or t > float(it.get("dur", 5)):
             continue
-        z = sizes(it, H)
-        box = it.get("box", True)
-        ft = font(it.get("font", "display"), z["ts"], 600)
-        title, text = str(it.get("title", "")), str(it.get("text", ""))
-        a1, d1 = ft.getmetrics()
-        tw, th = ft.getlength(title), a1 + d1
-        fx = font("body", z["xs"], 500)
-        a2, d2 = fx.getmetrics()
-        xw, xh = (fx.getlength(text), a2 + d2) if text else (0, 0)
-        w = z["bar"] + z["pad"] * 2 + max(tw, xw)
-        h = z["padv"] * 2 + th + ((z["gap"] + xh) if text else 0)
-        x, y, a = state(it, t, W, H, w, h)
-        if a <= 0:
+        _, w, h = card(it, H, 1.0)
+        x, y, a, sc, rv, ch = state(it, t, W, H, w, h)
+        if a <= 0 or rv <= 0:
             continue
+        im, w, h = card(it, H, ch)
+        if rv < 1:   # the wipe: only the left part so far
+            cut = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            cut.paste(im.crop((0, 0, max(1, int(w * rv)), im.size[1])), (0, 0))
+            im = cut
+        if sc != 1:   # the pop: scaled about its centre
+            nw, nh = max(1, int(im.size[0] * sc)), max(1, int(im.size[1] * sc))
+            x += (im.size[0] - nw) / 2
+            y += (im.size[1] - nh) / 2
+            im = im.resize((nw, nh), Image.LANCZOS)
+        if a < 1:   # faded as one, as the preview's modulate
+            im.putalpha(im.getchannel("A").point(lambda v: int(v * a)))
         if over is None:
             over = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))   # the card drawn whole, then faded as one (as modulate)
-        d = ImageDraw.Draw(layer)
-        if box:
-            d.rectangle([x, y, x + w - 1, y + h - 1], fill=(8, 18, 28, 219), outline=(255, 255, 255, 36), width=1)
-        tx = x + z["bar"] + z["pad"]
-        cw = max(tw, xw)   # the lines on the card: left, centred or right ("align")
-        al = {"center": .5, "right": 1.0}.get(it.get("align", "left"), 0.0)
-        ty = y + z["padv"]
-        rows = [(title, ft, hex_rgb(it.get("color", "#ffffff")), ty, z["ts"], tw)]
-        if text:
-            rows.append((text, fx, (201, 212, 222), ty + th + z["gap"], z["xs"], xw))
-        for s_, f_, c_, yy, px, lw in rows:
-            lx = tx + (cw - lw) * al
-            if not box:
-                o = max(1, px // 18)
-                d.text((lx + o, yy + o), s_, font=f_, fill=(0, 0, 0, 140))
-            d.text((lx, yy), s_, font=f_, fill=c_ + (255,))
-        if a < 1:
-            al = layer.getchannel("A").point(lambda v: int(v * a))
-            layer.putalpha(al)
-        over = Image.alpha_composite(over, layer)
+        over.alpha_composite(im, (int(round(x)), int(round(y))))
     if over is None:
         return img
     return Image.alpha_composite(img.convert("RGBA"), over).convert("RGB")

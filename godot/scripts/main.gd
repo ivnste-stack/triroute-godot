@@ -1027,6 +1027,7 @@ func _on_world(w: Dictionary) -> void:
 			print("TEST studio return: yaw %.3f, dist %.2f → %.2f" % [map.camera.yaw, d0, map.camera.dist])
 		if _args.has("subdemo"):   # test: subtitles' previews — a card drifting right, bare text still
 			studio.sub.align = String(_args.get("subalign", "left"))   # --subalign=left|center|right
+			studio.sub.anim = String(_args.get("subanim", "fade"))   # --subanim=fade|up|side|pop|wipe|type
 			studio.preview_sub(studio.sub.duplicate())
 			var it2: Dictionary = studio.sub.duplicate()
 			it2.title = "ВАНТАЖІВКИ · ПОТЯГИ · КОРАБЛІ"
@@ -1048,6 +1049,18 @@ func _on_world(w: Dictionary) -> void:
 				var h := studio._here()
 				h.spd = 200.0
 				studio.act("hubs", h)
+			if _args.has("studioreset"):   # test: everything undone — the hubs, the trips, the events, the counters
+				for i in 40:
+					await get_tree().process_frame
+				studio.act("storm", studio._here())
+				studio.act("cnt", {"k": "cash", "to": -5.0, "dur": .1})
+				for i in 5:
+					await get_tree().process_frame
+				var CO: Dictionary = session.sim.CO
+				print("TEST studio before reset: hubs %d, trips %d, weather %d, counters %d" % [CO.hubs.size(), CO.jobs.size(), CO.wx.size(), hud.studio.size()])
+				studio.reset_all()
+				CO = session.sim.CO
+				print("TEST studio after reset: hubs %d, trips %d, weather %d, counters %d" % [CO.hubs.size(), CO.jobs.size(), CO.wx.size(), hud.studio.size()])
 		if _args.has("studiodemo"):   # test: a way recorded with some buttons, saved, played as a take
 			for i in 5:
 				await get_tree().process_frame
