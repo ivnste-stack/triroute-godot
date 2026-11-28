@@ -1026,6 +1026,7 @@ func _on_world(w: Dictionary) -> void:
 				await get_tree().process_frame
 			print("TEST studio return: yaw %.3f, dist %.2f → %.2f" % [map.camera.yaw, d0, map.camera.dist])
 		if _args.has("subdemo"):   # test: subtitles' previews — a card drifting right, bare text still
+			studio.sub.align = String(_args.get("subalign", "left"))   # --subalign=left|center|right
 			studio.preview_sub(studio.sub.duplicate())
 			var it2: Dictionary = studio.sub.duplicate()
 			it2.title = "ВАНТАЖІВКИ · ПОТЯГИ · КОРАБЛІ"

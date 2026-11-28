@@ -51,7 +51,7 @@ var _render_take := {}
 # subtitles: the list and the one being edited
 var subs: Array = []
 var sub := {"title": "Будуйте логістичну імперію", "text": "Вантажівки, потяги, кораблі й літаки по всьому світу", "t0": 0.0, "dur": 5.0,
-	"color": "#ffffff", "size": 44, "font": "display", "x": .5, "box": true, "drift": 1,
+	"color": "#ffffff", "size": 44, "font": "display", "x": .5, "box": true, "drift": 1, "align": "left",
 	"y": .8}
 
 
@@ -893,6 +893,9 @@ func _sub_editor() -> Control:
 	v.add_child(Ui.hbox(8, [Ui.lbl("Шрифт"), Ui.seg([["display", "Широкий"], ["body", "Звичайний"]], sub.font, func(x):
 		sub.font = x
 		_build())]))
+	v.add_child(Ui.hbox(8, [Ui.lbl("Текст на картці"), Ui.seg([["left", "Ліворуч"], ["center", "По центру"], ["right", "Праворуч"]], String(sub.get("align", "left")), func(x):
+		sub.align = x
+		_build())]))
 	v.add_child(Ui.hbox(8, [Ui.lbl("Рух"), Ui.seg([[-1, "← трохи вліво"], [0, "на місці"], [1, "трохи вправо →"]], int(sub.drift), func(x):
 		sub.drift = x
 		_build())]))
@@ -955,10 +958,14 @@ func preview_sub(it: Dictionary, delay: float = 0.0) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 0)
 	var col := Ui.vbox(z.gap)
+	var al: int = {"center": HORIZONTAL_ALIGNMENT_CENTER, "right": HORIZONTAL_ALIGNMENT_RIGHT}.get(String(it.get("align", "left")), HORIZONTAL_ALIGNMENT_LEFT)
 	var t := _sub_label(it.title, Ui.font("display", 600) if it.font == "display" else Ui.font("body", 600), z.ts, Color(it.color), not box)
+	t.horizontal_alignment = al   # the lines on the card: left, centred or right
 	col.add_child(t)
 	if String(it.get("text", "")) != "":
-		col.add_child(_sub_label(it.text, Ui.font("body", 500), z.xs, Color("#c9d4de"), not box))
+		var x := _sub_label(it.text, Ui.font("body", 500), z.xs, Color("#c9d4de"), not box)
+		x.horizontal_alignment = al
+		col.add_child(x)
 	h.add_child(Ui.margin(col, z.pad, z.padv, z.pad, z.padv))
 	card.add_child(h)
 	card.modulate.a = 0

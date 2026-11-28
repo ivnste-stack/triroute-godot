@@ -2,12 +2,12 @@
 """Subtitles of the trailer studio over recorded frames.
 
 The studio (the key left of 1 → «Субтитри» → «Копіювати код») copies a list like
-    {"subtitles": [{"title": "…", "text": "…", "t0": 1.5, "dur": 5, "color": "#ffffff", "size": 44, "font": "display", "x": 0.5, "y": 0.8, "drift": 1, "box": true}, …]}
+    {"subtitles": [{"title": "…", "text": "…", "t0": 1.5, "dur": 5, "color": "#ffffff", "size": 44, "font": "display", "x": 0.5, "y": 0.8, "drift": 1, "box": true, "align": "left"}, …]}
 and this draws it over a video (or a folder of frames) the way the studio's preview shows it
 (TrailerStudio.sub_sizes / sub_state): a card of dark glass with a thin border (or bare text with a shadow:
 "box": false), the title in the game's display (Unbounded) or body (Onest) font at
 weight 600, the line under it in Onest 500; sizes in pixels at 1080p (scaled to the video); centred on x, y (parts
-of the width and the height), drifting 2% of the width to one side and on (drift -1 / 1) or still (0); a fade
+of the width and the height), the lines aligned on the card ("align": left / center / right), drifting 2% of the width to one side and on (drift -1 / 1) or still (0); a fade
 over 0.4 s at each end.
 
     python3 tools/subtitles.py IN OUT SPEC.json            IN, OUT: video files, or folders of frames
@@ -104,15 +104,18 @@ def draw(img, subs, T):
         if box:
             d.rectangle([x, y, x + w - 1, y + h - 1], fill=(8, 18, 28, 219), outline=(255, 255, 255, 36), width=1)
         tx = x + z["bar"] + z["pad"]
+        cw = max(tw, xw)   # the lines on the card: left, centred or right ("align")
+        al = {"center": .5, "right": 1.0}.get(it.get("align", "left"), 0.0)
         ty = y + z["padv"]
-        rows = [(title, ft, hex_rgb(it.get("color", "#ffffff")), ty, z["ts"])]
+        rows = [(title, ft, hex_rgb(it.get("color", "#ffffff")), ty, z["ts"], tw)]
         if text:
-            rows.append((text, fx, (201, 212, 222), ty + th + z["gap"], z["xs"]))
-        for s_, f_, c_, yy, px in rows:
+            rows.append((text, fx, (201, 212, 222), ty + th + z["gap"], z["xs"], xw))
+        for s_, f_, c_, yy, px, lw in rows:
+            lx = tx + (cw - lw) * al
             if not box:
                 o = max(1, px // 18)
-                d.text((tx + o, yy + o), s_, font=f_, fill=(0, 0, 0, 140))
-            d.text((tx, yy), s_, font=f_, fill=c_ + (255,))
+                d.text((lx + o, yy + o), s_, font=f_, fill=(0, 0, 0, 140))
+            d.text((lx, yy), s_, font=f_, fill=c_ + (255,))
         if a < 1:
             al = layer.getchannel("A").point(lambda v: int(v * a))
             layer.putalpha(al)
