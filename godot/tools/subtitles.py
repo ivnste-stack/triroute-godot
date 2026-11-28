@@ -2,11 +2,10 @@
 """Subtitles of the trailer studio over recorded frames.
 
 The studio (the key left of 1 → «Субтитри» → «Копіювати код») copies a list like
-    {"subtitles": [{"title": "…", "text": "…", "t0": 1.5, "dur": 5, "color": "#ffffff", "accent": "#5cc8f2",
-                    "size": 44, "font": "display", "x": 0.5, "y": 0.8, "drift": 1, "box": true}, …]}
+    {"subtitles": [{"title": "…", "text": "…", "t0": 1.5, "dur": 5, "color": "#ffffff", "size": 44, "font": "display", "x": 0.5, "y": 0.8, "drift": 1, "box": true}, …]}
 and this draws it over a video (or a folder of frames) the way the studio's preview shows it
-(TrailerStudio.sub_sizes / sub_state): a card of dark glass with a thin border and an accent bar on the left
-(or bare text with a shadow: "box": false), the title in the game's display (Unbounded) or body (Onest) font at
+(TrailerStudio.sub_sizes / sub_state): a card of dark glass with a thin border (or bare text with a shadow:
+"box": false), the title in the game's display (Unbounded) or body (Onest) font at
 weight 600, the line under it in Onest 500; sizes in pixels at 1080p (scaled to the video); centred on x, y (parts
 of the width and the height), drifting 2% of the width to one side and on (drift -1 / 1) or still (0); a fade
 over 0.4 s at each end.
@@ -63,7 +62,7 @@ def sizes(it, H):
     ts = max(8, round(float(it.get("size", 44)) * k))
     box = it.get("box", True)
     return {"ts": ts, "xs": max(round(14 * k), round(ts * .5)), "pad": round(ts * .55) if box else 0,
-            "padv": round(ts * .4) if box else 0, "gap": round(ts * .25), "bar": max(3, round(ts * .09)) if box else 0}
+            "padv": round(ts * .4) if box else 0, "gap": round(ts * .25), "bar": 0}
 
 
 def state(it, t, W, H, w, h):
@@ -104,7 +103,6 @@ def draw(img, subs, T):
         d = ImageDraw.Draw(layer)
         if box:
             d.rectangle([x, y, x + w - 1, y + h - 1], fill=(8, 18, 28, 219), outline=(255, 255, 255, 36), width=1)
-            d.rectangle([x, y, x + z["bar"] - 1, y + h - 1], fill=hex_rgb(it.get("accent", "#5cc8f2")) + (255,))
         tx = x + z["bar"] + z["pad"]
         ty = y + z["padv"]
         rows = [(title, ft, hex_rgb(it.get("color", "#ffffff")), ty, z["ts"])]

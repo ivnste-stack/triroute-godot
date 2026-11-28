@@ -51,7 +51,7 @@ var _render_take := {}
 # subtitles: the list and the one being edited
 var subs: Array = []
 var sub := {"title": "Будуйте логістичну імперію", "text": "Вантажівки, потяги, кораблі й літаки по всьому світу", "t0": 0.0, "dur": 5.0,
-	"color": "#ffffff", "accent": "#5cc8f2", "size": 44, "font": "display", "x": .5, "box": true, "drift": 1,
+	"color": "#ffffff", "size": 44, "font": "display", "x": .5, "box": true, "drift": 1,
 	"y": .8}
 
 
@@ -887,13 +887,9 @@ func _sub_editor() -> Control:
 	cp.color = Color(sub.color)
 	cp.custom_minimum_size = Vector2(40, 28)
 	cp.color_changed.connect(func(c): sub.color = "#" + c.to_html(false))
-	var ap := ColorPickerButton.new()
-	ap.color = Color(sub.accent)
-	ap.custom_minimum_size = Vector2(40, 28)
-	ap.color_changed.connect(func(c): sub.accent = "#" + c.to_html(false))
-	v.add_child(Ui.hbox(8, [Ui.lbl("Заголовок"), cp, Ui.lbl("Акцент"), ap, Ui.spacer(), W._toggle(sub.box, func():
+	v.add_child(Ui.hbox(8, [Ui.lbl("Заголовок"), cp, Ui.spacer(), W._toggle(sub.box, func():
 		sub.box = not sub.box
-		_build(), "Картка: темне скло, рамка й смуга акценту"), Ui.label("Картка", 12, Ui.FG2)]))
+		_build(), "Картка: темне скло й тонка рамка"), Ui.label("Картка", 12, Ui.FG2)]))
 	v.add_child(Ui.hbox(8, [Ui.lbl("Шрифт"), Ui.seg([["display", "Широкий"], ["body", "Звичайний"]], sub.font, func(x):
 		sub.font = x
 		_build())]))
@@ -934,14 +930,14 @@ func copy_subs() -> void:
 	main.toasts.push("good", "Код субтитрів скопійовано", "%d рядків" % subs.size())
 
 
-## the sizes of a subtitle at a screen height (pixels): title, text, paddings, the accent bar — as in
+## the sizes of a subtitle at a screen height (pixels): title, text, paddings — as in
 ## tools/subtitles.py
 static func sub_sizes(it: Dictionary, h: float) -> Dictionary:
 	var k := h / 1080.0
 	var ts := maxi(8, int(round(float(it.size) * k)))
 	var box: bool = it.get("box", true)
 	return {"ts": ts, "xs": maxi(int(round(14 * k)), int(round(ts * .5))), "pad": int(round(ts * .55)) if box else 0,
-		"padv": int(round(ts * .4)) if box else 0, "gap": int(round(ts * .25)), "bar": maxi(3, int(round(ts * .09))) if box else 0}
+		"padv": int(round(ts * .4)) if box else 0, "gap": int(round(ts * .25)), "bar": 0}
 
 
 ## a subtitle over the game as tools/subtitles.py draws it on the frames
@@ -958,11 +954,6 @@ func preview_sub(it: Dictionary, delay: float = 0.0) -> void:
 	card.add_theme_stylebox_override("panel", st)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 0)
-	if box:
-		var bar := ColorRect.new()
-		bar.color = Color(it.accent)
-		bar.custom_minimum_size.x = z.bar
-		h.add_child(bar)
 	var col := Ui.vbox(z.gap)
 	var t := _sub_label(it.title, Ui.font("display", 600) if it.font == "display" else Ui.font("body", 600), z.ts, Color(it.color), not box)
 	col.add_child(t)
