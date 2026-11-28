@@ -236,7 +236,7 @@ func _click(b: Variant, sec: float = .6) -> void:
 	if b == null or not is_instance_valid(b):
 		return
 	var text: String = b.text
-	var at := b.get_global_rect().get_center()
+	var at: Vector2 = b.get_global_rect().get_center()
 	await _cursor_to(at, sec)
 	_ring = .35
 	await _wait(.12)
