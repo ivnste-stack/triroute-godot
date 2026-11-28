@@ -63,7 +63,7 @@ func _ready() -> void:
 	Settings._values.daynight = false
 	sim.CO.auto = false
 	main.session.set_speed(2)
-	main.hud.studio = {"cash": 3000.0, "lic": 1.0}
+	main.hud.studio = {"cash": 3000.0, "lic": 1.0, "rating": 3.0, "del": 0.0}
 	_cursor_make()
 
 
@@ -78,7 +78,12 @@ func _process(_delta: float) -> void:
 	T = (_f - WARM) / FPS
 	# the money: $3 thousand to $1 billion over the whole take, slowly and then ever faster
 	var p := clampf(T / TOTAL, 0, 1)
-	main.hud.studio.cash = 3000.0 * pow(1e9 / 3000.0, pow(p, 1.35))
+	var k := pow(p, 1.35)
+	main.hud.studio.cash = 3000.0 * pow(1e9 / 3000.0, k)
+	main.hud.studio.rating = lerpf(3.0, 4.85, _ss(p))          # the rating up with it
+	main.hud.studio.del = roundf(4200.0 * (pow(1.0 + 99.0, k) - 1.0) / 99.0)   # the deliveries too, ever faster
+	if _shot >= 8:   # the company's window shows the cash of the top bar
+		sim.CO.cash = maxf(main.hud.studio.cash, 4e7)
 	if main.modals.is_open():
 		main.modals.clear()
 	sim.modals = []
@@ -489,7 +494,7 @@ func _run() -> void:
 			await _scroll_to(head, 1.2)
 		await _wait(.6)
 		# the terms met one by one: the grey turns into what can be obtained
-		for step in [["rating", 5.0], ["cdel", 99999], ["xp", 1e7]]:
+		for step in [["rating", 4.6], ["cdel", 4200], ["xp", 31000.0]]:
 			CO[step[0]] = step[1]
 			main._win_tick(true)
 			await _wait(.45)
