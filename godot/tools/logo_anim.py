@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The TryRoute logo animated: its parts (assets/brand/*.png: plane, ship, train, truck, title) put together as
-the logo pulled tight, then the vehicles move a little outwards from the centre on springs (a jelly: overshooting,
-stretching, settling) — first the truck right and the ship slowly left, half a second later the plane up to the top
-right corner and the train left — and a gleam runs across the word.
+the logo pulled tight, then the vehicles move a little outwards from the centre, quick at first and slowing down —
+first the truck right and the ship slowly left, 0.2 s later the plane up to the top right corner and the train
+left — and a gleam runs across the word.
 
     python3 tools/logo_anim.py OUT.mp4                    on the game's dark blue
     python3 tools/logo_anim.py OUT.mov --alpha            with transparency (ProRes 4444, for editing)
@@ -26,18 +26,16 @@ LAYOUT = [("ship", .80, 244, 98), ("plane", .79, 650, 104), ("truck", .70, 1108,
 REF = (1523, 482)
 # each part: where it starts (pulled in towards the centre: a tight logo) and where it ends (a little out), in the
 # reference's pixels from its place in LAYOUT, when it starts moving and for how long; the truck and the ship first,
-# the plane and the train half a second later — each on a spring (a jelly: it overshoots, wobbles, settles)
-MOVE = {"truck": ((-46, 0), (26, 0), .30, 1.7), "ship": ((34, 6), (-24, 0), .30, 1.9),
-	"plane": ((-44, 30), (30, -22), .80, 1.7), "train": ((46, 0), (-26, 0), .80, 1.7), "title": ((0, 0), (0, 0), 0, 1)}
-GLEAM = (2.55, 3.55)   # the gleam across the word, once everything has settled
-DAMP, FREQ = 5.2, 2.6 * math.pi   # the spring: how fast it settles, how fast it wobbles (per second of its move)
-JELLY = .05            # how much a part stretches along its way at its fastest
+# the plane and the train 0.2 s later — quick at first, slowing down to a stop
+MOVE = {"truck": ((-46, 0), (26, 0), .30, 1.6), "ship": ((34, 6), (-24, 0), .30, 1.8),
+	"plane": ((-44, 30), (30, -22), .50, 1.6), "train": ((46, 0), (-26, 0), .50, 1.6), "title": ((0, 0), (0, 0), 0, 1)}
+GLEAM = (2.2, 3.2)   # the gleam across the word, once everything has settled
 
 
-def spring(f):
-    """a damped spring released from rest: 0 → 1, overshooting a little and wobbling to a stop (no jolt at the start)"""
+def ease(f):
+    """quick at first, slowing down to a stop (an exponential ease-out: no overshoot)"""
     f = min(max(f, 0.0), 1.0)
-    return 1 - math.exp(-DAMP * f) * (math.cos(FREQ * f) + DAMP / FREQ * math.sin(FREQ * f))
+    return (1 - 2 ** (-8 * f)) / (1 - 2 ** -8)
 
 
 def main():
@@ -45,7 +43,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--size", default="1920x1080")
     ap.add_argument("--fps", type=float, default=60)
-    ap.add_argument("--dur", type=float, default=5.0)
+    ap.add_argument("--dur", type=float, default=4.5)
     ap.add_argument("--bg", default="#0b1826")
     ap.add_argument("--alpha", action="store_true")
     ap.add_argument("--at", type=float, default=None)
@@ -70,20 +68,9 @@ def main():
         for name, _, _, _ in LAYOUT:
             im, x, y = parts[name]
             (ax, ay), (bx, by), t0, d = MOVE[name]
-            f = (t - t0) / d
-            e = spring(f)
+            e = ease((t - t0) / d)
             dx, dy = ax + (bx - ax) * e, ay + (by - ay) * e
-            # the jelly: stretched along its way while fast, squeezed across, then back
-            v = (spring(f + .01) - spring(f - .01)) / .02 if 0 < f < 1 else 0.0
-            k = JELLY * max(-1.0, min(1.0, v / 2.2))
-            if abs(k) > .002 and name != "title":
-                horiz = abs(bx - ax) >= abs(by - ay) * 1.5
-                sx, sy = (1 + k, 1 - k * .6) if horiz else (1 + k * .7, 1 + k * .7)
-                nw, nh = max(1, round(im.width * sx)), max(1, round(im.height * sy))
-                im2 = im.resize((nw, nh), Image.BILINEAR)
-                F.alpha_composite(im2, (round(x + dx * K - (nw - im.width) / 2), round(y + dy * K - (nh - im.height) / 2)))
-            else:
-                F.alpha_composite(im, (round(x + dx * K), round(y + dy * K)))
+            F.alpha_composite(im, (round(x + dx * K), round(y + dy * K)))
         g = (t - GLEAM[0]) / (GLEAM[1] - GLEAM[0])
         if 0 < g < 1:   # a slanted band of light across the word, left to right: a bright core in a soft glow
             hgt = title.height
