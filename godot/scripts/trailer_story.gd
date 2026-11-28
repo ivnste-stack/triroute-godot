@@ -412,29 +412,18 @@ func _run() -> void:
 	if _shot_start(6, "the whole map, the trips"):
 		_cut()
 		_clear_trips()
-		var made := 0
-		var kinds := ["road", "rail", "sea", "air", "road", "road", "rail", "air"]
-		var phases := [.04, .5, .97, .3, .7, .02, .98, .6]
-		for A in sim.PL.filter(func(p): return sim.hub_at(p.id) != null):
-			if made >= 26:
-				break
-			var m: String = kinds[made % kinds.size()]
-			if not sim.node_ok(m, A):
-				continue
-			var far := Vector2(1.5, 4.0) if m == "road" or m == "rail" else Vector2(4.0, 10.0)
-			var bs := _towns(m, A, far.x, far.y)
-			if bs.is_empty():
-				continue
-			var j: Variant = _trip(A.id, bs[made % bs.size()].id, m, 24.0, phases[made % phases.size()], .12)
-			if j != null:
-				made += 1
-		_put(0.0, .6, W.x * .78, 0.0)
+		_put(0.0, .6, W.x * .66, 0.0)
+		_trips_mix(30)
 		await _wait(2.4)
+		# the list: loading (0), on the road, unloading (.76) — of every kind; made as the window opens, so the
+		# phases are those on the screen (a trip is 24 s, loading and unloading 6 s each)
+		_clear_trips()
+		_trips_mix(30)
 		main._toggle_window("coTrips")
 		await _wait(.6)
 		var sc: ScrollContainer = main.win.scroll
 		var bar := sc.get_v_scroll_bar()
-		await _scroll(minf(maxf(0, bar.max_value - bar.page), 700.0), 4.0)
+		await _scroll(minf(maxf(0, bar.max_value - bar.page), 900.0), 4.2)
 		await _wait(1.0)
 
 	# ---- 7: the fleet: a truck, a tanker, a freight train, a plane; the staff: two hired
@@ -587,6 +576,27 @@ func _buy_button(name: String) -> Button:
 				if l.text == name:
 					return b
 	return null
+
+
+## trips of every kind from the hubs, at every stage: loading, on the road, unloading
+func _trips_mix(n: int) -> void:
+	var kinds := ["road", "rail", "air", "sea", "road", "rail", "road", "air"]
+	var phases := [0.0, .4, .76, .25, .55, 0.0, .76, .6]
+	var made := 0
+	var hubs: Array = sim.PL.filter(func(p): return sim.hub_at(p.id) != null)
+	for pass_ in 3:
+		for A in hubs:
+			if made >= n:
+				return
+			var m: String = kinds[made % kinds.size()]
+			if not sim.node_ok(m, A):
+				continue
+			var far := Vector2(1.5, 4.0) if m == "road" or m == "rail" else Vector2(4.0, 10.0)
+			var bs := _towns(m, A, far.x, far.y)
+			if bs.is_empty():
+				continue
+			if _trip(A.id, bs[made % bs.size()].id, m, 24.0, phases[made % phases.size()], .2) != null:
+				made += 1
 
 
 func _clear_trips() -> void:
