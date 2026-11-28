@@ -522,17 +522,25 @@ func _toll_order(HQ: Dictionary) -> Variant:
 	if CO.board.is_empty():
 		return null
 	var best: Variant = null
-	for B in _towns("road", HQ, 2.0, 7.0):
+	for B in _towns("road", HQ, 1.5, 7.0):
+		if B.cid != HQ.cid:   # at home: the first licence sends it, no border on the way
+			continue
 		var r: Variant = sim.co_route("road", HQ.id, B.id)
-		if r == null or sim.road_info(r).toll <= 0:
+		if r == null or sim.road_info(r).toll <= 0 or sim._cross(r.p, sim.CO_DU).size():
 			continue
 		var av0 := sim.road_av
 		sim.road_av = "toll"
 		var r2: Variant = sim.co_route("road", HQ.id, B.id)
 		sim.road_av = av0
-		if r2 != null and r2.len > r.len * 1.04:
+		if r2 != null and r2.len > r.len * 1.04 and sim._cross(r2.p, sim.CO_DU).is_empty():
 			best = [B, r]
 			break
+	if best == null:   # no toll motorway with a way round at home: any town at home without a border on the way
+		for B in _towns("road", HQ, 1.5, 6.0):
+			var r: Variant = sim.co_route("road", HQ.id, B.id)
+			if B.cid == HQ.cid and r != null and sim._cross(r.p, sim.CO_DU).is_empty():
+				best = [B, r]
+				break
 	if best == null:
 		return null
 	var k: Dictionary = CO.board[0].duplicate(true)
@@ -546,6 +554,7 @@ func _toll_order(HQ: Dictionary) -> Variant:
 	k.cg = "elec"
 	k.tons = 3.5
 	k.minR = 0
+	k.dlDays = 8.0   # in time by either road
 	k.exp = sim.day + 9
 	k.erase("legs")
 	k.erase("multi")
