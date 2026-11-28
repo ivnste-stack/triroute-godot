@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """The TryRoute logo animated: its parts (assets/brand/*.png: plane, ship, train, truck, title) put together as
 the logo pulled tight and the word smaller, then the word grows to its size while the vehicles move a little outwards from the centre, quick at first and slowing down —
-first the truck right and the ship slowly left, right after them the plane up to the top right corner and the train
-left — and a gleam runs across the word.
+all at once: the truck right, the ship left, the plane up to the top right corner, the train left — and a gleam runs across the word.
 
     python3 tools/logo_anim.py OUT.mp4                    on the game's dark blue
     python3 tools/logo_anim.py OUT.mov --alpha            with transparency (ProRes 4444, for editing)
@@ -22,14 +21,14 @@ BRAND = os.path.join(HERE, "..", "assets", "brand")
 
 # the logo as drawn (the reference picture, 1523 × 482): each part's scale and its top left corner there;
 # drawn back to front, the word last
-LAYOUT = [("ship", .80, 244, 98), ("plane", .79, 650, 104), ("truck", .70, 1108, 214), ("train", .75, 28, 243), ("title", .795, 268, 249)]
+LAYOUT = [("ship", .80, 244, 98), ("plane", .79, 634, 104), ("truck", .747, 1036, 214), ("train", .795, 28, 243), ("title", .869, 268, 244)]
 REF = (1523, 482)
 # each part: where it starts (pulled in towards the centre: a tight logo) and where it ends (a little out), in the
-# reference's pixels from its place in LAYOUT, when it starts moving and for how long; the truck and the ship first,
-# the plane and the train right after (0.08 s: one movement, no pause) — quick at first, slowing down to a stop
-MOVE = {"truck": ((-46, 0), (26, 0), .30, 2.2), "ship": ((34, 6), (-24, 0), .30, 2.4),
-	"plane": ((-44, 30), (30, -22), .38, 2.2), "train": ((46, 0), (-26, 0), .38, 2.2), "title": ((0, 0), (0, 0), 0, 1)}
-TITLE_GROW = (.86, .30, 2.3)   # the word: from this part of its size, growing to it with the rest (start, seconds)
+# reference's pixels from its place in LAYOUT, when it starts moving and for how long: all together, with the word
+# growing — quick at first, slowing down to a stop
+MOVE = {"truck": ((-46, 0), (26, 0), .30, 2.2), "ship": ((34, 6), (-24, 0), .30, 2.2),
+	"plane": ((-44, 30), (30, -22), .30, 2.2), "train": ((46, 0), (-26, 0), .30, 2.2), "title": ((0, 0), (0, 0), 0, 1)}
+TITLE_GROW = (.86, .30, 2.2)   # the word: from this part of its size, growing to it with the rest (start, seconds)
 GLEAM = (2.6, 3.6)   # the gleam across the word, once everything has settled
 
 
