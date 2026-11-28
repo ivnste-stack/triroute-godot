@@ -229,15 +229,35 @@ func _cursor_to(p: Vector2, sec: float = .6) -> void:
 func _click(b: Button, sec: float = .6) -> void:
 	if b == null:
 		return
-	await _cursor_to(b.get_global_rect().get_center(), sec)
+	var text := b.text
+	var at := b.get_global_rect().get_center()
+	await _cursor_to(at, sec)
 	_ring = .35
 	await _wait(.12)
-	b.pressed.emit()
+	if not is_instance_valid(b):   # the window was built again meanwhile: the same button in it, nearest the cursor
+		b = _near_button(text, at)
+	if b != null and not b.disabled:
+		b.pressed.emit()
 	await _wait(.2)
+
+
+func _near_button(text: String, at: Vector2) -> Button:
+	var best: Button = null
+	var bd := 1e9
+	for root in [main.win, main.planner, main.hud]:
+		for x in root.find_children("*", "Button", true, false):
+			if x is Button and x.is_visible_in_tree() and x.text == text:
+				var d: float = x.get_global_rect().get_center().distance_to(at)
+				if d < bd:
+					bd = d
+					best = x
+	return best
 
 
 ## a window's list scrolled to show a control (its top a third down the window), smoothly
 func _scroll_to(c: Control, sec: float) -> void:
+	if not is_instance_valid(c):
+		return
 	var sc: ScrollContainer = main.win.scroll
 	var bar := sc.get_v_scroll_bar()
 	var top := maxf(0, bar.max_value - bar.page)
