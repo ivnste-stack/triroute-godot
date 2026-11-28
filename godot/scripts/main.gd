@@ -678,7 +678,7 @@ func _on_world(w: Dictionary) -> void:
 		if _args.has("win"):
 			_toggle_window(_args.win)
 	elif _args.has("company"):
-		var hq := int(_args.get("hq", str(session.choices[0].id)))
+		var hq := int(_args.get("hq", str(session.choices[0].id))) if _args.get("hq", "") != "center" else _central_choice()
 		_play(hq, true)
 		if _args.has("demo"):
 			session.demo_fleet()
@@ -995,6 +995,8 @@ func _on_world(w: Dictionary) -> void:
 		map.night_hour = float(_args.hour)
 	if _args.has("trailer"):   # a scene of the trailer (scripts/trailer.gd, tools/trailer.sh)
 		add_child(Trailer.new(self, String(_args.trailer)))
+	if _args.has("story"):   # the scripted trailer (scripts/trailer_story.gd, tools/trailer_story.sh)
+		add_child(TrailerStory.new(self))
 	if _args.has("take"):   # a take of the trailer studio recorded by Movie Maker (with --load=trailer_<name>)
 		studio = TrailerStudio.new(self)
 		add_child(studio)
@@ -1880,6 +1882,19 @@ func _unhandled_key_input(e: InputEvent) -> void:
 
 
 var _last_speed := 1
+
+
+## --hq=center: the start offered nearest to the map's centre (the trailer's story opens on it)
+func _central_choice() -> int:
+	var best: int = session.choices[0].id
+	var bd := 1e9
+	for c in session.choices:
+		var p: Dictionary = session.sim.PL[c.id]
+		var d := Vector2(p.x, p.z - .6).length()
+		if d < bd:
+			bd = d
+			best = c.id
+	return best
 
 
 ## a bound key (Keys): time, map layers, windows, a screenshot
