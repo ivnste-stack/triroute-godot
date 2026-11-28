@@ -34,6 +34,7 @@ var _cursor: Node2D
 var _ring := 0.0             # the cursor's click ring (seconds left)
 var _shot := 0
 var _from := 1
+var _keep := false   # a window being clicked through: it does not build itself again under the cursor
 
 
 func _init(main_: Node) -> void:
@@ -231,10 +232,10 @@ func _cursor_to(p: Vector2, sec: float = .6) -> void:
 
 
 ## the cursor to a button, a click: the ring and the button's own action
-func _click(b: Button, sec: float = .6) -> void:
-	if b == null:
+func _click(b: Variant, sec: float = .6) -> void:
+	if b == null or not is_instance_valid(b):
 		return
-	var text := b.text
+	var text: String = b.text
 	var at := b.get_global_rect().get_center()
 	await _cursor_to(at, sec)
 	_ring = .35
@@ -243,6 +244,7 @@ func _click(b: Button, sec: float = .6) -> void:
 		b = _near_button(text, at)
 	if b != null and not b.disabled:
 		b.pressed.emit()
+		main._win_tick(true)   # the window shows what the click did (it does not build itself again meanwhile)
 	await _wait(.2)
 
 
@@ -260,7 +262,7 @@ func _near_button(text: String, at: Vector2) -> Button:
 
 
 ## a window's list scrolled to show a control (its top a third down the window), smoothly
-func _scroll_to(c: Control, sec: float) -> void:
+func _scroll_to(c: Variant, sec: float) -> void:
 	if not is_instance_valid(c):
 		return
 	var sc: ScrollContainer = main.win.scroll
@@ -278,7 +280,7 @@ func _scroll(to: float, sec: float) -> void:
 	for i in n + 1:
 		sc.scroll_vertical = int(round(lerpf(a, to, _ss(float(i) / maxf(1, n)))))
 		await get_tree().process_frame
-	sc.hold = false
+	sc.hold = _keep
 
 
 # ====================================================================== the story
@@ -458,12 +460,14 @@ func _run() -> void:
 
 	# ---- 7: the fleet: a truck, a tanker, a freight train, a plane; the staff: two hired
 	if _shot_start(7, "buying vehicles, hiring"):
+		_keep = true
+		main.win.scroll.hold = true
 		CO.tier = D.LIC.size() - 1   # every vehicle buyable (the top bar keeps showing the first licence)
 		CO.cash = 1e12
 		main._toggle_window("coFleet")
 		await _wait(.8)
 		for name in ["Вантажна машина", "Автоцистерна", "Вантажний потяг", "Вантажний літак"]:
-			var b := _buy_button(name)
+			var b: Variant = _buy_button(name)
 			if b != null:
 				await _scroll_to(b, .7)
 				await _click(b, .5)
@@ -471,7 +475,7 @@ func _run() -> void:
 		main._toggle_window("coStaff")
 		await _wait(.9)
 		for i in 2:
-			var h := _button(main.win, "Найняти")
+			var h: Variant = _button(main.win, "Найняти")
 			if h != null:
 				await _scroll_to(h, .5)
 				await _click(h, .5)
@@ -507,6 +511,8 @@ func _run() -> void:
 			main._win_tick(true)
 			await _wait(.3)
 		_cursor.visible = false
+		_keep = false
+		main.win.scroll.hold = false
 		await _wait(.8)
 
 	# ---- 9: the centre close up, a vehicle for every hub, turned right; back to the standard view
