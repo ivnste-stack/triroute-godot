@@ -1042,8 +1042,9 @@ func _on_world(w: Dictionary) -> void:
 			var c := map.camera
 			studio._put_cam(-3.0, 1.0, 9.0, 0.0)
 			studio.add_key()
-			studio._put_cam(2.0, -.5, 4.0, .9)
+			studio._put_cam(2.0, -.5, 4.0, 4.4)   # turned right by more than half a turn
 			studio.add_key()
+			print("TEST studio keys' turn: %.2f → %.2f (the way it was turned)" % [studio.cam_keys[0][3], studio.cam_keys[1][3]])
 			studio.opts.key_dur = 30.0
 			studio.run_keys()
 			var seen := []

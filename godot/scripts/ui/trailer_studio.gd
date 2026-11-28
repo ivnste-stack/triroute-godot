@@ -402,10 +402,9 @@ var _path_keys := false    # the way was made from the points (smooth already: p
 
 func add_key() -> void:
 	var c := cam()
-	var y := c.yaw
-	if cam_keys.size():   # the turn the short way from the point before
-		y = cam_keys.back()[3] + wrapf(y - cam_keys.back()[3], -PI, PI)
-	cam_keys.append([c.tx, c.tz, c.dist, y])
+	# the turn as the player turned it (Q / E add up, whole turns too): the camera goes round the same way and as far,
+	# not the short way back round the other side
+	cam_keys.append([c.tx, c.tz, c.dist, c.yaw])
 	main.toasts.push("good", "Точка %d" % cam_keys.size(), "Камеру запам'ятовано")
 	_build()
 
