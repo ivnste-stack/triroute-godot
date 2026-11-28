@@ -1038,6 +1038,24 @@ func _on_world(w: Dictionary) -> void:
 			for i in int(_args.studioscroll):
 				await get_tree().process_frame
 			print("TEST studio scroll: %d → %d px, window %s, quiet: decisions answer themselves %s, toasts shown %s" % [v0, win.scroll.scroll_vertical, hud.open_window, session.sim.auto_choice == 0, toasts.visible])
+		if _args.has("studiokeys"):   # test: two camera points, the glide between them; the interface hidden by its key
+			var c := map.camera
+			studio._put_cam(-3.0, 1.0, 9.0, 0.0)
+			studio.add_key()
+			studio._put_cam(2.0, -.5, 4.0, .9)
+			studio.add_key()
+			studio.opts.key_dur = 30.0
+			studio.run_keys()
+			var seen := []
+			for f in 60:
+				await get_tree().process_frame
+				if f % 12 == 11:
+					seen.append("t%.1f %.2f,%.2f d%.1f y%.2f" % [studio._play_t, c.tx, c.tz, c.dist, c.yaw])
+			print("TEST studio keys: %d samples · %s" % [studio.path.size(), " → ".join(PackedStringArray(seen))])
+			_key_action("hide_ui")
+			var hidden := not _ui.visible
+			_key_action("hide_ui")
+			print("TEST hide ui: hidden %s, back %s" % [hidden, _ui.visible])
 		if _args.has("subdemo"):   # test: subtitles' previews — a card drifting right, bare text still
 			studio.sub.align = String(_args.get("subalign", "left"))   # --subalign=left|center|right
 			studio.sub.anim = String(_args.get("subanim", "fade"))   # --subanim=fade|up|side|pop|wipe|type
@@ -1914,6 +1932,13 @@ func _key_action(act: String) -> void:
 			session.set_speed(mini(3, session.speed + 1))
 		"shot":
 			_screenshot()
+		"hide_ui":   # the whole interface away (and the windows closed) for a clean picture; the key again brings it back
+			if _ui.visible:
+				if win.visible:
+					_toggle_window("")
+				map_ui.close_card()
+				map_ui.close_insp()
+			_ui.visible = not _ui.visible
 		_:
 			if act.begins_with("lay_"):
 				var m := act.substr(4)

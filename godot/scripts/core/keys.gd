@@ -12,7 +12,7 @@ const DEF := [
 	["Вікна", [["w_coHome", "Компанія", KEY_C], ["w_coJobs", "Біржа вантажів", KEY_O], ["w_coTrips", "Рейси в дорозі", KEY_R],
 		["w_coFleet", "Автопарк", KEY_V], ["w_coNet", "Мережа хабів", KEY_H], ["w_coStaff", "Персонал і менеджмент", KEY_P],
 		["w_coFin", "Фінанси", KEY_F], ["w_news", "Стрічка новин", KEY_N]]],
-	["Мапа", [["shot", "Скріншот", KEY_F2]]],
+	["Мапа", [["shot", "Скріншот", KEY_F2], ["hide_ui", "Сховати весь інтерфейс", KEY_F10]]],
 ]
 ## keys that cannot be given to an action: the camera, the menu and the panels use them
 const FIXED := [["Рух камери", "W A S D / стрілки"], ["Поворот камери", "Q / E"], ["Наближення", "колесо миші"],

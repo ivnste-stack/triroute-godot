@@ -30,7 +30,7 @@ var _body: VBoxContainer
 var _status: Label
 var _sub_layer: CanvasLayer   # the subtitles' preview, over everything
 
-var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true, "reset_take": true, "center": true, "quiet": true, "scroll_spd": 140.0, "win": "coJobs",
+var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true, "reset_take": true, "key_dur": 4.0, "center": true, "quiet": true, "scroll_spd": 140.0, "win": "coJobs",
 	"kinds": {"road": true, "rail": true, "sea": true, "air": true}}
 var take_name := "take1"
 
@@ -88,6 +88,13 @@ func _ready() -> void:
 	_build()
 	_cam_opts(true)
 	_snap0 = _snapshot()   # «Скинути все» brings the world back to this
+	SmoothScroll.glide = SmoothScroll.STUDIO_GLIDE   # the windows scroll slowly and softly for the video
+	_ripples = Node2D.new()   # a click anywhere in the game: small waves from it
+	var rl := CanvasLayer.new()
+	rl.layer = 127
+	add_child(rl)
+	rl.add_child(_ripples)
+	_ripples.draw.connect(_draw_ripples)
 	_quiet(opts.quiet)
 
 
@@ -114,6 +121,7 @@ func open_panel(on: bool) -> void:
 
 func close_studio() -> void:
 	_cam_opts(false)
+	SmoothScroll.glide = SmoothScroll.TIME
 	_quiet(false)
 	_scroll_dir = 0
 	if main.win != null and main.win.scroll is SmoothScroll:
@@ -146,6 +154,20 @@ func _build() -> void:
 		opts.glide = v
 		_cam_opts(true)))
 	B.add_child(_slider("Згладжування дубля", opts.smooth, 0.0, 1.5, func(v): opts.smooth = v, "с"))
+	# the camera's points: set the camera, «+ Точка», again…; it glides through them on a smooth curve
+	B.add_child(Ui.lbl("Точки камери: %d" % cam_keys.size()))
+	B.add_child(_fill([W._btn("+ Точка", "pri sm" if cam_keys.size() < 2 else "sm", "plus", add_key, true,
+		"Запам'ятати, де зараз камера (місце, поворот, зум) як наступну точку шляху"),
+		W._btn("Прибрати останню", "sm", "", func():
+			if cam_keys.size():
+				cam_keys.pop_back()
+			_build(), cam_keys.size() > 0),
+		W._btn("Скинути точки", "sm", "close", func():
+			cam_keys.clear()
+			_build(), cam_keys.size() > 0)]))
+	B.add_child(_slider("Секунд між точками", opts.key_dur, 1.0, 20.0, func(v): opts.key_dur = v, " с", 1))
+	B.add_child(W._btn("▶ Пройти точками", "pri sm" if cam_keys.size() >= 2 else "sm", "", run_keys, cam_keys.size() >= 2,
+		"Камера плавно йде від першої точки до останньої через усі проміжні; цей шлях стає дублем (його можна зняти чи відрендерити)"))
 	var name_e := LineEdit.new()
 	name_e.text = take_name
 	name_e.placeholder_text = "назва дубля"
@@ -365,6 +387,7 @@ func toggle_rec() -> void:
 		SaveSystem.write("trailer_" + take_name, sd.data, sd.meta)
 	_snap_rec = _snapshot()   # a take starts again from here («Перед дублем повертати світ…»)
 	rec = true
+	_path_keys = false
 	_rec_t = 0.0
 	path = []
 	acts = []
@@ -373,6 +396,55 @@ func toggle_rec() -> void:
 
 
 var _meta := {}
+var cam_keys: Array = []   # the camera's points: [x, z, dist, yaw]
+var _path_keys := false    # the way was made from the points (smooth already: played as it is)
+
+
+func add_key() -> void:
+	var c := cam()
+	var y := c.yaw
+	if cam_keys.size():   # the turn the short way from the point before
+		y = cam_keys.back()[3] + wrapf(y - cam_keys.back()[3], -PI, PI)
+	cam_keys.append([c.tx, c.tz, c.dist, y])
+	main.toasts.push("good", "Точка %d" % cam_keys.size(), "Камеру запам'ятовано")
+	_build()
+
+
+## the way through the points: one smooth curve (Catmull-Rom; the zoom on a log scale), eased in at the first
+## point and out at the last; it becomes the take's way (and the camera goes along it now)
+func run_keys() -> void:
+	if cam_keys.size() < 2:
+		return
+	var n := cam_keys.size()
+	var total: float = opts.key_dur * (n - 1)
+	var P := []
+	for k in cam_keys:
+		P.append([k[0], k[1], log(k[2]), k[3]])
+	path = []
+	var steps := int(ceil(total * 60.0))
+	for i in steps + 1:
+		var t := float(i) / steps
+		var e := t * t * t * (t * (t * 6 - 15) + 10)   # smootherstep over the whole way
+		var u := e * (n - 1)
+		var s0 := mini(int(floor(u)), n - 2)
+		var f := u - s0
+		var q := []
+		for c in 4:
+			var p0: float = P[maxi(0, s0 - 1)][c]
+			var p1: float = P[s0][c]
+			var p2: float = P[s0 + 1][c]
+			var p3: float = P[mini(n - 1, s0 + 2)][c]
+			q.append(.5 * ((2 * p1) + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f + (-p0 + 3 * p1 - 3 * p2 + p3) * f * f * f))
+		path.append([t * total, q[0], q[1], exp(q[2]), q[3]])
+	acts = []
+	if opts.snap:   # the world as the way starts: the render replays the take from it
+		var sd: Dictionary = main._save_data()
+		SaveSystem.write("trailer_" + take_name, sd.data, sd.meta)
+	_snap_rec = _snapshot()
+	_meta = {"quiet": opts.quiet, "speed": main.session.speed, "mode": main.map.mode, "hid": MapVis.hid.duplicate(), "kinds": opts.kinds.duplicate()}
+	_path_keys = true
+	play(false)
+	_build()
 var _snap0 := {}      # the world when the studio opened (or «Новий початок»)
 var _snap_rec := {}   # the world when the way's recording started
 
@@ -430,7 +502,7 @@ func act(kind: String, a: Dictionary) -> void:
 func play(take: bool) -> void:
 	if path.size() < 2:
 		return
-	_play_path = _smoothed(path, opts.smooth)
+	_play_path = path if _path_keys else _smoothed(path, opts.smooth)
 	_play_acts = acts.duplicate(true)
 	_fired = {}
 	_play_t = 0.0
@@ -558,6 +630,7 @@ func _process(delta: float) -> void:
 		var c := cam()
 		path.append([_rec_t, c.tx, c.tz, c.dist, c.yaw])
 	_tick_counters(dt)
+	_tick_waves(dt)
 	_tick_hubs(dt)
 	_tick_scroll(dt)
 	if opts.quiet and main.modals.is_open() and _take != "":   # a dialog never gets into a take
@@ -1236,6 +1309,41 @@ static func sub_state(it: Dictionary, t: float, vs: Vector2, sz: Vector2) -> Dic
 	if t < 0:
 		a = 0.0
 	return {"pos": pos, "a": a, "scale": sc, "reveal": rv, "chars": ch}
+
+
+# ====================================================================== the clicks' waves
+var _ripples: Node2D
+var _waves: Array = []   # [position, age]
+
+
+func _input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+		if panel.visible and panel.get_global_rect().has_point(e.position):
+			return   # the studio's own panel: no waves
+		_waves.append([e.position, 0.0])
+
+
+func _tick_waves(dt: float) -> void:
+	if _ripples == null:
+		return
+	for w in _waves:
+		w[1] += dt
+	_waves = _waves.filter(func(w): return w[1] < .7)
+	_ripples.queue_redraw()
+
+
+## three small rings, one after another, growing and fading (about 0.7 s)
+func _draw_ripples() -> void:
+	for w in _waves:
+		for k in 3:
+			var t: float = (w[1] - k * .12) / .45
+			if t <= 0 or t >= 1:
+				continue
+			var e := 1.0 - pow(1.0 - t, 2.0)
+			_ripples.draw_arc(w[0], 4 + e * 22, 0, TAU, 40, Color(Ui.ACCENT, .75 * (1 - t)), 2.0 - t, true)
+		var t0: float = w[1] / .25
+		if t0 < 1:
+			_ripples.draw_circle(w[0], 4.5, Color(1, 1, 1, .55 * (1 - t0)), true, -1.0, true)
 
 
 # ====================================================================== keys

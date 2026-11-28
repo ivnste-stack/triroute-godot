@@ -5,6 +5,8 @@ extends ScrollContainer
 
 const STEP := 90.0          # pixels per wheel notch
 const TIME := .16           # seconds to reach the target
+const STUDIO_GLIDE := .7    # the trailer studio: a slow, soft glide for the video
+static var glide := TIME    # the glide's length now
 
 var _target := -1.0
 var _from := 0.0
@@ -41,7 +43,7 @@ func _gui_input(e: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if _target < 0:
 		return
-	_t = minf(1.0, _t + delta / TIME)
+	_t = minf(1.0, _t + delta / glide)
 	var k := 1.0 - pow(1.0 - _t, 3.0)   # ease-out
 	_mine = true
 	scroll_vertical = int(round(lerpf(_from, _target, k)))
