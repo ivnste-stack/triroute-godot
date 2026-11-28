@@ -8,9 +8,14 @@ signal settings
 signal load_game
 signal quit
 
-const LOGO := preload("res://assets/img/logo_tryroute.png")
+const GLEAM := preload("res://shaders/menu_gleam.gdshader")
+const GLEAM_EVERY := 4.5   # seconds between two gleams over the name
+const GLEAM_TIME := 1.1    # how long one takes to cross it
+static var gleam_at := -1.0   # test: the gleam held at this part of its way (0..1)
 
 
+var _name: RichTextLabel
+var _gleam_t := 0.0
 var _load_btn: Button
 var _load_box: Control
 
@@ -54,15 +59,27 @@ func _ready() -> void:
 	col.custom_minimum_size.x = 420
 	center.add_child(col)
 	var lg := Ui.glass(Ui.GLASS, Ui.LINE_HI)
-	var logo := TextureRect.new()
-	logo.texture = LOGO
-	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(380, 90)
+	# the name in the game's display font, TRY white and ROUTE in the accent, a gleam running over it now and then
+	var logo := RichTextLabel.new()
+	logo.bbcode_enabled = true
+	logo.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	logo.text = "[center]TRY[color=#%s]ROUTE[/color][/center]" % Ui.ACCENT.to_html(false)
+	logo.fit_content = true
+	logo.autowrap_mode = TextServer.AUTOWRAP_OFF
+	logo.scroll_active = false
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	logo.add_theme_font_override("normal_font", Ui.font("display", 800))
+	logo.add_theme_font_size_override("normal_font_size", 50)
+	logo.add_theme_color_override("default_color", Color.WHITE)
+	logo.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	var mat := ShaderMaterial.new()
+	mat.shader = GLEAM
+	logo.material = mat
+	_name = logo
 	# the line under the logo
 	var sub := Ui.label("ГЛОБАЛЬНА ЛОГІСТИЧНА СТРАТЕГІЯ", 11, Ui.FG2, Ui.font("mono", 600, 3.0))
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lg.add_child(Ui.margin(Ui.vbox(12, [logo, sub]), 32, 26, 32, 22))
+	lg.add_child(Ui.margin(Ui.vbox(0, [logo, sub]), 32, 24, 32, 22))
 	col.add_child(lg)
 	for b in [["Створити гру", "pri", func(): new_game.emit()], ["Завантажити гру", "", func(): load_game.emit()], ["Налаштування", "", func(): settings.emit()], ["Вихід", "", func(): quit.emit()]]:
 		var bt := Ui.btn(b[0], b[1], "", b[2])
@@ -85,3 +102,17 @@ func _ready() -> void:
 			col.add_child(bt)
 	visibility_changed.connect(_refresh_load)
 	_refresh_load()
+
+
+## the gleam: every few seconds a band of light crosses the name, left to right, easing out
+func _process(delta: float) -> void:
+	if _name == null or not is_visible_in_tree():
+		return
+	_gleam_t += delta
+	var p := gleam_at if gleam_at >= 0 else fmod(_gleam_t, GLEAM_EVERY) / GLEAM_TIME
+	var w := _name.size.x
+	var band := -10000.0
+	if p < 1.0:
+		var e := 1.0 - pow(1.0 - p, 2.0)
+		band = lerpf(-w * .25, w * 1.15, e)
+	(_name.material as ShaderMaterial).set_shader_parameter("band", band)

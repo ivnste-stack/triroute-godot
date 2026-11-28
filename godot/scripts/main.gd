@@ -283,6 +283,8 @@ func _ready() -> void:
 			"body": "Бібліотека [b]godot/bin/libtriroute[/b] не знайдена або не підходить до цієї системи. Натисни F9, щоб побачити перевірки.", "choices": []})
 		return
 	_ng.seed = int(_args.get("seed", str(randi() % 1000000000)))
+	if _args.has("menugleam"):   # test: the menu's gleam held at a part of its way
+		StartMenu.gleam_at = float(_args.menugleam)
 	if _args.has("load"):
 		_load_slot(_args.load)
 	elif _args.has("editor"):   # test: the map editor at once (--editor=blank: on an empty ocean)
