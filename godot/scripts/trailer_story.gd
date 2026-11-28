@@ -301,7 +301,7 @@ func _run() -> void:
 			var y0 := cam.yaw
 			await _track(4.6, func(p):
 				var q := _pos(tr)
-				return [q.x, q.y, lerpf(3.4, 3.0, p), y0 + 1.5 * _ss(p)])
+				return [q.x, q.y, lerpf(2.6, 2.2, p), y0 + 1.5 * _ss(p)])
 
 	# ---- 3: the exchange, scrolled through, «Прокласти маршрут» on an order whose road has a toll motorway
 	var order: Variant = null
@@ -310,8 +310,18 @@ func _run() -> void:
 		CO.veh.append({"id": CO.uid, "t": "ltruck", "loc": CO.hq, "st": "idle", "cond": 100.0, "km": 0.0})   # who would drive it
 		CO.uid += 1
 		CO.staff.driver += 1
-		for i in 4:
-			sim.co_board_day()
+		# a full exchange: orders of the larger licences too (their cards say which), the newest first
+		var t0: int = CO.tier
+		CO.tier = 3
+		for i in 60:
+			if CO.board.size() >= 22:
+				break
+			var k: Variant = sim.co_gen()
+			if k != null:
+				if not k.has("exp"):
+					k.exp = sim.day + 3 + (i % 8)
+				CO.board.append(k)
+		CO.tier = t0
 		order = _toll_order(HQ)
 		_put(HQ.x + 1.5, HQ.z + .8, 7.0, .2)
 		main._toggle_window("coJobs")
