@@ -55,6 +55,7 @@ func _ready() -> void:
 	sim.auto_choice = 0
 	sim.modals = []
 	main.toasts.visible = false
+	main.map_ui.no_hover = true
 	main.legend.modulate.a = 0
 	main.hud.mode_dd.value = "grid"
 	main.hud.mode_dd._show_value()

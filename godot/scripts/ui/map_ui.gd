@@ -214,9 +214,12 @@ func _over_ui() -> bool:
 
 
 # ====================================================================== hover card
+var no_hover := false   # the scripted trailer: no hover card wherever the pointer happens to be
+
+
 func _hover() -> void:
 	var mp := get_viewport().get_mouse_position()
-	if _over_ui() or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or not visible:
+	if no_hover or _over_ui() or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or not visible:
 		_show_tip("", null, mp)
 		return
 	# incidents on the map
