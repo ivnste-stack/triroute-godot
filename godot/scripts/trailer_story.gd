@@ -487,6 +487,7 @@ func _run() -> void:
 		CO.tier = 1
 		CO.rating = 3.0
 		CO.cdel = 0
+		CO.cash = maxf(main.hud.studio.cash, 4e7)   # the window opens on the top bar's money
 		main._toggle_window("coHome")
 		await _wait(.6)
 		var head: Control = null
