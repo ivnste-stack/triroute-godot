@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The TryRoute logo animated: its parts (assets/brand/*.png: plane, ship, train, truck, title) put together as
-the logo pulled tight, then the vehicles move a little outwards from the centre, quick at first and slowing down —
+the logo pulled tight and the word smaller, then the word grows to its size while the vehicles move a little outwards from the centre, quick at first and slowing down —
 first the truck right and the ship slowly left, right after them the plane up to the top right corner and the train
 left — and a gleam runs across the word.
 
@@ -27,15 +27,17 @@ REF = (1523, 482)
 # each part: where it starts (pulled in towards the centre: a tight logo) and where it ends (a little out), in the
 # reference's pixels from its place in LAYOUT, when it starts moving and for how long; the truck and the ship first,
 # the plane and the train right after (0.08 s: one movement, no pause) — quick at first, slowing down to a stop
-MOVE = {"truck": ((-46, 0), (26, 0), .30, 1.6), "ship": ((34, 6), (-24, 0), .30, 1.8),
-	"plane": ((-44, 30), (30, -22), .38, 1.6), "train": ((46, 0), (-26, 0), .38, 1.6), "title": ((0, 0), (0, 0), 0, 1)}
-GLEAM = (2.2, 3.2)   # the gleam across the word, once everything has settled
+MOVE = {"truck": ((-46, 0), (26, 0), .30, 2.2), "ship": ((34, 6), (-24, 0), .30, 2.4),
+	"plane": ((-44, 30), (30, -22), .38, 2.2), "train": ((46, 0), (-26, 0), .38, 2.2), "title": ((0, 0), (0, 0), 0, 1)}
+TITLE_GROW = (.86, .30, 2.3)   # the word: from this part of its size, growing to it with the rest (start, seconds)
+GLEAM = (2.6, 3.6)   # the gleam across the word, once everything has settled
 
 
 def ease(f):
-    """quick at first, slowing down to a stop (an exponential ease-out: no overshoot)"""
+    """quick at first, slowing down smoothly to a stop; a soft start (the first frames ease in), no overshoot"""
     f = min(max(f, 0.0), 1.0)
-    return (1 - 2 ** (-8 * f)) / (1 - 2 ** -8)
+    out = 1 - (1 - f) ** 3
+    return out * (1 - (1 - min(1.0, f / .12)) ** 2 * .5) if f < .12 else out
 
 
 def main():
@@ -43,7 +45,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--size", default="1920x1080")
     ap.add_argument("--fps", type=float, default=60)
-    ap.add_argument("--dur", type=float, default=4.5)
+    ap.add_argument("--dur", type=float, default=4.8)
     ap.add_argument("--bg", default="#0b1826")
     ap.add_argument("--alpha", action="store_true")
     ap.add_argument("--at", type=float, default=None)
@@ -70,6 +72,13 @@ def main():
             (ax, ay), (bx, by), t0, d = MOVE[name]
             e = ease((t - t0) / d)
             dx, dy = ax + (bx - ax) * e, ay + (by - ay) * e
+            if name == "title":   # the word grows to its size about its centre
+                s0, g0, gd = TITLE_GROW
+                sc = s0 + (1 - s0) * ease((t - g0) / gd)
+                if sc < .9995:
+                    nw, nh = round(im.width * sc), round(im.height * sc)
+                    F.alpha_composite(im.resize((nw, nh), Image.LANCZOS), (round(x + (im.width - nw) / 2), round(y + (im.height - nh) / 2)))
+                    continue
             F.alpha_composite(im, (round(x + dx * K), round(y + dy * K)))
         g = (t - GLEAM[0]) / (GLEAM[1] - GLEAM[0])
         if 0 < g < 1:   # a slanted band of light across the word, left to right: a bright core in a soft glow
