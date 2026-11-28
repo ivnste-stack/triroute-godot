@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The TryRoute logo animated: its parts (assets/brand/*.png: plane, ship, train, truck, title) put together as
 the logo pulled tight, then the vehicles move a little outwards from the centre, quick at first and slowing down —
-first the truck right and the ship slowly left, 0.2 s later the plane up to the top right corner and the train
+first the truck right and the ship slowly left, right after them the plane up to the top right corner and the train
 left — and a gleam runs across the word.
 
     python3 tools/logo_anim.py OUT.mp4                    on the game's dark blue
@@ -26,9 +26,9 @@ LAYOUT = [("ship", .80, 244, 98), ("plane", .79, 650, 104), ("truck", .70, 1108,
 REF = (1523, 482)
 # each part: where it starts (pulled in towards the centre: a tight logo) and where it ends (a little out), in the
 # reference's pixels from its place in LAYOUT, when it starts moving and for how long; the truck and the ship first,
-# the plane and the train 0.2 s later — quick at first, slowing down to a stop
+# the plane and the train right after (0.08 s: one movement, no pause) — quick at first, slowing down to a stop
 MOVE = {"truck": ((-46, 0), (26, 0), .30, 1.6), "ship": ((34, 6), (-24, 0), .30, 1.8),
-	"plane": ((-44, 30), (30, -22), .50, 1.6), "train": ((46, 0), (-26, 0), .50, 1.6), "title": ((0, 0), (0, 0), 0, 1)}
+	"plane": ((-44, 30), (30, -22), .38, 1.6), "train": ((46, 0), (-26, 0), .38, 1.6), "title": ((0, 0), (0, 0), 0, 1)}
 GLEAM = (2.2, 3.2)   # the gleam across the word, once everything has settled
 
 
