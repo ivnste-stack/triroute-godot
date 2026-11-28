@@ -10,6 +10,7 @@ var _target := -1.0
 var _from := 0.0
 var _t := 0.0
 var _mine := false          # the scroll value is being set by the glide
+var hold := false           # the trailer studio scrolls it slowly: the window is not built again meanwhile
 
 
 func _ready() -> void:
@@ -20,7 +21,7 @@ func _ready() -> void:
 
 ## a glide is running or the bar is held: the content should not be rebuilt under the reader
 func busy() -> bool:
-	return _target >= 0 or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and get_v_scroll_bar().get_global_rect().has_point(get_global_mouse_position())
+	return hold or _target >= 0 or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and get_v_scroll_bar().get_global_rect().has_point(get_global_mouse_position())
 
 
 func _gui_input(e: InputEvent) -> void:

@@ -30,7 +30,7 @@ var _body: VBoxContainer
 var _status: Label
 var _sub_layer: CanvasLayer   # the subtitles' preview, over everything
 
-var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true, "reset_take": true,
+var opts := {"spd": .45, "glide": .93, "smooth": .5, "ui": "top", "dens": 2, "ret": 5.0, "ret_d": 14.0, "hub_spd": 8.0, "snap": true, "reset_take": true, "center": true, "quiet": true, "scroll_spd": 140.0, "win": "coJobs",
 	"kinds": {"road": true, "rail": true, "sea": true, "air": true}}
 var take_name := "take1"
 
@@ -88,6 +88,7 @@ func _ready() -> void:
 	_build()
 	_cam_opts(true)
 	_snap0 = _snapshot()   # «Скинути все» brings the world back to this
+	_quiet(opts.quiet)
 
 
 func sim() -> Sim:
@@ -113,6 +114,10 @@ func open_panel(on: bool) -> void:
 
 func close_studio() -> void:
 	_cam_opts(false)
+	_quiet(false)
+	_scroll_dir = 0
+	if main.win != null and main.win.scroll is SmoothScroll:
+		main.win.scroll.hold = false
 	if main.hud != null:
 		main.hud.studio = {}
 	queue_free()
@@ -153,6 +158,9 @@ func _build() -> void:
 	B.add_child(_fill([W._btn("До стандартного виду", "sm", "refresh", return_view, true,
 		"Плавно й повільно повертає камеру на північ і наближає чи віддаляє до обраного зуму. Під час запису теж записується."),
 		_slider_small(opts.ret, 2.0, 12.0, func(v): opts.ret = v, "с")]))
+	B.add_child(Ui.hbox(8, [W._toggle(opts.center, func():
+		opts.center = not opts.center
+		_build()), _wrap("Повертати до центру мапи (інакше — на тому ж місці)")]))
 	var mx: float = cam().world_size.x * 1.2
 	B.add_child(Ui.hbox(8, [_slider("Зум повернення", opts.ret_d, cam().min_dist, mx, func(v): opts.ret_d = v, "", 1),
 		W._btn("Поточний", "sm", "", func():
@@ -175,6 +183,10 @@ func _build() -> void:
 		"Ховає панель (і інтерфейс, як обрано вище) та програє шлях камери й усі натиснуті під час запису кнопки. Записуйте екран у цей час. ` — зупинити."),
 		W._btn("Команда рендеру", "sm", "doc", copy_render, path.size() > 1,
 		"Копіює команду: Godot сам запише дубль у відео 1920×1080, рівно 60 кадрів/с, зі знімка світу на початку запису.")]))
+	B.add_child(Ui.hbox(8, [W._toggle(opts.quiet, func():
+		opts.quiet = not opts.quiet
+		_quiet(opts.quiet)
+		_build()), _wrap("Режим зйомки: без діалогів і сповіщень (рішення ухвалюються самі)")]))
 	B.add_child(Ui.hbox(8, [W._toggle(opts.reset_take, func():
 		opts.reset_take = not opts.reset_take
 		_build()), _wrap("Перед дублем повертати світ, яким він був на початку запису")]))
@@ -224,6 +236,21 @@ func _build() -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		ev.add_child(b)
 	B.add_child(ev)
+
+	# ---- the windows
+	B.add_child(W._sect("Вікна"))
+	var wl := [["coJobs", "Біржа вантажів"], ["coTrips", "Рейси в дорозі"], ["coFleet", "Автопарк"], ["coNet", "Мережа хабів"], ["coHome", "Компанія"],
+		["coFin", "Фінанси"], ["coStaff", "Персонал"]]
+	if sim().alt():
+		wl.insert(1, ["coCargo", "Прийняті вантажі"])
+	var wdd := Dropdown.make(wl.map(func(x): return [x[0], x[1], "window" if Icons.has("window") else "doc"]), opts.win, func(x): opts.win = x)
+	wdd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	B.add_child(Ui.hbox(8, [wdd, W._btn("Відкрити", "sm", "", func(): act("win", {"id": opts.win})), W._btn("Закрити", "sm", "close", func(): act("win", {"id": ""}))]))
+	B.add_child(_slider("Швидкість гортання", opts.scroll_spd, 30.0, 600.0, func(v): opts.scroll_spd = v, " px/с", 0))
+	B.add_child(_fill([W._btn("▼ Гортати вниз", "sm", "", func(): act("scroll", {"dir": 1, "spd": opts.scroll_spd})),
+		W._btn("▲ Вгору", "sm", "", func(): act("scroll", {"dir": -1, "spd": opts.scroll_spd})),
+		W._btn("■ Стоп", "sm", "", func(): act("scroll", {"dir": 0, "spd": opts.scroll_spd}))]))
+	B.add_child(W._note("Для дубля з вікном оберіть «Увесь інтерфейс».", Ui.MUTED, 12))
 
 	# ---- the counters
 	B.add_child(W._sect("Лічильники у верхній панелі"))
@@ -341,7 +368,7 @@ func toggle_rec() -> void:
 	_rec_t = 0.0
 	path = []
 	acts = []
-	_meta = {"speed": main.session.speed, "mode": main.map.mode, "hid": MapVis.hid.duplicate(), "kinds": opts.kinds.duplicate()}
+	_meta = {"quiet": opts.quiet, "speed": main.session.speed, "mode": main.map.mode, "hid": MapVis.hid.duplicate(), "kinds": opts.kinds.duplicate()}
 	_build()
 
 
@@ -363,6 +390,9 @@ func _restore(sn: Dictionary) -> void:
 	if sn.is_empty() or S == null:
 		return
 	S.load_state(sn.sim)
+	if opts.quiet:
+		S.auto_choice = 0
+		S.modals = []
 	main.session.acc = sn.acc
 	main.session.paused_fr = sn.pfr
 	MapVis.hid = sn.hid.duplicate()
@@ -483,12 +513,14 @@ func _put_cam(x: float, z: float, d: float, y: float) -> void:
 	c.tyaw = y
 
 
-## «До стандартного виду»: north up (the nearest whole turn), the same point, at the zoom chosen — slowly
+## «До стандартного виду»: north up (the nearest whole turn), over the map's centre (or the same point), at the
+## zoom chosen — slowly
 func return_view() -> void:
 	var c := cam()
 	var y0 := c.yaw
 	var y1 := roundf(y0 / TAU) * TAU
-	_ret = {"t": 0.0, "dur": opts.ret, "from": [c.tx, c.tz, c.dist, y0], "to": [c.tx, c.tz, clampf(opts.ret_d, c.min_dist, c.world_size.x * 1.2), y1]}
+	var to := Vector2(0.0, .6) if opts.center else Vector2(c.tx, c.tz)   # the map's centre, as a new world opens on it
+	_ret = {"t": 0.0, "dur": opts.ret, "from": [c.tx, c.tz, c.dist, y0], "to": [to.x, to.y, clampf(opts.ret_d, c.min_dist, c.world_size.x * 1.2), y1]}
 
 
 func _process(delta: float) -> void:
@@ -527,6 +559,9 @@ func _process(delta: float) -> void:
 		path.append([_rec_t, c.tx, c.tz, c.dist, c.yaw])
 	_tick_counters(dt)
 	_tick_hubs(dt)
+	_tick_scroll(dt)
+	if opts.quiet and main.modals.is_open() and _take != "":   # a dialog never gets into a take
+		main.modals.clear()
 	_tick_sub(dt)
 	if rec or playing:
 		_show_status()
@@ -653,6 +688,8 @@ func render_take(name: String) -> void:
 		MapVis.hid = M.hid.duplicate()
 		MapVis.ver += 1
 		main.map.apply_vis()
+	opts.quiet = bool(M.get("quiet", true))
+	_quiet(opts.quiet)
 	_take = "render"
 	_warm = 0
 	_hide_ui(true)
@@ -751,6 +788,19 @@ func _do(kind: String, a: Dictionary) -> void:
 		"cnt":
 			var from: float = main.hud.studio.get(a.k, _real(a.k))
 			_cnt[a.k] = {"from": from, "to": float(a.to), "t": 0.0, "dur": float(a.dur)}
+		"win":   # a window of the game open (or none)
+			_scroll_dir = 0
+			if String(a.id) == "":
+				if main.win.visible:
+					main._toggle_window("")
+			elif main.hud.open_window != String(a.id):
+				main._toggle_window(String(a.id))
+			_scroll_pos = 0.0
+		"scroll":   # the open window scrolls slowly, steadily, until its end or «Стоп»
+			_scroll_dir = int(a.dir)
+			_scroll_spd = float(a.spd)
+			if main.win.visible:
+				_scroll_pos = float(main.win.scroll.scroll_vertical)
 		"cnt_reset":
 			_cnt = {}
 			main.hud.studio = {}
@@ -901,6 +951,49 @@ func _clear_trips() -> void:
 			c.run = -1
 		CO.net.runs.clear()
 	main.map.company_colors()
+
+
+var _scroll_dir := 0
+var _scroll_spd := 140.0
+var _scroll_pos := 0.0
+
+
+## the open window scrolled at a steady speed (pixels a second) — a list on the exchange for a video
+func _tick_scroll(dt: float) -> void:
+	var sc: Variant = main.win.scroll if main.win != null else null
+	if not (sc is SmoothScroll):
+		return
+	sc.hold = _scroll_dir != 0 and main.win.visible
+	if not sc.hold:
+		return
+	var bar: ScrollBar = sc.get_v_scroll_bar()
+	var top := maxf(0.0, bar.max_value - bar.page)
+	_scroll_pos = clampf(_scroll_pos + _scroll_dir * _scroll_spd * dt, 0, top)
+	sc.scroll_vertical = int(round(_scroll_pos))
+	if (_scroll_dir > 0 and _scroll_pos >= top) or (_scroll_dir < 0 and _scroll_pos <= 0):
+		_scroll_dir = 0
+		sc.hold = false
+
+
+var _quiet_prev := -2
+
+
+## «Режим зйомки»: the game's decisions answer themselves, no dialog, no notification over the picture
+func _quiet(on: bool) -> void:
+	var S := sim()
+	if S == null:
+		return
+	if on:
+		if _quiet_prev == -2:
+			_quiet_prev = S.auto_choice
+		S.auto_choice = 0
+		S.modals = []
+		if main.modals.is_open():
+			main.modals.clear()
+	elif _quiet_prev != -2:
+		S.auto_choice = _quiet_prev
+		_quiet_prev = -2
+	main.toasts.visible = not on
 
 
 var _hubq: Array = []

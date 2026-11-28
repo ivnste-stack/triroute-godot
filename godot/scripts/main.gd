@@ -1024,7 +1024,16 @@ func _on_world(w: Dictionary) -> void:
 			var t0 := Time.get_ticks_msec()
 			while not studio._ret.is_empty() and Time.get_ticks_msec() - t0 < 20000:
 				await get_tree().process_frame
-			print("TEST studio return: yaw %.3f, dist %.2f → %.2f" % [map.camera.yaw, d0, map.camera.dist])
+			print("TEST studio return: yaw %.3f, dist %.2f → %.2f, at %.2f, %.2f" % [map.camera.yaw, d0, map.camera.dist, map.camera.tx, map.camera.tz])
+		if _args.has("studioscroll"):   # test: the exchange open and scrolled slowly for a while
+			studio.act("win", {"id": "coJobs"})
+			for i in 20:
+				await get_tree().process_frame
+			studio.act("scroll", {"dir": 1, "spd": 300.0})
+			var v0: int = win.scroll.scroll_vertical
+			for i in int(_args.studioscroll):
+				await get_tree().process_frame
+			print("TEST studio scroll: %d → %d px, window %s, quiet: decisions answer themselves %s, toasts shown %s" % [v0, win.scroll.scroll_vertical, hud.open_window, session.sim.auto_choice == 0, toasts.visible])
 		if _args.has("subdemo"):   # test: subtitles' previews — a card drifting right, bare text still
 			studio.sub.align = String(_args.get("subalign", "left"))   # --subalign=left|center|right
 			studio.sub.anim = String(_args.get("subanim", "fade"))   # --subanim=fade|up|side|pop|wipe|type
