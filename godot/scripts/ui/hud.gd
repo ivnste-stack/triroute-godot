@@ -403,7 +403,7 @@ func _process_t(delta: float) -> void:
 	_refresh_t = .125
 	var sim := session.sim
 	var CO := sim.CO
-	var sub := "%s · штаб: %s" % [GameData.LIC[CO.tier].n, sim.PL[CO.hq].name]
+	var sub := "%s · штаб: %s" % [GameData.LIC[int(studio.get("lic", CO.tier))].n, sim.PL[CO.hq].name]   # the licence as the studio shows it
 	if _name.text != CO.name or _sub.text != sub:
 		_name.text = CO.name
 		_sub.text = sub

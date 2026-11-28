@@ -592,11 +592,10 @@ func _buy_button(name: String) -> Button:
 	for b in main.win.find_children("*", "Button", true, false):
 		if not (b is Button) or not String(b.text).begins_with("Купити"):
 			continue
-		var n: Node = b
-		for up in 6:   # the row it is on names the vehicle
+		var n: Node = b.get_parent()
+		while n != null and not (n is PanelContainer):   # the row the button is on: it names the vehicle
 			n = n.get_parent()
-			if n == null:
-				break
+		if n != null:
 			for l in n.find_children("*", "Label", true, false):
 				if l.text == name:
 					return b
