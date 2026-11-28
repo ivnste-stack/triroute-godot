@@ -281,6 +281,11 @@ func _run() -> void:
 	var CO: Dictionary = sim.CO
 	var HQ: Dictionary = sim.PL[CO.hq]
 	var W: Vector2 = cam.world_size
+	if _from >= 6:   # started past shot 5: the hubs it opens, open already
+		for p in sim.PL:
+			if sim.hub_at(p.id) == null:
+				CO.hubs.append({"pid": p.id, "lvl": 1, "share": .01, "mk": 0})
+		main.map.company_colors()
 
 	# ---- 1: from afar down to the headquarters, turning right; a truck leaves, followed to the delivery
 	if _shot_start(1, "the world → the headquarters, a truck"):
