@@ -7,6 +7,8 @@ all at once: the truck right, the ship left, the plane up to the top right corne
     python3 tools/logo_anim.py OUT.mov --alpha            with transparency (ProRes 4444, for editing)
     python3 tools/logo_anim.py OUT.webm --alpha           with transparency (VP9)
     python3 tools/logo_anim.py frame.png --at 2.5         one frame, to check
+    python3 tools/logo_anim.py logo.png --at 3 --alpha --nogleam --trim --size 2560x1440
+                                                          the still the game's logo is made of (assets/img)
     options: --size 1920x1080, --fps 60, --dur 4.5, --bg "#0b1826"
 """
 import argparse
@@ -48,6 +50,8 @@ def main():
     ap.add_argument("--bg", default="#0b1826")
     ap.add_argument("--alpha", action="store_true")
     ap.add_argument("--at", type=float, default=None)
+    ap.add_argument("--nogleam", action="store_true", help="no gleam (a still for the game's logo)")
+    ap.add_argument("--trim", action="store_true", help="with --at: cropped to the logo itself")
     ap.add_argument("--width", type=float, default=.78, help="the logo's width as a part of the frame's")
     a = ap.parse_args()
     W, H = map(int, a.size.split("x"))
@@ -79,7 +83,7 @@ def main():
                     F.alpha_composite(im.resize((nw, nh), Image.LANCZOS), (round(x + (im.width - nw) / 2), round(y + (im.height - nh) / 2)))
                     continue
             F.alpha_composite(im, (round(x + dx * K), round(y + dy * K)))
-        g = (t - GLEAM[0]) / (GLEAM[1] - GLEAM[0])
+        g = -1 if a.nogleam else (t - GLEAM[0]) / (GLEAM[1] - GLEAM[0])
         if 0 < g < 1:   # a slanted band of light across the word, left to right: a bright core in a soft glow
             hgt = title.height
             sk = hgt * .45
@@ -97,7 +101,10 @@ def main():
         return F
 
     if a.at is not None:
-        frame(a.at).save(a.out)
+        im = frame(a.at)
+        if a.trim:
+            im = im.crop(im.getchannel("A").getbbox())
+        im.save(a.out)
         return
     n = int(round(a.dur * a.fps))
     if a.alpha and a.out.lower().endswith(".mov"):
