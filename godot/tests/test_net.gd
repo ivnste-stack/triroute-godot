@@ -506,3 +506,56 @@ func test_run_takes_the_players_roads() -> String:
 		return "%d of %d delivered" % [sim.CO.net.stat.done - d0, n]
 	print("       through the player's point: %.0f%% longer than the shortest way" % ((rv.len / plain.len - 1) * 100))
 	return _consistent(sim)
+
+
+## without the international licence a run stays in the country: its road goes round a foreign state on the way
+## (an enclave) when it can, and a run to a town abroad or one that has to cross is refused
+func test_no_border_without_licence() -> String:
+	if not ClassDB.class_exists("TRWorldGen"):
+		return "no native module"
+	var crossing := 0
+	var round_ := 0
+	var tried := 0
+	for seed_value in [777, 4242, 99, 2024]:
+		var gen: Object = ClassDB.instantiate("TRWorldGen")
+		var world: Dictionary = gen.generate(seed_value)
+		var states: Array = gen.generate_states()
+		var bd: Dictionary = gen.generate_board()
+		var probe := Sim.new()
+		probe.setup(gen, seed_value, states, bd, world)
+		for ch in probe.start_choices().slice(0, 6):
+			var sim := Sim.new()
+			sim.setup(gen, seed_value, states, bd, world)
+			sim.co_init(ch.id)
+			sim.co_set_hq(ch.id)
+			sim.net_init()
+			tried += 1
+			var home: int = sim.hq_p().cid
+			var towns: Array = sim.PL.filter(func(p): return p.cid == home and p.node != null)
+			for A in towns:
+				for B in towns:
+					if A.id >= B.id:
+						continue
+					var r0: Variant = sim.co_route("road", A.id, B.id)
+					if r0 == null or sim.gen.crossings(r0.p, sim.CO_DU).is_empty():
+						continue
+					crossing += 1
+					var r: Variant = sim.net_leg_route("road", A.id, B.id, [])
+					var C := sim.net_calc({"vid": -1, "m": "road", "stops": [A.id, B.id], "picks": {}, "offs": {}})
+					if r != null and sim.gen.crossings(r.p, sim.CO_DU).is_empty():
+						round_ += 1
+						if C.why.begins_with("Маршрут виходить"):
+							return "a way round at home, refused all the same"
+					elif not C.why.begins_with("Маршрут виходить"):
+						return "a run across a foreign state allowed: %s → %s (%s)" % [A.name, B.name, C.why]
+			var abroad: Array = sim.PL.filter(func(p): return p.cid != home and p.land == sim.hq_p().land and sim.co_route("road", sim.CO.hq, p.id) != null)
+			if abroad.size():
+				var C2 := sim.net_calc({"vid": -1, "m": "road", "stops": [sim.CO.hq, abroad[0].id], "picks": {}, "offs": {}})
+				if not C2.why.begins_with("Маршрут виходить"):
+					return "a run abroad allowed: %s" % C2.why
+		if crossing >= 3:
+			break
+	if crossing == 0:
+		return "no start found whose home roads cross a foreign state (%d tried)" % tried
+	print("       %d starts: %d pairs at home whose shortest road crosses a border, %d of them go round at home" % [tried, crossing, round_])
+	return ""

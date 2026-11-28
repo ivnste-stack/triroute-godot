@@ -634,6 +634,18 @@ static func _drop_at(stops: Array, i: int, to: int) -> int:
 ## a leg's route: through the road or rail points the player put on it (via), or the usual one; on the road,
 ## around the toll motorways and/or the heavy-vehicle bans when the player asked (av: "toll", "ban", "toll,ban")
 func net_leg_route(m: String, a: int, b: int, via: Array, av: String = "") -> Variant:
+	if m == "road" and CO.tier < 3 and via.is_empty() and PL[a].cid == PL[b].cid:
+		# without the international licence the road stays at home: around a foreign state (an enclave) on the way
+		var r0: Variant = co_route(m, a, b)
+		if r0 == null or gen.crossings(r0.p, CO_DU).is_empty():
+			return r0
+		var p: PackedFloat32Array = gen.node_path_avoid(PL[a].node, PL[b].node, _foreign_nodes(PL[a].cid), PackedFloat64Array())
+		if p.size() < 4:
+			return r0   # no way round: net_calc says why
+		var L := 0.0
+		for i in range(2, p.size(), 2):
+			L += Vector2(p[i] - p[i - 2], p[i + 1] - p[i - 1]).length()
+		return {"p": p, "len": L * CO_DU}
 	if via.is_empty():
 		if m != "road" or av == "" or not road_rules:
 			return co_route(m, a, b)
@@ -652,6 +664,24 @@ func net_leg_route(m: String, a: int, b: int, via: Array, av: String = "") -> Va
 		f.append_array(r.p.slice(0 if k == 1 else 2))
 		len_ += r.len
 	return {"p": f, "len": len_}
+
+
+var _fn_cid := -1
+var _fn := PackedInt32Array()
+
+
+## the road nodes outside a state (kept for the state asked last: the states do not change)
+func _foreign_nodes(cid: int) -> PackedInt32Array:
+	if cid == _fn_cid:
+		return _fn
+	_fn_cid = cid
+	_fn = PackedInt32Array()
+	var bits: PackedByteArray = board.bits
+	var nx: int = board.nx
+	for n in bits.size():
+		if bits[n] != 0 and gen.state_at(-board.wx / 2 + (n % nx) * board.st, -board.wz / 2 + (n / nx) * board.st) != cid:
+			_fn.append(n)
+	return _fn
 
 
 func net_calc(spec: Dictionary) -> Dictionary:
@@ -750,6 +780,13 @@ func net_calc(spec: Dictionary) -> Dictionary:
 			if r == null:
 				res.why = "Немає маршруту %s → %s" % [PL[a].name, PL[b].name]
 				return res
+			# without the international licence a run may not leave the country, not even in transit
+			if CO.tier < 3 and (m == "road" or m == "rail"):
+				var home: int = hq_p().cid
+				var out: Variant = PL[a] if PL[a].cid != home else (PL[b] if PL[b].cid != home else null)
+				if out != null or gen.crossings(r.p, CO_DU).size():
+					res.why = "Маршрут виходить за межі країни%s: потрібна ліцензія «%s»" % [" (" + states[out.cid].name + ")" if out != null else "", D.LIC[3].n]
+					return res
 			var tm: float
 			var lc: float
 			if own:
