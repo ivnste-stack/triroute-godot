@@ -381,11 +381,11 @@ func _run() -> void:
 			var y0 := cam.yaw
 			await _track(4.2, func(p):   # circling it
 				var q := _pos(j)
-				return [q.x, q.y, 3.2, y0 + 2.2 * _ss(p)])
+				return [q.x, q.y, 2.3, y0 + 2.2 * _ss(p)])
 			var y1 := cam.yaw
 			await _track(3.4, func(p):   # following it, the zone ahead in the picture
 				var q := _pos(j)
-				return [q.x, q.y, lerpf(3.2, 4.4, _ss(p)), y1])
+				return [q.x, q.y, lerpf(2.3, 4.0, _ss(p)), y1])
 			# leaving it: over the map, the hubs opening town after town
 			var c0 := _cam()
 			var to := Vector2(HQ.x, HQ.z)
